@@ -1,0 +1,1756 @@
+"""Arrakeen Scouts: missions (docs/rules/arrakeen-scouts.md 5).
+
+A revealed mission places bank goods on the board (``GameState.scouts_goods``,
+face-down cards in ``scouts_goods_cards``) and asks each seat in turn order
+whether it takes part, parking troops on a space (``scouts_parked``, counted
+by ``PlayerState.troops_parked`` in the 12-troop total). Pieces stay until
+claimed [Scouts help]. An Agent visiting such a space collects what is there
+for its seat as one more freely ordered effect of the visit
+(``BOARD_ICON_SCOUTS``, like the Bloodlines Commander [Bloodlines p. 4]).
+
+Goods rows are ``(mission, location, resource, amount, seat)`` (seat -1:
+whoever collects first); parked rows ``(mission, seat, location, troops)``.
+
+A mission's payout a seat earns inside another action -- CHOAM Escort's
+goods on completing the Contract, Tleilaxu Offering's troops on reaching the
+track's third space, Valued Informants' good under a Spy, Sponsored
+Research's spice at the Helix, Back Room Deal's Solari on Reclaimed Forces --
+leaves the board for that seat at once and waits as its owed row (location
+``OWED`` + the events' source) until the seat's own collect click
+(``collect_owed``; user decisions 2026-11-01, OQ-164 (b)). The click's
+window opens at once wherever the payout was earned
+(``scouts_effects.open_scouts_payout``).
+"""
+
+from copy import replace
+from typing import Final
+
+from dune_imperium.content.arrakeen_scouts import (
+    MISSIONS,
+    MISSIONS_BY_ID,
+    Mission,
+    MissionKind,
+)
+from dune_imperium.content.core.effects import DiscardFromHand
+from dune_imperium.content.core.icons import AgentIcon
+from dune_imperium.content.registry.board import BOARD_SPACES_BY_ID
+from dune_imperium.content.registry.contracts import contract_for_instance
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.contract_tiles import receive_contract
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    current_agent_effect_context,
+    finish_board_icon,
+    pending_board_icons,
+    recruit_troops,
+)
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    FrameKind,
+    context_int,
+    context_str,
+    owned_top_frame,
+    recruited_commander_count,
+    replace_player,
+)
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.intrigue_deck import (
+    credit_suspensor_suits,
+    shufflable_intrigue_discard,
+)
+from dune_imperium.rules.specimens import return_specimens
+from dune_imperium.rules.spy_placement import observation_posts_in_play
+
+BOARD_ICON_SCOUTS: Final = "scouts_mission"
+_JOIN_FRAME: Final = "Mission participation frame"
+TLEILAXU_OFFERING_SPACE: Final = "tleilaxu_track"
+# Tleilaxu Offering's "third space of the Tleilaxu Track", counted like the
+# setup spice's "fourth space" (index 4, the start space uncounted)
+# [Immortality p. 4] (OQ-089 (a)).
+TLEILAXU_OFFERING_TRACK_SPACE: Final = 3
+# The way in that uses a garrison Sardaukar Commander instead of a troop:
+# Prison Planet's loss (OQ-105) and the troop Send for Aid and Genetic
+# Research move (OQ-166); the plain way in is "".
+COMMANDER_WAY_IN: Final = "commander"
+# Where the goods of the missions paid off away from a visit wait.
+HELIX: Final = "helix"
+RECLAIMED_FORCES: Final = "reclaimed_forces"
+# The location of an owed row (module doc): ``owed:<the events' source>``.
+OWED: Final = "owed:"
+
+
+def is_owed(location: str) -> bool:
+    """Whether a goods or parked row's ``location`` holds an owed payout."""
+
+    return location.startswith(OWED)
+
+# Missions every seat takes part in without being asked: the app's text has
+# no "may" (Armed Escort's dreadnought, the original game's Strongarmed
+# Alliance troop and Sapho Juice's Control marker). A seat that cannot place
+# the piece places nothing, as a seat without the printed troops cannot take
+# part in the others (OQ-088, OQ-161); there is no window to offer anything
+# else in (see ``place_mission_goods``), but for the specimen a Strongarmed
+# Alliance seat may return first (``SPECIMEN_TOP_UP_ONLY``).
+_MANDATORY: Final = frozenset(
+    {
+        MissionKind.ARMED_ESCORT,
+        MissionKind.MUSTER_STRONGARMED_ALLIANCE,
+        MissionKind.SAPHO_JUICE,
+    }
+)
+# The mandatory mission a seat may still take part in by returning a specimen
+# first: with Immortality, a seat asked for more troops than its supply holds
+# "may first return as many specimens as it wants" (OQ-074 (a) addendum), so a
+# seat whose supply is empty and whose tanks hold a specimen is asked whether
+# to return one for Strongarmed Alliance's troop -- that choice only; a seat
+# with a supply troop is still not asked (docs/rules/arrakeen-scouts.md 9a).
+SPECIMEN_TOP_UP_ONLY: Final = frozenset({MissionKind.MUSTER_STRONGARMED_ALLIANCE})
+# Participation: (troop source, troops parked) per mission kind, read from
+# the mission table (``Mission.troop_source`` / ``parked_troops``; cleanup-1 --
+# the numbers were written twice before). The mandatory ones park in
+# ``place_mission_goods`` instead and have no participation to answer.
+_PARKING: Final = {
+    mission.kind: (mission.troop_source.value, mission.parked_troops)
+    for mission in MISSIONS
+    if mission.parked_troops
+    and mission.troop_source is not None
+    and mission.kind not in _MANDATORY
+}
+# The missions that move a garrison troop to their space, which a garrison
+# Sardaukar Commander may be instead (OQ-166, user ruling 2026-11-02 "가 로
+# 하고"): "Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로
+# 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다." [Bloodlines
+# p. 4], the unification OQ-105 made for the troop-losing costs. The parked
+# Commander is its seat's own piece, as a parked troop (OQ-077 (a)).
+COMMANDER_PARKING: Final = frozenset(
+    {MissionKind.SEND_FOR_AID, MissionKind.GENETIC_RESEARCH}
+)
+# Every mission with the Commander way in (``COMMANDER_WAY_IN``).
+COMMANDER_JOIN_KINDS: Final = COMMANDER_PARKING | {MissionKind.PRISON_PLANET}
+# Where a mission's collected troops go when their seat visits (OQ-077).
+_TO_CONFLICT: Final = frozenset(
+    {
+        MissionKind.SECURITY_DETAIL,
+        MissionKind.WEIRDING_WARFARE,
+        MissionKind.SEND_FOR_AID,
+        # Rise of Ix (stage P7f-2): "they move those troops directly into the
+        # conflict" [Scouts mission: Stowaways] (spice.mission.stowaways.desc).
+        MissionKind.STOWAWAYS,
+        # The original game's (stage P8b-2): Strongarmed Alliance's and
+        # Genetic Research's troop is "immediately deployed to the conflict",
+        # Guild Maneuvers' troops move "directly into the conflict"
+        # (docs/rules/arrakeen-scouts.md 9a).
+        MissionKind.MUSTER_STRONGARMED_ALLIANCE,
+        MissionKind.GENETIC_RESEARCH,
+        MissionKind.GUILD_MANEUVERS,
+        # Stage P8c: Stationed Support's troops are "deployed to the
+        # conflict" by the seat's first Agent there (9a).
+        MissionKind.BOTANICAL_STATIONED_SUPPORT,
+    }
+)
+# The missions that keep a seat's own Control marker on their space, which
+# the seat takes back for a third control space (``free_prison_marker``).
+_MARKER_MISSIONS: Final = frozenset(
+    {MissionKind.PRISON_PLANET, MissionKind.SAPHO_JUICE}
+)
+# A visit's card a seat may leave: "they may draw one of the Intrigue cards
+# there" [Scouts mission: Botanical Testing - Secrets in the Desert]. Emperor's
+# Schemes' text has no "may", so its card is always taken.
+OPTIONAL_CARD_KINDS: Final = frozenset(
+    {MissionKind.BOTANICAL_SECRETS_IN_THE_DESERT}
+)
+# The ``scouts_collect_mission`` choices of a visit to such a space: take the
+# card, or visit without taking it, when the card stays for a later visit (the
+# pieces stay until claimed, docs/rules/arrakeen-scouts.md 5). A choice of its
+# own names the take, as Imperial Reserve's two goods are named, so the two
+# are not one action that ends where the other goes on
+# (``effect_steps.present``); with no card to leave the one action's choice is
+# "".
+COLLECT_TAKE: Final = "take"
+COLLECT_DECLINE: Final = "decline"
+_PARTICIPATION: Final = frozenset(
+    {*_PARKING, MissionKind.PRISON_PLANET, MissionKind.CHOAM_ESCORT}
+)
+
+
+def mission_tasks(
+    state: GameState, mission_id: str, order: tuple[int, ...]
+) -> tuple[str, ...]:
+    """The reveal's tasks: place the goods, then ask each seat in turn order."""
+
+    mission = MISSIONS_BY_ID[mission_id]
+    tasks = ["goods"]
+    if mission.kind in _PARTICIPATION:
+        tasks.extend(f"join:{seat}" for seat in order)
+    elif mission.kind in SPECIMEN_TOP_UP_ONLY:
+        # The goods task parks every seat's supply troop first; the seats it
+        # skips for an empty supply are asked after it, when they can return
+        # a specimen (``specimen_shortfall``). Nothing moves a supply between.
+        tasks.extend(
+            f"join:{seat}" for seat in order if specimen_shortfall(state, seat, mission)
+        )
+    return tuple(tasks)
+
+
+# --- Goods -------------------------------------------------------------------------
+
+
+def _posts_next_to(
+    state: GameState, icon: AgentIcon | None, *, maker: bool
+) -> tuple[str, ...]:
+    """Empty Observation Posts connected to a City (or Maker) space."""
+
+    occupied = {post for seat in state.players for post in seat.spy_post_ids}
+    spaces = {
+        space_id
+        for space_id, space in BOARD_SPACES_BY_ID.items()
+        if (space.maker if maker else space.agent_icon is icon)
+    }
+    return tuple(
+        post.post_id
+        for post in observation_posts_in_play(state)
+        if post.post_id not in occupied and spaces & set(post.connected_space_ids)
+    )
+
+
+def _free_maker_hooks(state: GameState) -> int:
+    """Four Maker Hooks tokens exist [Main p. 3]; the seats hold the rest."""
+
+    return 4 - sum(1 for seat in state.players if seat.maker_hooks)
+
+
+def _is_immediate(contract_id: str) -> bool:
+    """Bloodlines' Immediate Contract: taken only by trashing an Intrigue
+    card [Bloodlines p. 2]."""
+
+    return contract_for_instance(contract_id).requires_intrigue_trash
+
+
+def _reshuffle_intrigue_for_goods(state: GameState, *, source: str) -> RuleResult:
+    """Shuffle the Intrigue discard into a new deck, then place the goods.
+
+    The engine's Intrigue reshuffle chance frame [FAQ p. 2]: the new deck
+    forms beneath the cards still on top (``intrigue_deck
+    .apply_intrigue_reshuffle``), and with a count of 0 it draws nothing.
+    The discard's Twisted cards stay behind (``intrigue_deck
+    .shufflable_intrigue_discard``, OQ-097, user ruling 2026-10-04).
+    The ``goods`` task is queued again, so the Scouts step places the new
+    top two once the frame resolves.
+    """
+
+    if state.first_player is None:
+        raise ValueError("the Scouts step requires a First Player")
+    discard = shufflable_intrigue_discard(state)
+    decision_id = f"{source}:intrigue_shuffle"
+    frame = DecisionFrame(
+        kind=FrameKind.INTRIGUE_RESHUFFLE,
+        frame_id=f"{decision_id}:intrigue_reshuffle",
+        decision=ChanceDecision(
+            decision_id=decision_id,
+            prompt="Shuffle the Intrigue discard pile into a new deck",
+            options=discard,
+            count=len(discard),
+        ),
+        context=(
+            ("count", 0),
+            ("player", state.first_player),
+            ("purpose", "scouts_goods"),
+            ("source", source),
+        ),
+    )
+    requeued = replace(state, scouts_tasks=("goods", *state.scouts_tasks))
+    return RuleResult(state=requeued.push_decision(frame))
+
+
+def place_mission_goods(
+    state: GameState, mission_id: str, *, source: str
+) -> RuleResult:
+    """Put the mission's bank goods (and face-down cards) on the board.
+
+    CHOAM Research takes the bank's first two Contracts other than
+    Bloodlines' Immediate, which keeps its place in the bank (OQ-090, user
+    ruling 2026-09-29). Emperor's Schemes shuffles the Intrigue discard into
+    a new deck first when the deck holds fewer than its two cards (OQ-078,
+    user ruling 2026-09-29; "shuffle the discarded Intrigue cards to form a
+    new deck" [FAQ p. 2]); with both piles short it places what there is.
+    The discard's Twisted cards are not shuffled (OQ-097), so a discard of
+    Twisted cards alone counts as empty. The original game's Secrets in the
+    Desert places its two Intrigue cards the same way.
+
+    Armed Escort, Strongarmed Alliance and Sapho Juice put each seat's own
+    piece on the space with no question (``_MANDATORY``): a seat that cannot
+    place it places nothing. With Immortality, a Strongarmed Alliance seat
+    whose supply is empty but whose tanks hold a specimen is asked afterwards
+    whether to return one for its troop (``SPECIMEN_TOP_UP_ONLY``, OQ-074).
+    """
+
+    mission = MISSIONS_BY_ID[mission_id]
+    goods: list[tuple[str, str, str, int, int]] = []
+    cards: list[tuple[str, str, str]] = []
+    next_state = state
+    match mission.kind:
+        case MissionKind.IMPERIAL_RESERVE:
+            assert mission.goods is not None and mission.space_id is not None
+            goods += [
+                (mission_id, mission.space_id, "spice", mission.goods.spice, -1),
+                (mission_id, mission.space_id, "solari", mission.goods.solari, -1),
+            ]
+        case MissionKind.URBAN_SURVEILLANCE | MissionKind.PLANETARY_EXPLORATION:
+            assert mission.goods is not None
+            urban = mission.kind is MissionKind.URBAN_SURVEILLANCE
+            resource, amount = (
+                ("solari", mission.goods.solari)
+                if urban
+                else ("spice", mission.goods.spice)
+            )
+            goods += [
+                (mission_id, f"post:{post}", resource, amount, -1)
+                for post in _posts_next_to(state, AgentIcon.CITY, maker=not urban)
+            ]
+        case MissionKind.CHOAM_RESEARCH:
+            assert mission.space_id is not None
+            taken = tuple(
+                card for card in state.contract_bank if not _is_immediate(card)
+            )[: mission.goods_cards]
+            cards += [(mission_id, mission.space_id, card) for card in taken]
+            next_state = replace(
+                next_state,
+                contract_bank=tuple(
+                    card for card in state.contract_bank if card not in taken
+                ),
+            )
+        case (
+            MissionKind.EMPERORS_SCHEMES
+            | MissionKind.BOTANICAL_SECRETS_IN_THE_DESERT
+        ):
+            assert mission.space_id is not None
+            # Twisted cards stay in the discard (OQ-097, user ruling
+            # 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록").
+            if len(state.intrigue_deck) < mission.goods_cards and (
+                shufflable_intrigue_discard(state)
+            ):
+                return _reshuffle_intrigue_for_goods(state, source=source)
+            taken = state.intrigue_deck[: mission.goods_cards]
+            cards += [(mission_id, mission.space_id, card) for card in taken]
+            next_state = replace(
+                next_state, intrigue_deck=state.intrigue_deck[len(taken) :]
+            )
+        case MissionKind.DESERT_RIDING:
+            assert mission.space_id is not None
+            if _free_maker_hooks(state) > 0:
+                goods.append((mission_id, mission.space_id, "maker_hooks", 1, -1))
+        case MissionKind.SPONSORED_RESEARCH:
+            assert mission.goods is not None
+            goods.append((mission_id, HELIX, "spice", mission.goods.spice, -1))
+        case MissionKind.BACK_ROOM_DEAL:
+            assert mission.goods is not None
+            goods.append(
+                (mission_id, RECLAIMED_FORCES, "solari", mission.goods.solari, -1)
+            )
+        case (
+            MissionKind.SECRET_STASH
+            | MissionKind.SPACE_TRAVEL_DEAL
+            | MissionKind.MUSTER_SPICE_INCENTIVE
+        ):
+            # The bank's goods on the space, the next visitor's [Scouts
+            # mission: Secret Stash] (spice.mission.muster.secretstash.desc);
+            # the original game's Space Travel Deal (Solari) and Muster an
+            # Army - Spice Incentive (spice) are the same.
+            assert mission.goods is not None and mission.space_id is not None
+            goods += [
+                (mission_id, mission.space_id, resource, amount, -1)
+                for resource in ("solari", "spice", "water")
+                if (amount := getattr(mission.goods, resource))
+            ]
+        case MissionKind.ARMED_ESCORT:
+            return _armed_escort(state, mission, source=source)
+        case MissionKind.MUSTER_STRONGARMED_ALLIANCE | MissionKind.SAPHO_JUICE:
+            return _seat_pieces(state, mission, source=source)
+        case _:
+            pass
+    if not goods and not cards:
+        return RuleResult(state=next_state)
+    next_state = replace(
+        next_state,
+        scouts_goods=(*next_state.scouts_goods, *goods),
+        scouts_goods_cards=(*next_state.scouts_goods_cards, *cards),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:goods",
+                kind="scouts_mission_goods_placed",
+                payload=(
+                    ("cards", len(cards)),
+                    (
+                        "locations",
+                        tuple(
+                            sorted({row[1] for row in goods} | {c[1] for c in cards})
+                        ),
+                    ),
+                    ("mission_id", mission_id),
+                ),
+            ),
+        ),
+    )
+
+
+def _armed_escort(state: GameState, mission: Mission, *, source: str) -> RuleResult:
+    """Armed Escort: every seat's dreadnought from its supply to the
+    Dreadnought space, the bank's spice under each -- no "may", so no seat
+    is asked [Scouts mission: Armed Escort] (spice.mission.armedescort.desc).
+    A seat with no dreadnought left in its supply places nothing, as a seat
+    without the printed troops cannot take part (OQ-088, OQ-161)."""
+
+    assert mission.space_id is not None and mission.seat_goods is not None
+    players = list(state.players)
+    goods = list(state.scouts_goods)
+    parked = list(state.scouts_parked)
+    escorted: list[int] = []
+    for index, owner in enumerate(players):
+        count = mission.parked_dreadnoughts
+        if owner.dreadnoughts_supply < count:
+            continue
+        players[index] = replace(
+            owner,
+            dreadnoughts_supply=owner.dreadnoughts_supply - count,
+            dreadnoughts_parked=owner.dreadnoughts_parked + count,
+        )
+        parked.append((mission.mission_id, owner.player_id, mission.space_id, count))
+        goods.append(
+            (
+                mission.mission_id,
+                mission.space_id,
+                "spice",
+                mission.seat_goods.spice,
+                owner.player_id,
+            )
+        )
+        escorted.append(owner.player_id)
+    return RuleResult(
+        state=replace(
+            state,
+            players=tuple(players),
+            scouts_goods=tuple(goods),
+            scouts_parked=tuple(parked),
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:goods",
+                kind="scouts_mission_goods_placed",
+                payload=(
+                    ("cards", 0),
+                    ("locations", (mission.space_id,) if escorted else ()),
+                    ("mission_id", mission.mission_id),
+                ),
+            ),
+        ),
+    )
+
+
+def _seat_pieces(state: GameState, mission: Mission, *, source: str) -> RuleResult:
+    """The original game's mandatory missions: each seat's own piece goes to
+    the space with no question, as Armed Escort's dreadnought does.
+
+    Strongarmed Alliance parks a troop of the seat's supply. Sapho Juice puts
+    one of its Control markers on the Mentat space with the bank's spice on
+    it (``seat_goods``): a seat with no free marker, the check Prison Planet's
+    participation makes, places nothing (``join_targets``). A seat that
+    cannot place its piece places nothing, so no seat is asked
+    (docs/rules/arrakeen-scouts.md 9a, OQ-088).
+    """
+
+    assert mission.space_id is not None
+    marker = mission.kind is MissionKind.SAPHO_JUICE
+    players = list(state.players)
+    goods = list(state.scouts_goods)
+    parked = list(state.scouts_parked)
+    placed: list[int] = []
+    for index, owner in enumerate(players):
+        if marker:
+            assert mission.seat_goods is not None
+            if len(owner.control_space_ids) + _markers_out(state, owner.player_id) >= 3:
+                continue
+            goods += [
+                (mission.mission_id, mission.space_id, "marker", 1, owner.player_id),
+                (
+                    mission.mission_id,
+                    mission.space_id,
+                    "spice",
+                    mission.seat_goods.spice,
+                    owner.player_id,
+                ),
+            ]
+        else:
+            count = mission.parked_troops
+            if owner.troops_supply < count:
+                continue
+            players[index], row = _park_supply_troops(owner, mission)
+            parked.append(row)
+        placed.append(owner.player_id)
+    return RuleResult(
+        state=replace(
+            state,
+            players=tuple(players),
+            scouts_goods=tuple(goods),
+            scouts_parked=tuple(parked),
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:goods",
+                kind="scouts_mission_goods_placed",
+                payload=(
+                    ("cards", 0),
+                    ("locations", (mission.space_id,) if placed else ()),
+                    ("mission_id", mission.mission_id),
+                ),
+            ),
+        ),
+    )
+
+
+def _park_supply_troops(
+    owner: PlayerState, mission: Mission
+) -> tuple[PlayerState, tuple[str, int, str, int]]:
+    """``owner`` with a mandatory mission's troops parked from its supply,
+    and their parked row."""
+
+    assert mission.space_id is not None
+    count = mission.parked_troops
+    parked = replace(
+        owner,
+        troops_supply=owner.troops_supply - count,
+        troops_parked=owner.troops_parked + count,
+    )
+    return parked, (mission.mission_id, owner.player_id, mission.space_id, count)
+
+
+def specimen_shortfall(state: GameState, player: int, mission: Mission) -> int:
+    """The specimens ``player`` would return so a mandatory mission parks its
+    troops (``SPECIMEN_TOP_UP_ONLY``); 0 when it is not asked: without
+    Immortality, with the troops in its supply, or short of specimens."""
+
+    if mission.kind not in SPECIMEN_TOP_UP_ONLY or not state.config.immortality:
+        return 0
+    owner = state.players[player]
+    short = mission.parked_troops - owner.troops_supply
+    return short if 0 < short <= owner.specimens else 0
+
+
+# --- Participation ------------------------------------------------------------------
+
+
+def _markers_out(state: GameState, player: int) -> int:
+    return sum(
+        1 for row in state.scouts_goods if row[2] == "marker" and row[4] == player
+    )
+
+
+def _parking_open(state: GameState, player: int, mission: Mission) -> bool:
+    """Whether a parking mission is open to the seat but for its troops."""
+
+    owner = state.players[player]
+    if (
+        mission.kind is MissionKind.TLEILAXU_OFFERING
+        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
+    ):
+        # A token already on or past the third space never advances to it
+        # again, so its troops could never become specimens (OQ-089 (a)).
+        return False
+    resources = owner.resources
+    return all(
+        getattr(cost, "spice", 0) <= resources.spice
+        and getattr(cost, "solari", 0) <= resources.solari
+        # A hand discard needs the cards (an empty hand cannot join, OQ-088).
+        and (not isinstance(cost, DiscardFromHand) or len(owner.hand) >= cost.count)
+        for cost in mission.participation_cost
+    )
+
+
+def join_targets(state: GameState, player: int, mission: Mission) -> tuple[str, ...]:
+    """The ways ``player`` can take part now ("" = the one plain way).
+
+    A parking mission moves its whole printed number of troops, so a seat
+    with fewer cannot take part (OQ-088, the missions' English).
+    """
+
+    owner = state.players[player]
+    kind = mission.kind
+    if kind is MissionKind.CHOAM_ESCORT:
+        return (
+            *(("recruit",) if owner.troops_supply else ()),
+            *owner.active_contract_ids,
+        )
+    if kind is MissionKind.PRISON_PLANET:
+        # "Lose 1 garrison troop": a garrison Sardaukar Commander may pay it
+        # instead, as the ``COMMANDER_WAY_IN`` (OQ-105, user ruling
+        # 2026-10-10; "troop을 대상으로 하는 효과는 Commander에도 적용된다"
+        # [Bloodlines p. 4]).
+        if len(owner.control_space_ids) + _markers_out(state, player) >= 3:
+            return ()
+        return (
+            *(("",) if owner.troops_garrison else ()),
+            *((COMMANDER_WAY_IN,) if owner.commanders_garrison else ()),
+        )
+    if not _parking_open(state, player, mission):
+        return ()
+    source, count = _PARKING[kind]
+    if kind in COMMANDER_PARKING:
+        # The garrison troop to move, or a garrison Commander in its place;
+        # with both the seat picks (OQ-166).
+        return (
+            *(("",) if owner.troops_garrison >= count else ()),
+            *((COMMANDER_WAY_IN,) if owner.commanders_garrison else ()),
+        )
+    available = {
+        "supply": owner.troops_supply,
+        "garrison": owner.troops_garrison,
+        "specimens": owner.specimens,
+    }[source]
+    return ("",) if available >= count else ()
+
+
+def join_unavailable_reason(
+    state: GameState, player: int, mission: Mission, target: str = ""
+) -> tuple[str, int, int] | None:
+    """Why ``target`` is not among ``join_targets``; None when it is.
+
+    ``(what, needed, held)``: "supply", "garrison" or "specimens" (troops
+    short, OQ-088), "commander" (no garrison Sardaukar Commander for the
+    Commander way in, OQ-105, OQ-166), "spice" or "solari" (the
+    participation cost), "marker"
+    (all three Control markers are out), "tleilaxu_track" (the token is
+    already on or past the third space, OQ-089 (a)), "contract" (not one of
+    the seat's face-up Contracts) or "none" (no participation at all). For
+    the display only, which shows a way in the seat cannot take beside the
+    reason; it reads ``join_targets`` first, so the two never disagree.
+    """
+
+    kind = mission.kind
+    if kind not in _PARTICIPATION:
+        return ("none", 0, 0)
+    if target in join_targets(state, player, mission):
+        return None
+    owner = state.players[player]
+    if kind is MissionKind.CHOAM_ESCORT:
+        if target == "recruit":
+            return ("supply", 1, owner.troops_supply)
+        return ("contract", 1, 0)
+    if kind is MissionKind.PRISON_PLANET:
+        if target == COMMANDER_WAY_IN and not owner.commanders_garrison:
+            return ("commander", 1, 0)
+        if target != COMMANDER_WAY_IN and not owner.troops_garrison:
+            return ("garrison", 1, 0)
+        return ("marker", 1, 0)
+    if (
+        kind is MissionKind.TLEILAXU_OFFERING
+        and owner.tleilaxu_space >= TLEILAXU_OFFERING_TRACK_SPACE
+    ):
+        return ("tleilaxu_track", TLEILAXU_OFFERING_TRACK_SPACE, owner.tleilaxu_space)
+    for cost in mission.participation_cost:
+        if isinstance(cost, DiscardFromHand) and len(owner.hand) < cost.count:
+            return ("hand", cost.count, len(owner.hand))
+        for resource in ("spice", "solari"):
+            needed = getattr(cost, resource, 0)
+            held = getattr(owner.resources, resource)
+            if needed > held:
+                return (resource, needed, held)
+    if kind in COMMANDER_PARKING and target == COMMANDER_WAY_IN:
+        return ("commander", 1, owner.commanders_garrison)
+    source, count = _PARKING[kind]
+    held = {
+        "supply": owner.troops_supply,
+        "garrison": owner.troops_garrison,
+        "specimens": owner.specimens,
+    }[source]
+    return (source, count, held)
+
+
+def mission_takes_supply_troops(mission: Mission) -> bool:
+    """Whether taking part in ``mission`` takes troops from the supply: the
+    CHOAM escort's recruit, troops parked from the supply
+    (``mission_top_up``), or Strongarmed Alliance's troop
+    (``SPECIMEN_TOP_UP_ONLY``)."""
+
+    kind = mission.kind
+    return (
+        kind is MissionKind.CHOAM_ESCORT
+        or kind in SPECIMEN_TOP_UP_ONLY
+        or (kind in _PARKING and _PARKING[kind][0] == "supply")
+    )
+
+
+def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
+    """How many specimens the seat may return so it can take part (0: none).
+
+    "You may return any of your specimens to your supply at any time"
+    [Immortality p. 8]; a seat short of the supply troops a mission takes
+    may do so first (user ruling 2026-09-29, OQ-074, OQ-088).
+    """
+
+    if not state.config.immortality or not mission_takes_supply_troops(mission):
+        return 0
+    owner = state.players[player]
+    kind = mission.kind
+    if kind in SPECIMEN_TOP_UP_ONLY:
+        return specimen_shortfall(state, player, mission)
+    if kind is MissionKind.CHOAM_ESCORT:
+        needed = 1  # the troop it recruits
+    elif _parking_open(state, player, mission):
+        needed = _PARKING[kind][1]
+    else:
+        return 0
+    short = needed - owner.troops_supply
+    if short < 1 or owner.specimens < short:
+        return 0
+    return short
+
+
+def offer_mission_join(
+    state: GameState, player: int, mission_id: str, *, source: str
+) -> RuleResult:
+    """Ask one seat whether it takes part.
+
+    A seat that cannot take part is asked too: its window greys the ways in
+    with their reasons (``join_unavailable_reason``) and offers the pass
+    alone. "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다" (user
+    decision 2026-09-30) covers missions (OQ-131, user ruling 2026-10-25
+    "G4: 임무에도 적용하자"; engine audit 2026-10-22, G4); OQ-088 used to
+    skip such a seat with no window and no event.
+    """
+
+    mission = MISSIONS_BY_ID[mission_id]
+    top_up_only = mission.kind in SPECIMEN_TOP_UP_ONLY
+    if mission.kind not in _PARTICIPATION and not top_up_only:
+        return RuleResult(state=state)
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_MISSION,
+        frame_id=f"{source}:join",
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                "Return a specimen to place your troop, or pass"
+                if top_up_only
+                else "Take part in the mission or pass"
+            ),
+        ),
+        context=(("mission_id", mission_id), ("player", player), ("source", source)),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def legal_mission_join_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    frame = owned_top_frame(state, FrameKind.SCOUTS_MISSION, player)
+    if frame is None:
+        return ()
+    mission = MISSIONS_BY_ID[
+        context_str(dict(frame.context), "mission_id", owner=_JOIN_FRAME)
+    ]
+    if mission.kind in SPECIMEN_TOP_UP_ONLY:
+        # Return the specimen (and so place the troop), or not (OQ-074).
+        short = specimen_shortfall(state, player, mission)
+        return (
+            DomainAction(action_id="scouts_decline_mission", actor=player),
+            *(
+                (
+                    DomainAction(
+                        action_id="scouts_return_specimens",
+                        actor=player,
+                        arguments=(("count", short),),
+                    ),
+                )
+                if short
+                else ()
+            ),
+        )
+    return (
+        DomainAction(action_id="scouts_decline_mission", actor=player),
+        *(
+            DomainAction(
+                action_id="scouts_join_mission",
+                actor=player,
+                arguments=(("target", target),),
+            )
+            for target in join_targets(state, player, mission)
+        ),
+        *(
+            DomainAction(
+                action_id="scouts_return_specimens",
+                actor=player,
+                arguments=(("count", count),),
+            )
+            for count in range(1, mission_top_up(state, player, mission) + 1)
+        ),
+    )
+
+
+def apply_mission_join(state: GameState, action: DomainAction) -> RuleResult:
+    if action not in legal_mission_join_actions(state, action.actor):
+        raise ValueError("action is not a legal mission choice")
+    context = dict(state.decision_stack[-1].context)
+    mission = MISSIONS_BY_ID[context_str(context, "mission_id", owner=_JOIN_FRAME)]
+    source = context_str(context, "source", owner=_JOIN_FRAME)
+    player = action.actor
+    if action.action_id == "scouts_return_specimens":
+        # The seat is still asked; the returned troops are now its supply.
+        count = dict(action.arguments)["count"]
+        assert isinstance(count, int)
+        returned = return_specimens(state, player, count, source=f"{source}:top_up")
+        if mission.kind not in SPECIMEN_TOP_UP_ONLY:
+            return returned
+        # Strongarmed Alliance: the returned troop is the one the mission
+        # parks, so the seat's answer is done (OQ-074, 9a).
+        topped = returned.state.pop_decision()
+        owner, row = _park_supply_troops(topped.players[player], mission)
+        return RuleResult(
+            state=replace(
+                topped,
+                players=replace_player(topped.players, owner),
+                scouts_parked=(*topped.scouts_parked, row),
+            ),
+            events=(
+                *returned.events,
+                GameEvent(
+                    event_id=f"{source}:joined",
+                    kind="scouts_mission_joined",
+                    payload=(
+                        ("mission_id", mission.mission_id),
+                        ("player", player),
+                        ("target", ""),
+                    ),
+                ),
+            ),
+        )
+    popped = state.pop_decision()
+    if action.action_id == "scouts_decline_mission":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:declined",
+                    kind="scouts_mission_declined",
+                    payload=(("mission_id", mission.mission_id), ("player", player)),
+                ),
+            ),
+        )
+    target = str(dict(action.arguments)["target"])
+    # ``scouts_effects`` reaches this module through ``acquisition``.
+    from dune_imperium.rules.scouts_effects import (
+        mission_card_costs,
+        push_scouts_effect,
+    )
+
+    if mission_card_costs(mission):
+        # The way in costs a card of the seat's pick (Stationed Support's
+        # discard): "비용은 효과보다 먼저" [DI p. 9], so the discard comes
+        # first, a discarded Unload card's box resolving completely before
+        # the effect (designer ruling, docs/rules/rise-of-ix.md 7), and the
+        # troops are parked afterwards, as many as the supply then holds
+        # (``ParkTroops``, the line's reward; docs/rules/arrakeen-scouts.md
+        # 9a, OQ-030, OQ-074 (a)). Any resources are paid with the join.
+        joined = push_scouts_effect(
+            _pay_participation(popped, player, mission),
+            player,
+            mission.mission_id,
+            0,
+            source=f"{source}:cost",
+        )
+    else:
+        joined = _join(popped, player, mission, target)
+    return RuleResult(
+        state=joined,
+        events=(
+            GameEvent(
+                event_id=f"{source}:joined",
+                kind="scouts_mission_joined",
+                payload=(
+                    ("mission_id", mission.mission_id),
+                    ("player", player),
+                    ("target", target),
+                ),
+            ),
+        ),
+    )
+
+
+def _pay_participation(state: GameState, player: int, mission: Mission) -> GameState:
+    """``player`` pays the resources of the mission's way in."""
+
+    owner = state.players[player]
+    resources = owner.resources
+    for cost in mission.participation_cost:
+        resources = replace(
+            resources,
+            spice=resources.spice - getattr(cost, "spice", 0),
+            solari=resources.solari - getattr(cost, "solari", 0),
+        )
+    return replace(
+        state,
+        players=replace_player(state.players, replace(owner, resources=resources)),
+    )
+
+
+def _join(state: GameState, player: int, mission: Mission, target: str) -> GameState:
+    owner = state.players[player]
+    goods = list(state.scouts_goods)
+    parked = list(state.scouts_parked)
+    kind = mission.kind
+    mission_id = mission.mission_id
+    if kind is MissionKind.CHOAM_ESCORT:
+        if target == "recruit":
+            recruited, _ = recruit_troops(owner, 1)
+            return replace(state, players=replace_player(state.players, recruited))
+        goods += [
+            (mission_id, f"contract:{target}", "solari", 1, player),
+            (mission_id, f"contract:{target}", "spice", 1, player),
+        ]
+        return replace(state, scouts_goods=tuple(goods))
+    if kind is MissionKind.PRISON_PLANET:
+        assert mission.space_id is not None and mission.seat_goods is not None
+        if target == COMMANDER_WAY_IN:
+            # The Commander goes back to its owner's supply (OQ-105).
+            owner = replace(
+                owner,
+                commanders_garrison=owner.commanders_garrison - 1,
+                commanders_supply=owner.commanders_supply + 1,
+            )
+        else:
+            owner = replace(
+                owner,
+                troops_garrison=owner.troops_garrison - 1,
+                troops_supply=owner.troops_supply + 1,
+            )
+        goods += [
+            (mission_id, mission.space_id, "marker", 1, player),
+            (mission_id, mission.space_id, "spice", mission.seat_goods.spice, player),
+        ]
+        return replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(goods),
+        )
+    paid = _pay_participation(state, player, mission)
+    source, count = _PARKING[kind]
+    owner = paid.players[player]
+    location = (
+        mission.space_id if mission.space_id is not None else TLEILAXU_OFFERING_SPACE
+    )
+    commanders = list(state.scouts_parked_commanders)
+    if target == COMMANDER_WAY_IN:
+        # A garrison Sardaukar Commander moves in place of the troop: the
+        # seat's own piece, parked on the space (OQ-166).
+        assert kind in COMMANDER_PARKING
+        owner = replace(
+            owner,
+            commanders_garrison=owner.commanders_garrison - 1,
+            commanders_parked=owner.commanders_parked + 1,
+        )
+        commanders.append((mission_id, player, location))
+    else:
+        moved = count  # join_targets only offers a seat that has them all
+        owner = replace(
+            owner,
+            troops_parked=owner.troops_parked + moved,
+            troops_supply=owner.troops_supply - (moved if source == "supply" else 0),
+            troops_garrison=owner.troops_garrison
+            - (moved if source == "garrison" else 0),
+            specimens=owner.specimens - (moved if source == "specimens" else 0),
+        )
+        parked.append((mission_id, player, location, moved))
+    if mission.seat_goods is not None:
+        for resource in ("solari", "spice", "water"):
+            amount = getattr(mission.seat_goods, resource)
+            if amount:
+                goods.append((mission_id, location, resource, amount, player))
+    return replace(
+        paid,
+        players=replace_player(paid.players, owner),
+        scouts_goods=tuple(goods),
+        scouts_parked=tuple(parked),
+        scouts_parked_commanders=tuple(commanders),
+    )
+
+
+def park_mission_troops(
+    state: GameState, player: int, mission_id: str, count: int, *, source: str
+) -> RuleResult:
+    """Park up to ``count`` of ``player``'s supply troops on the mission's
+    space: the reward of a way in that costs a card (Stationed Support), after
+    the discard and whatever its Unload did to the supply. "그 사이 supply가
+    2보다 적어지면 있는 만큼만 세운다" (docs/rules/arrakeen-scouts.md 9a, OQ-030
+    "해결 시점의 supply만큼", OQ-074 (a)); with none left nothing is parked.
+    Logged either way, so the log shows what the discard left."""
+
+    mission = MISSIONS_BY_ID[mission_id]
+    assert mission.space_id is not None
+    owner = state.players[player]
+    moved = min(count, owner.troops_supply)
+    event = GameEvent(
+        event_id=f"{source}:parked",
+        kind="scouts_mission_troops_parked",
+        payload=(("count", moved), ("mission_id", mission_id), ("player", player)),
+    )
+    if not moved:
+        return RuleResult(state=state, events=(event,))
+    goods = list(state.scouts_goods)
+    if mission.seat_goods is not None:
+        for resource in ("solari", "spice", "water"):
+            amount = getattr(mission.seat_goods, resource)
+            if amount:
+                goods.append((mission_id, mission.space_id, resource, amount, player))
+    owner = replace(
+        owner,
+        troops_parked=owner.troops_parked + moved,
+        troops_supply=owner.troops_supply - moved,
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(goods),
+            scouts_parked=(
+                *state.scouts_parked,
+                (mission_id, player, mission.space_id, moved),
+            ),
+        ),
+        events=(event,),
+    )
+
+
+# --- Visits ---------------------------------------------------------------------------
+
+_VISITED: Final = frozenset(
+    {
+        MissionKind.SECURITY_DETAIL,
+        MissionKind.IMPERIAL_RESERVE,
+        MissionKind.CHOAM_RESEARCH,
+        MissionKind.PRISON_PLANET,
+        MissionKind.EMPERORS_SCHEMES,
+        MissionKind.FEDAYKIN_ASSISTANCE,
+        MissionKind.WEIRDING_WARFARE,
+        MissionKind.SEND_FOR_AID,
+        MissionKind.COORDINATE_WITH_THE_EMPEROR,
+        # Rise of Ix (stage P7f-2).
+        MissionKind.SECRET_STASH,
+        MissionKind.ARMED_ESCORT,
+        MissionKind.STOWAWAYS,
+        # The original game's (stage P8b-2; its Coordinate With The Emperor
+        # is the kind above).
+        MissionKind.SPACE_TRAVEL_DEAL,
+        MissionKind.MUSTER_SPICE_INCENTIVE,
+        MissionKind.MUSTER_STRONGARMED_ALLIANCE,
+        MissionKind.BOTANICAL_SECRETS_IN_THE_DESERT,
+        MissionKind.GENETIC_RESEARCH,
+        MissionKind.GUILD_MANEUVERS,
+        MissionKind.SAPHO_JUICE,
+        # Stage P8c.
+        MissionKind.BOTANICAL_STATIONED_SUPPORT,
+    }
+)
+
+
+def _collects(mission_id: str) -> bool:
+    return MISSIONS_BY_ID[mission_id].kind in _VISITED
+
+
+def _takeable_card(state: GameState, space_id: str) -> tuple[str, str, str] | None:
+    """The next face-down card on ``space_id`` (one per visit, OQ-078).
+
+    Any seat may take it: Bloodlines' Immediate Contract, the one card that
+    needs an Intrigue card to trash [Bloodlines p. 2], never reaches the
+    Research Station (OQ-090, ``place_mission_goods``).
+    """
+
+    return next(
+        (
+            row
+            for row in state.scouts_goods_cards
+            if row[1] == space_id and _collects(row[0])
+        ),
+        None,
+    )
+
+
+def mission_collectable(state: GameState, player: int, space_id: str) -> bool:
+    """Whether a visit by ``player`` to ``space_id`` collects mission pieces."""
+
+    if not state.config.arrakeen_scouts:
+        return False
+    return (
+        any(
+            row[1] == space_id
+            and row[3] > 0
+            and row[4] in (-1, player)
+            and _collects(row[0])
+            for row in state.scouts_goods
+        )
+        or _takeable_card(state, space_id) is not None
+        or any(
+            row[1] == player and row[2] == space_id and _collects(row[0])
+            for row in state.scouts_parked
+        )
+        or any(
+            seat == player and location == space_id and _collects(mission_id)
+            for mission_id, seat, location in state.scouts_parked_commanders
+        )
+    )
+
+
+def _imperial_reserve_choices(state: GameState, space_id: str) -> tuple[str, ...]:
+    return tuple(
+        row[2]
+        for row in state.scouts_goods
+        if row[1] == space_id
+        and MISSIONS_BY_ID[row[0]].kind is MissionKind.IMPERIAL_RESERVE
+        and row[3] > 0
+    )
+
+
+def legal_mission_collect_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The visit's mission icon: one action, Imperial Reserve's pick, or, with
+    a card the visitor may leave, the take and the decline of that card."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if BOARD_ICON_SCOUTS not in pending_board_icons(context):
+        return ()
+    space_id = context_str(context, "space_id", owner="Agent effect frame")
+    reserve = _imperial_reserve_choices(state, space_id)
+    choices = reserve if len(reserve) > 1 else ("",)
+    card = _takeable_card(state, space_id)
+    if card is not None and MISSIONS_BY_ID[card[0]].kind in OPTIONAL_CARD_KINDS:
+        # A card the visitor "may" take (Secrets in the Desert): the visit may
+        # also leave it where it is.
+        choices = (*(reserve if len(reserve) > 1 else (COLLECT_TAKE,)), COLLECT_DECLINE)
+    return tuple(
+        DomainAction(
+            action_id="scouts_collect_mission",
+            actor=player,
+            arguments=(("choice", choice),),
+        )
+        for choice in choices
+    )
+
+
+def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
+    """Collect everything the visiting seat's missions left on this space.
+
+    A card the visitor may leave (``COLLECT_DECLINE``) stays on the space when
+    the visit declines it; everything else is collected as always.
+    """
+
+    # ``leader_abilities`` imports this module through ``acquisition``.
+    from dune_imperium.rules.combat_deployment import count_effect_dreadnoughts
+    from dune_imperium.rules.leader_abilities import units_deployment_blocked
+
+    if action not in legal_mission_collect_actions(state, action.actor):
+        raise ValueError("action is not a legal mission collection")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    space_id = context_str(context, "space_id", owner="Agent effect frame")
+    declined = dict(action.arguments)["choice"] == COLLECT_DECLINE
+    # The Imperial Reserve pick; neither the take nor the decline picks one.
+    choice = str(dict(action.arguments)["choice"])
+    if choice in (COLLECT_TAKE, COLLECT_DECLINE):
+        choice = ""
+    source = f"round:{state.round_number}:player:{player}:scouts:{space_id}"
+    owner = state.players[player]
+    goods = list(state.scouts_goods)
+    cards = list(state.scouts_goods_cards)
+    parked = list(state.scouts_parked)
+    commanders = list(state.scouts_parked_commanders)
+    events: list[GameEvent] = []
+    recruited = 0
+    recruited_commanders = 0
+    intrigue_gained: list[str] = []
+    # Parked troops (OQ-077): to the Conflict, or recruited to the garrison.
+    # A unit a visit puts straight into the Conflict is deployed this turn:
+    # OQ-077 (b)-(c) read the visit's "recruit" as a recruit of the turn and
+    # "곧바로 Conflict에" as that unit's own deployment, the app says "recruit
+    # and immediately deploy" and Armed Escort's "Dreadnought is immediately
+    # deployed to the conflict" [Scouts mission: Armed Escort], and "You need
+    # to have a moment in time when there are 3 units in the conflict that
+    # were deployed to the conflict this turn" (designer's ruling, adopted per
+    # OQ-057, docs/rules/designer-rulings-audit.md). So it joins the turn's
+    # unit count -- the troops' ``units_deployed_turn``, the dreadnought the
+    # turn frame's (``count_effect_dreadnoughts``) -- which Distraction, Coercive
+    # Negotiation, Diversion and the turn's peaks read (OQ-077 note
+    # 2026-11-02). It is no basic deployment, so it takes no allowance and is
+    # never withdrawn (OQ-029 1).
+    for row in [
+        r for r in parked if r[1] == player and r[2] == space_id and _collects(r[0])
+    ]:
+        mission_id, _, _, troops = row
+        parked.remove(row)
+        kind = MISSIONS_BY_ID[mission_id].kind
+        if kind is MissionKind.ARMED_ESCORT:
+            # "the first time each player sends an Agent to that space ...
+            # the Dreadnought is immediately deployed to the conflict" [Scouts
+            # mission: Armed Escort]; a turn whose units cannot be deployed
+            # keeps it in the garrison, as the missions' troops (OQ-130,
+            # OQ-161).
+            to_conflict = not units_deployment_blocked(state, player)
+            owner = replace(
+                owner,
+                dreadnoughts_parked=owner.dreadnoughts_parked - troops,
+                dreadnoughts_conflict=owner.dreadnoughts_conflict
+                + (troops if to_conflict else 0),
+                dreadnoughts_garrison=owner.dreadnoughts_garrison
+                + (0 if to_conflict else troops),
+            )
+            if to_conflict:
+                count_effect_dreadnoughts(context, troops)
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:dreadnought",
+                    kind="scouts_mission_dreadnought",
+                    payload=(
+                        ("count", troops),
+                        ("mission_id", mission_id),
+                        ("player", player),
+                        ("to", "conflict" if to_conflict else "garrison"),
+                    ),
+                )
+            )
+            continue
+        # "Units can't be deployed to the Conflict this turn." [Shaddam
+        # Corrino IV card] [Main p. 17] [FAQ p. 3]: on such a turn the troop
+        # is recruited and stays in the garrison (OQ-130, user ruling
+        # 2026-10-25, as Suspensor Suits' troop under OQ-042; engine audit
+        # 2026-10-22, G3).
+        to_conflict = kind in _TO_CONFLICT and not units_deployment_blocked(
+            state, player
+        )
+        owner = replace(
+            owner,
+            troops_parked=owner.troops_parked - troops,
+            troops_conflict=owner.troops_conflict + (troops if to_conflict else 0),
+            troops_garrison=owner.troops_garrison + (0 if to_conflict else troops),
+            units_deployed_turn=owner.units_deployed_turn
+            + (troops if to_conflict else 0),
+        )
+        if not to_conflict:
+            # Troops gained into the garrison are recruited this turn
+            # (OQ-077, OQ-089 (c), user ruling 2026-09-29).
+            recruited += troops
+        events.append(
+            GameEvent(
+                event_id=f"{source}:{mission_id}:troops",
+                kind="scouts_mission_troops",
+                payload=(
+                    ("count", troops),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                    ("to", "conflict" if to_conflict else "garrison"),
+                ),
+            )
+        )
+    # A garrison Sardaukar Commander parked in place of the troop (OQ-166)
+    # goes as the troop would: into the Conflict at once, with its strength
+    # and its Skills, a unit deployed this turn as above -- Send for Aid's
+    # "recruit" is its own piece re-entering (OQ-077 (d)) -- or, on a turn
+    # whose units cannot be deployed, into the garrison, a Commander
+    # recruited this turn (OQ-130). In the Conflict it returns to the supply
+    # at the Combat's clean-up like any Commander.
+    for commander_row in [
+        r for r in commanders if r[1] == player and r[2] == space_id and _collects(r[0])
+    ]:
+        mission_id = commander_row[0]
+        commanders.remove(commander_row)
+        to_conflict = MISSIONS_BY_ID[
+            mission_id
+        ].kind in _TO_CONFLICT and not units_deployment_blocked(state, player)
+        owner = replace(
+            owner,
+            commanders_parked=owner.commanders_parked - 1,
+            commanders_conflict=owner.commanders_conflict + (1 if to_conflict else 0),
+            commanders_garrison=owner.commanders_garrison + (0 if to_conflict else 1),
+            units_deployed_turn=owner.units_deployed_turn + (1 if to_conflict else 0),
+        )
+        if not to_conflict:
+            recruited_commanders += 1
+        events.append(
+            GameEvent(
+                event_id=f"{source}:{mission_id}:commander",
+                kind="scouts_mission_commander",
+                payload=(
+                    ("count", 1),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                    ("to", "conflict" if to_conflict else "garrison"),
+                ),
+            )
+        )
+    # Goods on the space: the seat's own, and the anyone-goods (Imperial
+    # Reserve: one of the two, OQ-078).
+    reserve_taken = False
+    for goods_row in [r for r in goods if r[1] == space_id and _collects(r[0])]:
+        mission_id, _, resource, amount, seat = goods_row
+        kind = MISSIONS_BY_ID[mission_id].kind
+        if seat not in (-1, player):
+            continue
+        if kind is MissionKind.IMPERIAL_RESERVE:
+            if reserve_taken or (choice and resource != choice):
+                continue
+            reserve_taken = True
+        goods.remove(goods_row)
+        if resource == "marker":
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:marker",
+                    kind="scouts_marker_returned",
+                    payload=(("mission_id", mission_id), ("player", player)),
+                )
+            )
+            continue
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                **{resource: getattr(owner.resources, resource) + amount},
+            ),
+        )
+        events.extend(_taken_events(source, mission_id, player, resource, amount))
+    # One face-down card per visit (OQ-078): a Contract or an Intrigue card.
+    card_row = _takeable_card(state, space_id)
+    immediate_contract: str | None = None
+    if card_row is not None and not declined:
+        cards.remove(card_row)
+        mission_id, _, card_id = card_row
+        if MISSIONS_BY_ID[mission_id].kind is MissionKind.CHOAM_RESEARCH:
+            if _is_immediate(card_id):
+                raise RuntimeError("the Immediate never reaches the Research Station")
+            owner = receive_contract(state, owner, card_id)
+            if contract_for_instance(card_id).completes_immediately:
+                # An Immediate tile completes the moment it is taken
+                # [Main p. 16]; its reward waits in its window (OQ-112).
+                immediate_contract = card_id
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:contract",
+                    kind="contract_taken",
+                    payload=(
+                        ("contract_id", card_id),
+                        ("player", player),
+                        ("replacement_id", ""),
+                        ("source", source),
+                    ),
+                )
+            )
+        else:
+            owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, card_id))
+            intrigue_gained.append(card_id)
+            # Suspensor Suits counts "each Intrigue card you draw or steal
+            # during your turn" [Suspensor Suits Tech tile]; the limit is the
+            # turn only, and an effect taking a card straight from the deck
+            # counts (OQ-042, 2026-09-26 addition; engine audit 2026-10-22,
+            # P3). Emperor's Schemes' card is drawn (OQ-078, OQ-086).
+            owner = credit_suspensor_suits(state, owner, 1)
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:{mission_id}:intrigue",
+                    kind="intrigue_card_drawn",
+                    payload=(("count", 1), ("player", player)),
+                    visible_to=None,
+                )
+            )
+    finish_board_icon(context, BOARD_ICON_SCOUTS)
+    if recruited:
+        # Garrison-bound mission troops are this turn's recruits (OQ-077).
+        context["troops_recruited"] = (
+            context_int(context, "troops_recruited", owner="Agent effect frame")
+            + recruited
+        )
+    if recruited_commanders:
+        # A Commander's recruit keeps a Commander's slot (OQ-070).
+        context[COMMANDERS_RECRUITED_KEY] = (
+            recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+            + recruited_commanders
+        )
+    working = replace(
+        state,
+        players=replace_player(state.players, owner),
+        scouts_goods=tuple(goods),
+        scouts_goods_cards=tuple(cards),
+        scouts_parked=tuple(parked),
+        scouts_parked_commanders=tuple(commanders),
+    )
+    next_state = advance_after_effect(working, context, working.players)
+    if immediate_contract is not None:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        completed = complete_immediate_contract(
+            next_state,
+            player,
+            immediate_contract,
+            source=f"{source}:contract:{immediate_contract}",
+        )
+        next_state = completed.state
+        events.extend(completed.events)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+# --- Goods paid off away from a visit -----------------------------------------------
+
+
+def _give(owner: PlayerState, resource: str, amount: int) -> PlayerState:
+    return replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            **{resource: getattr(owner.resources, resource) + amount},
+        ),
+    )
+
+
+def _taken_events(
+    source: str, mission_id: str, player: int, resource: str, amount: int
+) -> tuple[GameEvent, ...]:
+    """A mission's goods taken: the resources gained (rule decision 3,
+    cleanup-2c-5), then the mission's own event (which names Desert
+    Riding's Maker Hooks token, no resource)."""
+
+    goods = f"{source}:{mission_id}"
+    if resource not in ("solari", "spice", "water"):
+        # Desert Riding's Maker Hooks token, the one goods no resource.
+        return (
+            GameEvent(
+                event_id=f"{goods}:goods_taken",
+                kind="scouts_mission_goods_taken",
+                payload=(
+                    ("goods", resource),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                ),
+            ),
+        )
+    return (
+        resources_gained_event(goods, player, **{resource: amount}),
+        GameEvent(
+            event_id=f"{goods}:goods_taken",
+            kind="scouts_mission_goods_taken",
+            payload=(("mission_id", mission_id), ("player", player)),
+        ),
+    )
+
+
+def claim_goods_at(
+    state: GameState, player: int, location: str, *, source: str
+) -> RuleResult:
+    """``player`` earns the bank goods waiting at ``location`` for anyone.
+
+    Sponsored Research's spice waits beside the Helix for the next seat to
+    reach it, Back Room Deal's Solari on Reclaimed Forces for the next seat to
+    acquire that card (docs/rules/arrakeen-scouts.md 5, OQ-089). They leave
+    the board for ``player`` at once and wait for its collect click
+    (OQ-164 (b), module doc).
+    """
+
+    rows = [row for row in state.scouts_goods if row[1] == location and row[4] < 0]
+    if not rows:
+        return RuleResult(state=state)
+    return RuleResult(state=_owe_goods(state, rows, player, source))
+
+
+def _owe_goods(
+    state: GameState,
+    rows: list[tuple[str, str, str, int, int]],
+    player: int,
+    source: str,
+) -> GameState:
+    """Move goods ``rows`` off the board to ``player``'s owed rows, last, so
+    owed payouts keep the order they were earned in."""
+
+    owed = tuple(
+        (mission_id, f"{OWED}{source}", resource, amount, player)
+        for mission_id, _, resource, amount, _ in rows
+    )
+    return replace(
+        state,
+        scouts_goods=(
+            *(row for row in state.scouts_goods if row not in rows),
+            *owed,
+        ),
+    )
+
+
+def release_offering(state: GameState, player: int, *, source: str) -> RuleResult:
+    """Tleilaxu Offering: the seat's parked troops are owed as specimens.
+
+    The troops a seat left on the Tleilaxu track's third space go into its
+    Axolotl tanks as specimens once its own Tleilaxu token gets there
+    (docs/rules/arrakeen-scouts.md 5, OQ-089 (a)) -- on the seat's collect
+    click (OQ-164 (b)): until then they stay parked, owed.
+    """
+
+    rows = [
+        row
+        for row in state.scouts_parked
+        if row[1] == player and row[2] == TLEILAXU_OFFERING_SPACE
+    ]
+    if not rows:
+        return RuleResult(state=state)
+    owed = tuple(
+        (mission_id, seat, f"{OWED}{source}", troops)
+        for mission_id, seat, _, troops in rows
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            scouts_parked=(
+                *(row for row in state.scouts_parked if row not in rows),
+                *owed,
+            ),
+        )
+    )
+
+
+def owed_payouts(state: GameState) -> tuple[tuple[int, str], ...]:
+    """Every ``(seat, mission)`` with an owed payout, in the order earned
+    (goods rows, then parked rows)."""
+
+    found: dict[tuple[int, str], None] = {}
+    for mission_id, location, _, _, seat in state.scouts_goods:
+        if is_owed(location):
+            found.setdefault((seat, mission_id), None)
+    for mission_id, seat, location, _ in state.scouts_parked:
+        if is_owed(location):
+            found.setdefault((seat, mission_id), None)
+    return tuple(found)
+
+
+def owed_goods_of(
+    state: GameState, player: int, mission_id: str
+) -> tuple[tuple[str, int], ...]:
+    """What ``player``'s collect of ``mission_id`` pays: ``(resource, amount)``
+    per owed goods row, ``("specimens", troops)`` per owed parked row."""
+
+    return (
+        *(
+            (resource, amount)
+            for mission, location, resource, amount, seat in state.scouts_goods
+            if mission == mission_id and seat == player and is_owed(location)
+        ),
+        *(
+            ("specimens", troops)
+            for mission, seat, location, troops in state.scouts_parked
+            if mission == mission_id and seat == player and is_owed(location)
+        ),
+    )
+
+
+def collect_owed(state: GameState, player: int, mission_id: str) -> RuleResult:
+    """Pay ``player`` its owed payout of ``mission_id`` (the collect click,
+    OQ-164 (b)), with the events the payout gave when it was paid at once."""
+
+    goods = [
+        row
+        for row in state.scouts_goods
+        if row[0] == mission_id and row[4] == player and is_owed(row[1])
+    ]
+    parked = [
+        row
+        for row in state.scouts_parked
+        if row[0] == mission_id and row[1] == player and is_owed(row[2])
+    ]
+    if not goods and not parked:
+        raise ValueError(f"seat {player} is owed nothing of {mission_id}")
+    owner = state.players[player]
+    events: list[GameEvent] = []
+    for _, location, resource, amount, _ in goods:
+        owner = _give(owner, resource, amount)
+        events.extend(
+            _taken_events(
+                location.removeprefix(OWED), mission_id, player, resource, amount
+            )
+        )
+    for _, _, location, troops in parked:
+        owner = replace(
+            owner,
+            troops_parked=owner.troops_parked - troops,
+            specimens=owner.specimens + troops,
+        )
+        events.append(
+            GameEvent(
+                event_id=f"{location.removeprefix(OWED)}:{mission_id}:troops",
+                kind="scouts_mission_troops",
+                payload=(
+                    ("count", troops),
+                    ("mission_id", mission_id),
+                    ("player", player),
+                    ("to", "specimens"),
+                ),
+            )
+        )
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(row for row in state.scouts_goods if row not in goods),
+            scouts_parked=tuple(
+                row for row in state.scouts_parked if row not in parked
+            ),
+        ),
+        events=tuple(events),
+    )
+
+
+def _post_occupant(state: GameState, location: str) -> int | None:
+    post = location.removeprefix("post:")
+    return next(
+        (seat.player_id for seat in state.players if post in seat.spy_post_ids),
+        None,
+    )
+
+
+def _escort_due(state: GameState, row: tuple[str, str, str, int, int]) -> bool:
+    contract = row[1].removeprefix("contract:")
+    return contract not in state.players[row[4]].active_contract_ids
+
+
+def mission_goods_are_due(state: GameState) -> bool:
+    """Whether a Spy or a completed Contract has earned waiting goods."""
+
+    if not state.scouts_goods:
+        return False
+    for row in state.scouts_goods:
+        if row[1].startswith("post:") and _post_occupant(state, row[1]) is not None:
+            return True
+        if row[1].startswith("contract:") and _escort_due(state, row):
+            return True
+    return False
+
+
+def claim_due_mission_goods(state: GameState) -> RuleResult:
+    """Owe the goods a Spy placement or a Contract completion has earned.
+
+    Valued Informants: the seat whose Spy lands on a post holding a good earns
+    it, whatever put the Spy there (OQ-080). CHOAM Escort: the seat that loaded
+    a Contract earns the Solari and spice on it when that Contract is
+    completed (docs/rules/arrakeen-scouts.md 5); a Contract that left the seat's supply
+    uncompleted takes them back to the bank. The claims run after every
+    step, so every placement and completion path owes the same way; the
+    earned goods wait for the seat's collect click (OQ-164 (b), module doc).
+    """
+
+    kept = []
+    owed = []
+    source = f"round:{state.round_number}:scouts_goods"
+    for row in state.scouts_goods:
+        mission_id, location, resource, amount, seat = row
+        if location.startswith("post:"):
+            occupant = _post_occupant(state, location)
+            if occupant is None:
+                kept.append(row)
+                continue
+            owed.append(
+                (mission_id, f"{OWED}{source}:{location}", resource, amount, occupant)
+            )
+            continue
+        if location.startswith("contract:") and _escort_due(state, row):
+            contract = location.removeprefix("contract:")
+            if contract in state.players[seat].completed_contract_ids:
+                owed.append(
+                    (mission_id, f"{OWED}{source}:{contract}", resource, amount, seat)
+                )
+            continue
+        kept.append(row)
+    return RuleResult(state=replace(state, scouts_goods=(*kept, *owed)))
+
+
+# --- Maker Hooks (Desert Riding) -----------------------------------------------------
+
+
+def desert_riding_token(state: GameState) -> tuple[str, str, str, int, int] | None:
+    return next((row for row in state.scouts_goods if row[2] == "maker_hooks"), None)
+
+
+def take_desert_riding_token(
+    state: GameState, player: int, *, source: str
+) -> RuleResult:
+    """``player`` takes the Maker Hooks token Desert Riding left out.
+
+    At Hagga Basin in place of the space's own 2 spice
+    (docs/rules/arrakeen-scouts.md 5); at Sietch Tabr when it is the last of
+    the four tokens (OQ-079 (e)).
+    """
+
+    row = desert_riding_token(state)
+    if row is None:
+        return RuleResult(state=state)
+    owner = replace(state.players[player], maker_hooks=True)
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, owner),
+            scouts_goods=tuple(r for r in state.scouts_goods if r != row),
+        ),
+        events=_taken_events(source, row[0], player, "maker_hooks", 1),
+    )
+
+
+def maker_hooks_left_in_bank(state: GameState) -> int:
+    """The four tokens less the seats' and Desert Riding's [Main p. 3]."""
+
+    return _free_maker_hooks(state) - (desert_riding_token(state) is not None)
+
+
+def free_prison_marker(
+    goods: tuple[tuple[str, str, str, int, int], ...],
+    player: int,
+    controlled: int,
+    *,
+    source: str,
+) -> tuple[tuple[tuple[str, str, str, int, int], ...], tuple[GameEvent, ...]]:
+    """Prison Planet and Sapho Juice: a seat gaining control with no free
+    marker takes its mission marker back.
+
+    Per the help (docs/rules/arrakeen-scouts.md 5, 9a), the marker is reused
+    when the seat has none left for a third space, and the mission then ends
+    with no spice for it: the seat's marker and spice rows leave the board,
+    the spice to the bank. The original game's Sapho Juice (the Mentat space)
+    is the same case; its Conflict rewards take control through the same
+    ``combat`` path as Uprising's.
+    """
+
+    rows = [
+        row
+        for row in goods
+        if row[4] == player and MISSIONS_BY_ID[row[0]].kind in _MARKER_MISSIONS
+    ]
+    markers = sum(1 for row in rows if row[2] == "marker")
+    if not markers or controlled + markers < 3:
+        return goods, ()
+    remaining = tuple(row for row in goods if row not in rows)
+    spice = sum(row[3] for row in rows if row[2] == "spice")
+    payload = (("player", player), ("spice_returned", spice))
+    if MISSIONS_BY_ID[rows[0][0]].kind is MissionKind.SAPHO_JUICE:
+        return remaining, (
+            GameEvent(
+                event_id=f"{source}:sapho_juice_marker:{player}",
+                kind="scouts_sapho_marker_taken",
+                payload=payload,
+            ),
+        )
+    return remaining, (
+        GameEvent(
+            event_id=f"{source}:prison_planet_marker:{player}",
+            kind="scouts_prison_marker_taken",
+            payload=payload,
+        ),
+    )

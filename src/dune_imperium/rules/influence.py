@@ -1,0 +1,874 @@
+"""Shared Faction Influence, track-bonus, and Alliance transitions."""
+
+from copy import replace
+from typing import Final
+
+from dune_imperium.content.arrakeen_scouts import RoundModifier
+from dune_imperium.content.core.effects import (
+    DrawIntrigueCards,
+    GainResources,
+    OnReachInfluence,
+    PlaceSpy,
+    RecruitTroops,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.rulesets import InfluenceFourBonus, content_for
+from dune_imperium.content.uprising.leader_abilities import (
+    LEADER_ABILITIES,
+    leader_triggers,
+)
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import Influence, PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.frames import (
+    OWED_INTRIGUE,
+    OWED_ORIGIN_BENE_GESSERIT_4,
+    OWED_ORIGIN_IMPERIAL_BIRTHRIGHT,
+    draw_waits_for_owner,
+    hold_draw,
+    replace_player,
+)
+from dune_imperium.rules.intrigue_deck import credit_suspensor_suits
+
+MAX_INFLUENCE = 6
+# Arrakeen Scouts' Friends Everywhere (``RoundModifier`` value).
+_ANY_FACTION_FOUR_BONUS = RoundModifier.ANY_FACTION_FOUR_BONUS.value
+
+
+def gain_faction_influence(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    amount: int,
+    *,
+    event_prefix: str,
+) -> RuleResult:
+    """Gain Influence one space at a time and resolve crossed boundaries."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("Influence recipient must identify a configured player")
+    if amount < 0:
+        raise ValueError("Influence gain must not be negative")
+
+    players = state.players
+    intrigue_deck = state.intrigue_deck
+    pending_draws = state.pending_intrigue_draws
+    pending_navigation = state.pending_navigation_plays
+    pending_spies = state.pending_track_spies
+    pending_four = state.scouts_four_bonus_choices
+    # Inside the seat's own turn a bonus Intrigue card is its own step, the
+    # owner's next one (user decision 2026-10-10, OQ-106).
+    hold = draw_waits_for_owner(state, player)
+    gained = 0
+    # Tessia Vernius' Snooper rewards ③ and ④ raise this track once more
+    # after the gain (``_reach_snooper``).
+    snooper_influence = 0
+    events: list[GameEvent] = []
+    for step in range(amount):
+        owner = players[player]
+        current = influence_amount(owner.influence, faction)
+        if current >= MAX_INFLUENCE:
+            break
+        next_amount = current + 1
+        owner = replace(
+            owner,
+            influence=replace_influence(owner.influence, faction, next_amount),
+            victory_points=owner.victory_points + (1 if next_amount == 2 else 0),
+        )
+        players = replace_player(players, owner)
+        gained += 1
+
+        if next_amount == 2:
+            # Loyalty and Imperial Birthright share the Victory Point's
+            # "reach 2" semantics: passing 2 in one multi-step gain counts,
+            # re-reaching after a loss counts again, and moving down never
+            # does [Main pp. 7, 17].
+            deck_before = len(intrigue_deck)
+            players, intrigue_deck, pending_draws, bonus_events = (
+                _apply_reach_two_leader_bonus(
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    player,
+                    faction,
+                    event_id=f"{event_prefix}:leader_bonus:{step}",
+                    hold=hold,
+                )
+            )
+            # Imperial Birthright's Intrigue draw counts for Suspensor Suits.
+            players = replace_player(
+                players,
+                credit_suspensor_suits(
+                    state, players[player], deck_before - len(intrigue_deck)
+                ),
+            )
+            events.extend(bonus_events)
+            if faction.value in players[player].snooper_faction_ids:
+                (
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    snooper_events,
+                    extra,
+                ) = _reach_snooper(
+                    state,
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    player,
+                    faction,
+                    source=f"{event_prefix}:snooper:{step}",
+                    hold=hold,
+                )
+                events.extend(snooper_events)
+                snooper_influence += extra
+            if players[player].leader_id == "steersman_y_rkoon":
+                # Plot Course: "Whenever you reach 2 Influence with a
+                # Faction, play the next Navigation card" — queued and
+                # opened by the engine once this gain has finished, in
+                # gain order (OQ-012, OQ-039).
+                pending_navigation = (
+                    *pending_navigation,
+                    (player, faction.value, f"{event_prefix}:navigation:{step}"),
+                )
+
+        if next_amount == 4:
+            track_bonus_source = f"{event_prefix}:track_bonus:{step}"
+            if state.scouts_round_modifier == _ANY_FACTION_FOUR_BONUS:
+                # Friends Everywhere (Arrakeen Scouts): the seat may take
+                # any Faction's Influence 4 bonus instead, so the choice is
+                # queued and opened by the engine like the Emperor Spy
+                # [Scouts event: Friends Everywhere] (OQ-081 (a)).
+                pending_four = (
+                    *pending_four,
+                    (player, faction.value, track_bonus_source),
+                )
+            else:
+                (
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    bonus_event,
+                ) = _grant_four_bonus(
+                    state,
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    player,
+                    faction,
+                    source=track_bonus_source,
+                    hold=hold,
+                )
+                events.append(bonus_event)
+
+        players, alliance_event = _update_alliance(
+            players,
+            player,
+            faction,
+            event_id=f"{event_prefix}:alliance:{step}",
+        )
+        if alliance_event is not None:
+            events.append(alliance_event)
+
+    if gained:
+        events.insert(
+            0,
+            GameEvent(
+                event_id=f"{event_prefix}:influence",
+                kind="influence_gained",
+                payload=(
+                    ("amount", gained),
+                    ("faction", faction.value),
+                    ("player", player),
+                ),
+            ),
+        )
+    gained_state = replace(
+        state,
+        players=players,
+        intrigue_deck=intrigue_deck,
+        pending_intrigue_draws=pending_draws,
+        pending_navigation_plays=pending_navigation,
+        pending_track_spies=pending_spies,
+        scouts_four_bonus_choices=pending_four,
+    )
+    if snooper_influence:
+        # The Snooper reward's Influence on the token's own track, after
+        # the gain that reached the token (its token is gone, so it reaches
+        # no second one).
+        more = gain_faction_influence(
+            gained_state,
+            player,
+            faction,
+            snooper_influence,
+            event_prefix=f"{event_prefix}:snooper",
+        )
+        return RuleResult(state=more.state, events=(*events, *more.events))
+    return RuleResult(state=gained_state, events=tuple(events))
+
+
+# Tessia Vernius' Snooper track, top to bottom: the reward each token reached
+# takes, in order (docs/rules/rise-of-ix.md 10): (1) discard a card -> 1
+# spice, (2) the token's track's Influence 4 bonus, (3) one Influence on that
+# track, (4) both (2) and (3).
+SNOOPER_DISCARD_REWARD: Final = 1
+SNOOPER_BONUS_REWARDS: Final = frozenset({2, 4})
+SNOOPER_INFLUENCE_REWARDS: Final = frozenset({3, 4})
+SNOOPER_TOKENS: Final = 4
+SNOOPER_REACHED_EVENT: Final = "snooper_token_reached"
+
+
+def _reach_snooper(
+    state: GameState,
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    pending_spies: tuple[tuple[int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    source: str,
+    hold: bool,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[tuple[int, str], ...],
+    tuple[GameEvent, ...],
+    int,
+]:
+    """Tessia Vernius' Careful Observation: her token on ``faction``'s
+    Influence 2 space is reached -- also when a multi-step gain passes it --
+    and taken; she gains the topmost uncovered Snooper reward ("Whenever you
+    reach a Snooper token, gain the topmost uncovered reward from the
+    Snooper track" [Tessia Vernius card, app text]; docs/rules/rise-of-ix.md
+    10). Reward (2) is paid here; (1)'s discard is a choice, announced by
+    the event and offered once the action is done (``rules.snoopers``);
+    the Influence of (3) and (4) is returned for the caller to gain after
+    this gain."""
+
+    owner = players[player]
+    reward = SNOOPER_TOKENS + 1 - len(owner.snooper_faction_ids)
+    owner = replace(
+        owner,
+        snooper_faction_ids=tuple(
+            held for held in owner.snooper_faction_ids if held != faction.value
+        ),
+    )
+    players = replace_player(players, owner)
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=source,
+            kind="snooper_token_reached",
+            payload=(
+                ("faction", faction.value),
+                ("player", player),
+                ("reward", reward),
+            ),
+        )
+    ]
+    if reward in SNOOPER_BONUS_REWARDS:
+        players, intrigue_deck, pending_draws, pending_spies, bonus_event = (
+            _grant_four_bonus(
+                state,
+                players,
+                intrigue_deck,
+                pending_draws,
+                pending_spies,
+                player,
+                faction,
+                source=f"{source}:bonus",
+                hold=hold,
+            )
+        )
+        events.append(bonus_event)
+    extra = 1 if reward in SNOOPER_INFLUENCE_REWARDS else 0
+    return players, intrigue_deck, pending_draws, pending_spies, tuple(events), extra
+
+
+def _grant_four_bonus(
+    state: GameState,
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    pending_spies: tuple[tuple[int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    source: str,
+    hold: bool,
+    reached: Faction | None = None,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[tuple[int, str], ...],
+    GameEvent,
+]:
+    """Earn ``faction``'s Influence 4 bonus [Main p. 7].
+
+    ``reached`` names the track actually reached when Friends Everywhere
+    let the seat take another Faction's bonus (it is added to the event).
+    With ``hold`` the Bene Gesserit bonus's Intrigue card is the seat's own
+    step right after this one (``draw_waits_for_owner``,
+    ``draw_is_immediate``, OQ-106).
+    """
+
+    deck_before = len(intrigue_deck)
+    bonus = content_for(state.config).influence_four_bonuses[faction]
+    players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
+        players,
+        intrigue_deck,
+        player,
+        bonus,
+        hold=hold,
+        source=source,
+    )
+    # The Bene Gesserit bonus's Intrigue draw counts for Suspensor Suits.
+    players = replace_player(
+        players,
+        credit_suspensor_suits(
+            state, players[player], deck_before - len(intrigue_deck)
+        ),
+    )
+    if shortfall:
+        pending_draws = (*pending_draws, (player, shortfall, source))
+    if isinstance(bonus, PlaceSpy):
+        # The Emperor track prints the Spy icon: the placement is a
+        # decision, so it is queued. Inside the seat's own turn it waits for
+        # the owner's ``place_track_spy``, in any order before the turn
+        # ends (user ruling 2026-10-04, overriding the designer ruling
+        # OQ-057 (15)); anywhere else the engine opens it right after this
+        # gain.
+        pending_spies = (*pending_spies, (player, source))
+    reached_payload: tuple[tuple[str, int | str], ...] = (
+        () if reached is None else (("reached_faction", reached.value),)
+    )
+    event = GameEvent(
+        event_id=source,
+        kind="influence_track_bonus_gained",
+        payload=tuple(
+            sorted(
+                (
+                    ("faction", faction.value),
+                    ("player", player),
+                    *bonus_payload,
+                    *reached_payload,
+                )
+            )
+        ),
+    )
+    return players, intrigue_deck, pending_draws, pending_spies, event
+
+
+def grant_chosen_four_bonus(
+    state: GameState,
+    player: int,
+    reached: Faction,
+    chosen: Faction,
+    *,
+    source: str,
+) -> RuleResult:
+    """Earn the Influence 4 bonus a Friends Everywhere seat picked."""
+
+    players, intrigue_deck, pending_draws, pending_spies, event = _grant_four_bonus(
+        state,
+        state.players,
+        state.intrigue_deck,
+        state.pending_intrigue_draws,
+        state.pending_track_spies,
+        player,
+        chosen,
+        source=source,
+        hold=draw_waits_for_owner(state, player),
+        reached=reached,
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            players=players,
+            intrigue_deck=intrigue_deck,
+            pending_intrigue_draws=pending_draws,
+            pending_track_spies=pending_spies,
+        ),
+        events=(event,),
+    )
+
+
+def alliance_recipients_after_influence_loss(
+    state: GameState,
+    player: int,
+    faction: Faction,
+) -> tuple[int, ...]:
+    """Return players eligible to receive an Alliance after losing one step."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("Influence owner must identify a configured player")
+    owner = state.players[player]
+    if faction.value not in owner.alliance_faction_ids:
+        return ()
+    current = influence_amount(owner.influence, faction)
+    if current == 0:
+        return ()
+    tied = tuple(
+        candidate.player_id
+        for candidate in state.players
+        if candidate.player_id != player
+        and influence_amount(candidate.influence, faction) == current
+    )
+    if tied:
+        return tied
+    if current - 1 >= 4:
+        return ()
+    return tuple(
+        candidate.player_id
+        for candidate in state.players
+        if candidate.player_id != player
+        and influence_amount(candidate.influence, faction) >= 4
+    )
+
+
+def lose_faction_influence(
+    state: GameState,
+    player: int,
+    faction: Faction,
+    amount: int,
+    *,
+    event_prefix: str,
+    alliance_recipient: int | None = None,
+) -> RuleResult:
+    """Lose Influence one space at a time and resolve held Alliance tokens."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("Influence owner must identify a configured player")
+    if amount < 0:
+        raise ValueError("Influence loss must not be negative")
+    if amount > 1 and alliance_recipient is not None:
+        raise ValueError("an Alliance recipient can only resolve a one-step loss")
+
+    players = state.players
+    lost = 0
+    events: list[GameEvent] = []
+    for step in range(amount):
+        step_state = replace(state, players=players)
+        recipients = alliance_recipients_after_influence_loss(
+            step_state,
+            player,
+            faction,
+        )
+        if len(recipients) > 1 and alliance_recipient not in recipients:
+            raise ValueError("Influence loss requires an Alliance recipient choice")
+        if len(recipients) <= 1 and alliance_recipient is not None:
+            raise ValueError(
+                "Influence loss does not allow an Alliance recipient choice"
+            )
+
+        owner = players[player]
+        current = influence_amount(owner.influence, faction)
+        if current == 0:
+            break
+        next_amount = current - 1
+        owner = replace(
+            owner,
+            influence=replace_influence(owner.influence, faction, next_amount),
+            victory_points=owner.victory_points - (1 if next_amount == 1 else 0),
+        )
+        players = replace_player(players, owner)
+        lost += 1
+
+        if faction.value in owner.alliance_faction_ids:
+            recipient = (
+                alliance_recipient
+                if len(recipients) > 1
+                else recipients[0]
+                if recipients
+                else None
+            )
+            if recipient is not None:
+                players, event = _transfer_or_return_alliance(
+                    players,
+                    player,
+                    faction,
+                    recipient,
+                    event_id=f"{event_prefix}:alliance:{step}",
+                )
+                events.append(event)
+            elif next_amount < 4:
+                players, event = _transfer_or_return_alliance(
+                    players,
+                    player,
+                    faction,
+                    None,
+                    event_id=f"{event_prefix}:alliance:{step}",
+                )
+                events.append(event)
+
+    if lost:
+        events.insert(
+            0,
+            GameEvent(
+                event_id=f"{event_prefix}:influence",
+                kind="influence_lost",
+                payload=(
+                    ("amount", lost),
+                    ("faction", faction.value),
+                    ("player", player),
+                ),
+            ),
+        )
+    return RuleResult(state=replace(state, players=players), events=tuple(events))
+
+
+def influence_can_rise(owner: PlayerState, faction: Faction) -> bool:
+    """Whether a gain with ``faction`` would move ``owner``'s cube now.
+
+    Each track has six spaces and a gain on a cube already at the top is
+    lost (``MAX_INFLUENCE``, OQ-060, user ruling 2026-09-16), so a "choose a
+    Faction" picker never offers a Faction at 6, and a line that pays a cost
+    for such a gain alone is not offered: "비용이 있는 줄은 보상 중 하나라도
+    무언가를 바꿀 수 있을 때만 제시한다" (OQ-071, user decision 2026-09-29).
+    """
+
+    return influence_amount(owner.influence, faction) < MAX_INFLUENCE
+
+
+def influence_amount(influence: Influence, faction: Faction) -> int:
+    """Return one faction's position from the fixed Influence record."""
+
+    match faction:
+        case Faction.EMPEROR:
+            return influence.emperor
+        case Faction.SPACING_GUILD:
+            return influence.spacing_guild
+        case Faction.BENE_GESSERIT:
+            return influence.bene_gesserit
+        case Faction.FREMEN:
+            return influence.fremen
+
+
+def replace_influence(
+    influence: Influence,
+    faction: Faction,
+    amount: int,
+) -> Influence:
+    """Return ``influence`` with one faction position replaced."""
+
+    match faction:
+        case Faction.EMPEROR:
+            return replace(influence, emperor=amount)
+        case Faction.SPACING_GUILD:
+            return replace(influence, spacing_guild=amount)
+        case Faction.BENE_GESSERIT:
+            return replace(influence, bene_gesserit=amount)
+        case Faction.FREMEN:
+            return replace(influence, fremen=amount)
+
+
+def _apply_reach_two_leader_bonus(
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    event_id: str,
+    hold: bool,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[GameEvent, ...],
+]:
+    """Resolve Leader abilities that fire on reaching two Influence.
+
+    Loyalty grants two Spice on reaching two Bene Gesserit Influence
+    [Lady Margot Fenring card]; Imperial Birthright draws one Intrigue card
+    on reaching two Emperor Influence [Princess Irulan card]. With ``hold``
+    that card is the seat's own step right after this one (user decision
+    2026-10-10, OQ-106, ``draw_is_immediate``).
+    """
+
+    owner = players[player]
+    bonus = next(
+        (
+            rewards
+            for trigger, rewards in leader_triggers(
+                owner.leader_face_id or owner.leader_id, OnReachInfluence
+            )
+            if trigger.faction is faction
+        ),
+        (),
+    )
+    gain = bonus[0] if len(bonus) == 1 else None
+    if isinstance(gain, GainResources):
+        spice = gain.spice
+        owner = replace(
+            owner,
+            resources=replace(owner.resources, spice=owner.resources.spice + spice),
+        )
+        event = GameEvent(
+            event_id=event_id,
+            kind="leader_influence_bonus_gained",
+            payload=(
+                ("faction", faction.value),
+                ("player", player),
+                ("spice", spice),
+            ),
+        )
+        return replace_player(players, owner), intrigue_deck, pending_draws, (event,)
+    if bonus == (DrawIntrigueCards(1),):
+        # Card identity stays hidden [Main p. 7]; only the count is public.
+        if hold:
+            players = replace_player(
+                players,
+                hold_draw(
+                    owner, OWED_INTRIGUE, OWED_ORIGIN_IMPERIAL_BIRTHRIGHT, event_id
+                ),
+            )
+        elif intrigue_deck:
+            owner = replace(
+                owner,
+                intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+            )
+            players = replace_player(players, owner)
+            intrigue_deck = intrigue_deck[1:]
+        else:
+            pending_draws = (*pending_draws, (player, 1, event_id))
+        event = GameEvent(
+            event_id=event_id,
+            kind="leader_influence_bonus_gained",
+            payload=(
+                ("faction", faction.value),
+                ("intrigue", 1),
+                ("player", player),
+            ),
+        )
+        return players, intrigue_deck, pending_draws, (event,)
+    return players, intrigue_deck, pending_draws, ()
+
+
+def _apply_track_bonus(
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    player: int,
+    bonus: InfluenceFourBonus,
+    *,
+    hold: bool,
+    source: str,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[str, int | str], ...],
+    int,
+]:
+    # "When you reach 4 Influence, you earn the bonus shown on that space of
+    # the track." [Main p. 7] ``bonus`` is the icon the base game's board
+    # prints there (``RulesetContent.influence_four_bonuses``).
+    owner = players[player]
+    intrigue_shortfall = 0
+    match bonus:
+        case PlaceSpy():
+            # The Spy is placed through the engine's queue (the caller adds
+            # it to ``pending_track_spies``); nothing changes here.
+            payload: tuple[tuple[str, int | str], ...] = (("spy", 1),)
+        case GainResources(solari=solari, spice=spice, water=water):
+            owner = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari + solari,
+                    spice=owner.resources.spice + spice,
+                    water=owner.resources.water + water,
+                ),
+            )
+            payload = tuple(
+                (name, amount)
+                for name, amount in (
+                    ("solari", solari),
+                    ("spice", spice),
+                    ("water", water),
+                )
+                if amount
+            )
+        case DrawIntrigueCards(count=1):
+            # Card identity stays hidden [Main p. 7]; only the count is public.
+            payload = (("intrigue", 1),)
+            if hold:
+                # Inside the seat's own turn the card is its own step, the
+                # one right after the Influence step that reached 4 ("faction
+                # bonuses (such as drawing an Intrigue on the BG track) may
+                # interrupt this flow", Message from designer; user decision
+                # 2026-10-10, OQ-106, ``draw_is_immediate``).
+                owner = hold_draw(
+                    owner,
+                    OWED_INTRIGUE,
+                    OWED_ORIGIN_BENE_GESSERIT_4,
+                    f"{source}:intrigue",
+                )
+            elif intrigue_deck:
+                owner = replace(
+                    owner,
+                    intrigue_cards=(*owner.intrigue_cards, intrigue_deck[0]),
+                )
+                intrigue_deck = intrigue_deck[1:]
+            else:
+                intrigue_shortfall = 1
+        case RecruitTroops(count=count):
+            # The original board's Emperor track: two troops to the garrison
+            # [DI p. 7] (docs/base-game-and-ix-plan.md 15.3); what the supply
+            # cannot cover waits as on any recruit (OQ-030). They are this
+            # turn's recruits, deployable from a Combat space with the others
+            # ("이번 turn에 recruit한 troop 전부와 garrison의 troop 둘까지",
+            # "어느 출처로 recruit했든 배치 가능 [FAQ p. 4]",
+            # docs/rules/imperium-base.md 7), counted on the seat
+            # (``PlayerState.track_troops_recruited_turn``).
+            # (``effects.recruit_troops``'s move, written here: that module
+            # imports this one.)
+            recruited = min(owner.troops_supply, count)
+            owner = replace(
+                owner,
+                troops_supply=owner.troops_supply - recruited,
+                troops_garrison=owner.troops_garrison + recruited,
+                ungained_troops=owner.ungained_troops + count - recruited,
+                track_troops_recruited_turn=owner.track_troops_recruited_turn
+                + recruited,
+            )
+            # A supply short of troops shows in the bonus's own event.
+            payload = (
+                ("troops", recruited),
+                *((("troops_short", count - recruited),) if count > recruited else ()),
+            )
+        case _:
+            raise ValueError(f"no such Influence 4 bonus: {bonus!r}")
+    return (
+        replace_player(players, owner),
+        intrigue_deck,
+        payload,
+        intrigue_shortfall,
+    )
+
+
+def _update_alliance(
+    players: tuple[PlayerState, ...],
+    challenger: int,
+    faction: Faction,
+    *,
+    event_id: str,
+) -> tuple[tuple[PlayerState, ...], GameEvent | None]:
+    faction_id = faction.value
+    holder = next(
+        (
+            player.player_id
+            for player in players
+            if faction_id in player.alliance_faction_ids
+        ),
+        None,
+    )
+    challenger_amount = influence_amount(players[challenger].influence, faction)
+    if challenger_amount < 4 or holder == challenger:
+        return players, None
+    if holder is not None:
+        holder_amount = influence_amount(players[holder].influence, faction)
+        if challenger_amount <= holder_amount:
+            return players, None
+
+    next_players: list[PlayerState] = []
+    for owner in players:
+        alliance_ids = owner.alliance_faction_ids
+        victory_points = owner.victory_points
+        if owner.player_id == holder:
+            alliance_ids = tuple(
+                candidate for candidate in alliance_ids if candidate != faction_id
+            )
+            victory_points -= 1
+        if owner.player_id == challenger:
+            alliance_ids = (*alliance_ids, faction_id)
+            victory_points += 1
+        next_players.append(
+            replace(
+                owner,
+                alliance_faction_ids=alliance_ids,
+                victory_points=victory_points,
+            )
+        )
+    event = GameEvent(
+        event_id=event_id,
+        kind="alliance_gained" if holder is None else "alliance_transferred",
+        payload=(
+            ("faction", faction_id),
+            ("from_player", -1 if holder is None else holder),
+            ("to_player", challenger),
+        ),
+    )
+    return tuple(next_players), event
+
+
+def _transfer_or_return_alliance(
+    players: tuple[PlayerState, ...],
+    holder: int,
+    faction: Faction,
+    recipient: int | None,
+    *,
+    event_id: str,
+) -> tuple[tuple[PlayerState, ...], GameEvent]:
+    faction_id = faction.value
+    next_players: list[PlayerState] = []
+    for owner in players:
+        alliance_ids = owner.alliance_faction_ids
+        victory_points = owner.victory_points
+        if owner.player_id == holder:
+            alliance_ids = tuple(
+                candidate for candidate in alliance_ids if candidate != faction_id
+            )
+            victory_points -= 1
+        if owner.player_id == recipient:
+            alliance_ids = (*alliance_ids, faction_id)
+            victory_points += 1
+        next_players.append(
+            replace(
+                owner,
+                alliance_faction_ids=alliance_ids,
+                victory_points=victory_points,
+            )
+        )
+    return (
+        tuple(next_players),
+        GameEvent(
+            event_id=event_id,
+            kind="alliance_lost" if recipient is None else "alliance_transferred",
+            payload=(
+                ("faction", faction_id),
+                ("from_player", holder),
+                ("to_player", -1 if recipient is None else recipient),
+            ),
+        ),
+    )
+
+
+def _check_reach_bonuses() -> None:
+    """The reach-Influence Leader rewards this module pays (composed A6e):
+    on reaching two, like the Victory Point [Main pp. 7, 17]; spice, or one
+    Intrigue card held as the seat's own step (OQ-106)."""
+
+    for face_id, abilities in LEADER_ABILITIES.items():
+        for ability in abilities:
+            if not isinstance(ability.trigger, OnReachInfluence):
+                continue
+            rewards = ability.sections[0].rewards
+            if ability.trigger.amount != 2 or not (
+                rewards == (DrawIntrigueCards(1),)
+                or (
+                    len(rewards) == 1
+                    and isinstance(rewards[0], GainResources)
+                    and rewards[0] == GainResources(spice=rewards[0].spice)
+                )
+            ):
+                raise ValueError(f"{face_id}: no such reach-Influence reward")
+
+
+_check_reach_bonuses()

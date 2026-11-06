@@ -1,0 +1,224 @@
+"""Replayable personal-deck draw and discard reshuffle transitions."""
+
+from copy import replace
+from typing import Final
+
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.deck_top import clear_deck_top
+from dune_imperium.rules.frames import FrameKind, reveal_is_open_for
+from dune_imperium.rules.reveal_turn import reveal_late_arrivals
+
+
+def draw_or_request_personal_cards(
+    state: GameState,
+    player: int,
+    count: int,
+    *,
+    source: str,
+) -> RuleResult:
+    """Draw now or push a chance decision for the needed discard shuffle."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("draw player must identify a configured seat")
+    if count < 1:
+        raise ValueError("personal card draw count must be positive")
+    if not source:
+        raise ValueError("personal card draw source must not be empty")
+    owner = state.players[player]
+    if len(owner.deck) < count and owner.discard_pile:
+        # A second short draw before the pending shuffle resolves (two
+        # Research icons past the second marker, 2026-09-08 sweep seed 66)
+        # joins that shuffle instead of shuffling the same discard twice.
+        for index in range(len(state.decision_stack) - 1, -1, -1):
+            pending = state.decision_stack[index]
+            if pending.kind != FrameKind.PERSONAL_DRAW_RESHUFFLE:
+                continue
+            pending_context = dict(pending.context)
+            if pending_context.get("player") != player:
+                continue
+            pending_count = pending_context.get("count")
+            if isinstance(pending_count, bool) or not isinstance(pending_count, int):
+                raise RuntimeError("personal draw reshuffle has invalid count")
+            pending_context["count"] = pending_count + count
+            merged = replace(pending, context=tuple(sorted(pending_context.items())))
+            return RuleResult(
+                state=replace(
+                    state,
+                    decision_stack=(
+                        *state.decision_stack[:index],
+                        merged,
+                        *state.decision_stack[index + 1 :],
+                    ),
+                )
+            )
+        decision_id = f"{source}:discard_shuffle"
+        frame = DecisionFrame(
+            kind=FrameKind.PERSONAL_DRAW_RESHUFFLE,
+            frame_id=f"{decision_id}:personal_draw",
+            decision=ChanceDecision(
+                decision_id=decision_id,
+                prompt=f"Shuffle player {player}'s discard pile",
+                options=owner.discard_pile,
+                count=len(owner.discard_pile),
+            ),
+            context=(
+                ("count", count),
+                ("player", player),
+                ("source", source),
+            ),
+        )
+        return RuleResult(state=state.push_decision(frame))
+    return _draw_available(state, player, count, source)
+
+
+# The context key of a reshuffle that shuffles the deck along with the discard
+# pile (Refocus); absent from every draw's own reshuffle, which only shuffles
+# the discard pile beneath an exhausted deck.
+SHUFFLE_DECK_KEY: Final = "shuffle_deck"
+
+
+def shuffle_discard_into_deck(
+    state: GameState,
+    player: int,
+    draw: int,
+    *,
+    source: str,
+) -> RuleResult:
+    """Shuffle ``player``'s discard pile into the deck, then draw ``draw`` cards.
+
+    "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    card, app text]: the deck and the discard pile become one shuffled deck,
+    so an empty discard pile still shuffles the deck [FAQ p. 3]. The shuffle
+    is a chance step on the personal-draw frame, carrying the deck as well as
+    the discard pile and the cards to draw once it resolves (docs/rules/
+    imperium-base.md 14: nobody learns an order). With neither pile holding a
+    card there is nothing to shuffle or draw.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("shuffle player must identify a configured seat")
+    if draw < 1:
+        raise ValueError("a shuffle then draws at least one card")
+    if not source:
+        raise ValueError("personal card shuffle source must not be empty")
+    owner = state.players[player]
+    pile = (*owner.deck, *owner.discard_pile)
+    if not pile:
+        return RuleResult(state=state)
+    decision_id = f"{source}:discard_shuffle"
+    frame = DecisionFrame(
+        kind=FrameKind.PERSONAL_DRAW_RESHUFFLE,
+        frame_id=f"{decision_id}:personal_draw",
+        decision=ChanceDecision(
+            decision_id=decision_id,
+            prompt=f"Shuffle player {player}'s discard pile into the deck",
+            options=pile,
+            count=len(pile),
+        ),
+        context=(
+            ("count", draw),
+            ("player", player),
+            (SHUFFLE_DECK_KEY, True),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def apply_personal_draw_reshuffle(
+    state: GameState,
+    outcome: ChanceOutcome,
+) -> RuleResult:
+    """Apply one recorded discard permutation and complete its pending draw."""
+
+    if not state.decision_stack:
+        raise ValueError("there is no pending personal draw reshuffle")
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.PERSONAL_DRAW_RESHUFFLE or not isinstance(
+        frame.decision, ChanceDecision
+    ):
+        raise ValueError("the current chance decision is not a personal draw")
+    context = dict(frame.context)
+    player = context.get("player")
+    count = context.get("count")
+    source = context.get("source")
+    if (
+        isinstance(player, bool)
+        or not isinstance(player, int)
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or not isinstance(source, str)
+    ):
+        raise RuntimeError("personal draw reshuffle has invalid context")
+
+    owner = state.players[player]
+    whole_deck = context.get(SHUFFLE_DECK_KEY) is True
+    # Refocus's permutation is the whole new deck, so no card of it is known
+    # on top any more (OQ-145); a draw's own reshuffle puts the shuffled
+    # discard pile beneath the cards the deck still holds, which keep their
+    # public top (``rules.deck_top``).
+    next_owner = replace(
+        owner,
+        deck=outcome.values if whole_deck else (*owner.deck, *outcome.values),
+        discard_pile=(),
+    )
+    if whole_deck:
+        next_owner = clear_deck_top(next_owner)
+    players = tuple(
+        next_owner if candidate.player_id == player else candidate
+        for candidate in state.players
+    )
+    shuffled = replace(state.pop_decision(), players=players)
+    drawn = _draw_available(shuffled, player, count, source)
+    # Public: everyone sees the discard pile become the new deck, and the
+    # payload carries only the count, never the shuffled order (OQ-010).
+    event = GameEvent(
+        event_id=f"{source}:discard_shuffled",
+        kind="personal_discard_shuffled",
+        payload=(
+            (
+                "count",
+                len(owner.discard_pile) if whole_deck else len(outcome.values),
+            ),
+            ("player", player),
+        ),
+    )
+    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+
+
+def personal_draw_is_pending(state: GameState) -> bool:
+    """Return whether the top decision is a personal discard reshuffle."""
+
+    return bool(
+        state.decision_stack
+        and state.decision_stack[-1].kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    )
+
+
+def _draw_available(
+    state: GameState,
+    player: int,
+    count: int,
+    source: str,
+) -> RuleResult:
+    owner = state.players[player]
+    drawn = owner.deck[:count]
+    next_owner = replace(
+        owner,
+        deck=owner.deck[len(drawn) :],
+        hand=(*owner.hand, *drawn),
+    )
+    players = tuple(
+        next_owner if candidate.player_id == player else candidate
+        for candidate in state.players
+    )
+    next_state = replace(state, players=players)
+    if drawn and reveal_is_open_for(next_state, player):
+        # A card drawn during the owner's own Reveal turn is revealed and
+        # used at once rather than withheld to the next round [FAQ p. 3].
+        return reveal_late_arrivals(next_state, player, drawn)
+    return RuleResult(state=next_state)

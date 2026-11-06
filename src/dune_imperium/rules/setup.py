@@ -1,0 +1,1170 @@
+"""Pure constructors for official four-player setup state."""
+
+from copy import replace
+from dataclasses import dataclass
+from typing import Final
+
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_TOTAL,
+    SKILL_FACE_UP,
+    commander_setup_space_ids,
+    skill_tile_instance_ids,
+)
+from dune_imperium.content.bloodlines.tech import TECH_STACKS
+from dune_imperium.content.core.icons import ConflictTier
+from dune_imperium.content.immortality.board import (
+    RESEARCH_START_ID,
+    TLEILAXU_ROW_SIZE,
+    TLEILAXU_SETUP_SPICE,
+)
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
+from dune_imperium.content.registry.intrigue import (
+    navigation_card_instance_ids,
+    twisted_intrigue_instance_ids,
+)
+from dune_imperium.content.registry.leaders import LEADERS_BY_ID
+from dune_imperium.content.registry.tech import tech_tile_pool
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
+from dune_imperium.core.chance import (
+    ChanceOutcome,
+    ChanceReplayError,
+    ChanceResolver,
+    validate_chance_outcome,
+)
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue_peek import assign_intelligence
+from dune_imperium.rules.masterstroke import assign_masterstroke
+from dune_imperium.rules.navigation import assign_navigation_deck
+from dune_imperium.rules.snoopers import place_snooper_tokens
+from dune_imperium.rules.starting_contracts import deal_starting_contracts
+from dune_imperium.rules.tactics import TACTICS_TRACK_START
+from dune_imperium.rules.tech import assign_secret_project
+
+# Each color's 12 troops [Main p. 5]: the garrison's share starts there and
+# the rest in the supply.
+_TROOPS_PER_PLAYER: Final = 12
+# Each player's dreadnoughts in a Rise of Ix game [Rise of Ix p. 3], all in the
+# supply at setup (docs/rules/rise-of-ix.md 3 item 5).
+_DREADNOUGHTS_PER_PLAYER: Final = 2
+
+
+# What the Conflict cards of Rise of Ix leave out of the ten drawn: the
+# printed deck is I 6, II 11, III 5 (22 cards), so 12 stay in the box
+# [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3 item 3), Epic Game Mode too
+# [Rise of Ix p. 10]: "원판 + Ix의 III은 다섯 장(원판 4 + Economic Supremacy)이라
+# 모두 쓴다" (rise-of-ix.md 11), so its five II over five III leave every
+# Conflict I and six II. The engine's pool holds a card once its rewards are
+# transcribed (``rulesets._imperium_conflicts``); since stage P4d-1 that is
+# all 22, so exactly 12 stay.
+_IX_UNUSED_CONFLICTS: Final = 12
+
+
+@dataclass(frozen=True, slots=True)
+class ConflictSetup:
+    """Selected ten-card deck and hidden cards returned to the box."""
+
+    deck: tuple[str, ...]
+    unused: tuple[str, ...]
+    epic_game: bool = False
+    # The original game with Rise of Ix: its Conflict cards are in the pool.
+    rise_of_ix: bool = False
+
+    def __post_init__(self) -> None:
+        if len(self.deck) != 10:
+            raise ValueError("the four-player Conflict deck must contain 10 cards")
+        if self.rise_of_ix:
+            if len(self.unused) != _IX_UNUSED_CONFLICTS:
+                raise ValueError(
+                    "twelve Conflict cards must remain unused with Rise of Ix "
+                    "(I 6, II 11, III 5 less the ten drawn)"
+                )
+        elif self.epic_game:
+            if len(self.unused) not in (7, 9):
+                # 16 retail cards plus Economic Supremacy [Main p. 18], or 19
+                # with the two Bloodlines cards.
+                raise ValueError(
+                    "seven (nine with Bloodlines) Conflict cards must remain "
+                    "unused in Epic Game Mode"
+                )
+        elif len(self.unused) not in (6, 8):
+            # 16 retail cards, or 18 with the two Bloodlines cards; the
+            # original game's 18 leave 8.
+            raise ValueError(
+                "six (eight with Bloodlines) Conflict cards must remain unused"
+            )
+        if set(self.deck) & set(self.unused):
+            raise ValueError("selected and unused Conflict cards must be disjoint")
+
+
+@dataclass(frozen=True, slots=True)
+class SetupResult:
+    """A completed setup state and its replayable chance stream."""
+
+    state: GameState
+    chance_outcomes: tuple[ChanceOutcome, ...]
+
+
+def create_unshuffled_players(
+    config: RulesetConfig | None = None,
+) -> tuple[PlayerState, ...]:
+    """Create four players before leader, objective, and shuffle decisions.
+
+    With Immortality the two Dune, the Desert Planet become Experimentation
+    [Immortality p. 5]; the Bene Tleilax tokens and Family Atomics are
+    placed by ``_with_immortality``. Every Score marker starts on
+    ``RulesetConfig.starting_victory_points``.
+
+    Epic Game Mode swaps one Dune, the Desert Planet for Control the Spice
+    [Rise of Ix p. 10]; with Immortality the deck keeps its ten cards and
+    Control the Spice starts in the discard pile [Immortality p. 12]. Each
+    garrison starts with ``RulesetConfig.starting_garrison_troops`` of the
+    12 troops (3 [Main p. 5], 5 in Epic Game Mode [Rise of Ix p. 10]) and
+    the rest wait in the supply.
+
+    Rise of Ix gives each player "two dreadnoughts in their supply" and a
+    disc as the Freighter on the Shipping track's bottom space [Rise of Ix
+    p. 3] (docs/rules/rise-of-ix.md 3 item 5): the Freighter space 0 is the
+    ``PlayerState`` default, the two dreadnoughts are set here.
+    """
+
+    config = config or RulesetConfig()
+    content = content_for(config)
+    garrison_troops = config.starting_garrison_troops
+    return tuple(
+        PlayerState(
+            player_id=player,
+            deck=content.starting_deck_instance_ids(player),
+            discard_pile=content.starting_discard_instance_ids(player),
+            victory_points=config.starting_victory_points,
+            troops_supply=_TROOPS_PER_PLAYER - garrison_troops,
+            troops_garrison=garrison_troops,
+            dreadnoughts_supply=_DREADNOUGHTS_PER_PLAYER if config.rise_of_ix else 0,
+        )
+        for player in range(4)
+    )
+
+
+# (tier, cards drawn) in the order the tier decisions resolve: the standard
+# 1/5/4 deck [Main p. 4], and Epic Game Mode's five Conflict II over five
+# Conflict III with no Conflict I [Rise of Ix p. 10].
+_CONFLICT_TIER_COUNTS: Final = (
+    (ConflictTier.THREE, 4),
+    (ConflictTier.TWO, 5),
+    (ConflictTier.ONE, 1),
+)
+_EPIC_CONFLICT_TIER_COUNTS: Final = (
+    (ConflictTier.THREE, 5),
+    (ConflictTier.TWO, 5),
+)
+
+
+def conflict_setup_decisions(
+    config: RulesetConfig | None = None,
+) -> tuple[ChanceDecision, ...]:
+    """Return tier shuffles in the order prescribed by setup.
+
+    Bloodlines adds its two Conflict cards to the pools the tiers are drawn
+    from; the deck keeps its 1/5/4 shape [Bloodlines p. 3]. Epic Game Mode
+    draws no Conflict I and orders all five Conflict III, Economic Supremacy
+    among them [Rise of Ix p. 10] [Main p. 18].
+    """
+
+    config = config or RulesetConfig()
+    content = content_for(config)
+    counts = _EPIC_CONFLICT_TIER_COUNTS if config.epic_game else _CONFLICT_TIER_COUNTS
+    return tuple(
+        ChanceDecision(
+            decision_id=f"setup:conflict:tier:{tier.value}",
+            prompt=f"Shuffle and select Conflict tier {tier.value}",
+            options=tuple(
+                conflict.card.card_id for conflict in content.conflicts_by_tier(tier)
+            ),
+            count=count,
+        )
+        for tier, count in counts
+    )
+
+
+def build_conflict_setup(
+    outcomes: tuple[ChanceOutcome, ...],
+    config: RulesetConfig | None = None,
+) -> ConflictSetup:
+    """Build the top-to-bottom deck from the recorded tier outcomes.
+
+    In Epic Game Mode every Conflict I card goes back to the box unseen.
+    """
+
+    config = config or RulesetConfig()
+    epic_game = config.epic_game
+    decisions = conflict_setup_decisions(config)
+    if len(outcomes) != len(decisions):
+        raise ValueError("Conflict setup requires one outcome for each tier")
+
+    by_id = {outcome.decision_id: outcome for outcome in outcomes}
+    if len(by_id) != len(outcomes):
+        raise ValueError("Conflict setup outcomes must have unique decision IDs")
+    counts = _EPIC_CONFLICT_TIER_COUNTS if epic_game else _CONFLICT_TIER_COUNTS
+    selected: dict[ConflictTier, tuple[str, ...]] = {}
+    unused: list[str] = []
+    for decision, (tier, _) in zip(decisions, counts, strict=True):
+        try:
+            outcome = by_id[decision.decision_id]
+        except KeyError as error:
+            raise ValueError("Conflict setup outcome is missing a tier") from error
+        validate_chance_outcome(decision, outcome)
+        selected[tier] = outcome.values
+        unused.extend(
+            option for option in decision.options if option not in outcome.values
+        )
+    if epic_game:
+        unused.extend(
+            conflict.card.card_id
+            for conflict in content_for(config).conflicts_by_tier(ConflictTier.ONE)
+        )
+
+    return ConflictSetup(
+        deck=(
+            *selected.get(ConflictTier.ONE, ()),
+            *selected[ConflictTier.TWO],
+            *selected[ConflictTier.THREE],
+        ),
+        unused=tuple(unused),
+        epic_game=epic_game,
+        # Uprising with Rise of Ix keeps Uprising's Conflict cards (P7-3 (가)).
+        rise_of_ix=config.rise_of_ix and config.base_game is BaseGame.IMPERIUM,
+    )
+
+
+def objective_setup_decision(
+    config: RulesetConfig | None = None,
+) -> ChanceDecision:
+    """Return the ordered Objective deal of a four-player game.
+
+    Each player gets a random Objective [Main p. 5]: four cards for seats
+    0-3 in order. With ``first_player_seat_zero`` (OQ-132 project
+    convention) seat 0 takes the First Player Objective and only the other
+    three are dealt, to seats 1-3.
+    """
+
+    objectives = content_for(config or RulesetConfig()).objectives
+    prompt = "Shuffle and deal the four-player Objective cards"
+    if config is not None and config.first_player_seat_zero:
+        objectives = tuple(
+            objective for objective in objectives if not objective.grants_first_player
+        )
+        prompt = "Shuffle and deal the other three Objective cards to seats 1-3"
+    return ChanceDecision(
+        decision_id="setup:objectives",
+        prompt=prompt,
+        options=tuple(objective.objective_id for objective in objectives),
+        count=len(objectives),
+    )
+
+
+SARDAUKAR_CONTRACT_IDS: Final = ("contract:sardaukar_i", "contract:sardaukar_ii")
+
+
+def contract_setup_decision(
+    config: RulesetConfig,
+    set_aside_ids: tuple[str, ...] = (),
+) -> ChanceDecision:
+    """Return the setup shuffle for the Contract tiles.
+
+    When Shaddam Corrino IV is in play, both Sardaukar Contracts are set
+    aside before the shuffle [Shaddam Corrino IV card] and are excluded from
+    the shuffled pool. Bloodlines shuffles its eight tokens into the same
+    bank [Bloodlines p. 2].
+    """
+
+    contracts = tuple(
+        instance_id
+        for instance_id in content_for(config).contract_instance_ids
+        if instance_id not in set_aside_ids
+    )
+    return _shuffle_decision(
+        "setup:contracts",
+        "Shuffle the standard Contracts",
+        contracts,
+    )
+
+
+def ix_contract_setup_decision(config: RulesetConfig) -> ChanceDecision | None:
+    """The shuffle of the ten Rise of Ix Contracts, or None in a game that
+    deals none: "After setting up the 20 standard contracts, shuffle the 10
+    RISE OF IX contracts and give two to each player" [Main p. 16]. Only
+    Uprising with Rise of Ix and the CHOAM Module draws it, so no other
+    game's chance stream moves (``rules.starting_contracts`` deals them)."""
+
+    ids = content_for(config).ix_contract_instance_ids
+    if not (config.choam_module and ids):
+        return None
+    return _shuffle_decision(
+        "setup:ix_contracts", "Shuffle the Rise of Ix Contracts", ids
+    )
+
+
+def _ix_contracts(config: RulesetConfig, resolver: ChanceResolver) -> tuple[str, ...]:
+    decision = ix_contract_setup_decision(config)
+    return () if decision is None else resolver.resolve(decision).values
+
+
+def assign_objectives(
+    players: tuple[PlayerState, ...],
+    outcome: ChanceOutcome,
+    config: RulesetConfig | None = None,
+) -> tuple[tuple[PlayerState, ...], int]:
+    """Deal one Objective per seat and return the First Player seat.
+
+    "각 플레이어는 Objective를 무작위로 한 장 받아 ... Objective에 First
+    Player marker가 표시된 플레이어가 그 marker를 가져간다" [Main p. 5]
+    (docs/rules/setup-and-game-flow.md). With ``first_player_seat_zero``
+    (OQ-132) seat 0 holds that Objective and ``outcome`` deals the rest.
+    """
+
+    if len(players) != 4 or tuple(player.player_id for player in players) != tuple(
+        range(4)
+    ):
+        raise ValueError("Objective setup requires players in seat order 0 through 3")
+    decision = objective_setup_decision(config)
+    validate_chance_outcome(decision, outcome)
+
+    definitions = {
+        objective.objective_id: objective
+        for objective in content_for(config or RulesetConfig()).objectives
+    }
+    dealt = outcome.values
+    if config is not None and config.first_player_seat_zero:
+        (marked,) = (
+            objective.objective_id
+            for objective in definitions.values()
+            if objective.grants_first_player
+        )
+        dealt = (marked, *dealt)
+    assigned = tuple(
+        replace(player, objective_ids=(objective_id,))
+        for player, objective_id in zip(players, dealt, strict=True)
+    )
+    first_players = tuple(
+        player.player_id
+        for player in assigned
+        if definitions[player.objective_ids[0]].grants_first_player
+    )
+    if len(first_players) != 1:
+        raise RuntimeError("four-player Objectives must identify one First Player")
+    return assigned, first_players[0]
+
+
+def starting_deck_shuffle_decision(player: PlayerState) -> ChanceDecision:
+    """Return the chance decision that orders one starting deck."""
+
+    return ChanceDecision(
+        decision_id=f"setup:player:{player.player_id}:starting_deck",
+        prompt=f"Shuffle player {player.player_id}'s starting deck",
+        options=player.deck,
+        count=len(player.deck),
+    )
+
+
+def apply_starting_deck_shuffle(
+    player: PlayerState,
+    outcome: ChanceOutcome,
+) -> PlayerState:
+    """Apply a recorded full-deck permutation to one player."""
+
+    validate_chance_outcome(starting_deck_shuffle_decision(player), outcome)
+    return replace(player, deck=outcome.values)
+
+
+def skill_stack_decision(base_game: BaseGame = BaseGame.UPRISING) -> ChanceDecision:
+    """Shuffle the 14 Skill tiles face down [Bloodlines p. 3]; the original
+    game's 12, "Fierce" Sardaukar Commander Skill 둘을 뺀다 [Bloodlines p. 3]
+    (docs/rules/bloodlines.md 2a)."""
+
+    return _shuffle_decision(
+        "setup:skill_stack",
+        "Shuffle the Sardaukar Commander Skills",
+        skill_tile_instance_ids(base_game),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class BloodlinesSetup:
+    """Bloodlines state fields fixed at setup [Bloodlines p. 3]."""
+
+    skill_face_up: tuple[str, ...]
+    skill_stack: tuple[str, ...]
+    twisted_deck: tuple[str, ...] = ()
+    navigation_deck: tuple[str, ...] = ()
+    # Tech Module: the three Ixian Embassy stacks, top first.
+    tech_stacks: tuple[tuple[str, ...], ...] = ()
+
+
+def tech_tile_pool_of(config: RulesetConfig) -> tuple[str, ...]:
+    """The Tech tiles ``config``'s three stacks are dealt from
+    (``content.bloodlines.tech.tech_tile_pool``)."""
+
+    return tech_tile_pool(
+        config.base_game,
+        choam_module=config.choam_module,
+        tech_module=config.tech_module,
+        rise_of_ix=config.rise_of_ix,
+        ix_tech_tiles=config.ix_tech_tiles,
+    )
+
+
+def tech_tiles_decision(config: RulesetConfig) -> ChanceDecision:
+    """Shuffle the Tech Module's tiles face down [Bloodlines p. 6] -- with
+    Rise of Ix both modules' tiles together, "두 모듈의 Tech 타일을 모두 섞어"
+    [Bloodlines p. 7] (docs/rules/rise-of-ix.md 10a)."""
+
+    return _shuffle_decision(
+        "setup:tech_tiles", "Shuffle the Tech tiles", tech_tile_pool_of(config)
+    )
+
+
+def deal_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Divide the shuffled tiles into three stacks, as evenly as possible.
+
+    Eighteen tiles make three stacks of six; without CHOAM Transports the
+    seventeen are split 6-6-5 [Bloodlines p. 6].
+    """
+
+    base, extra = divmod(len(shuffled), TECH_STACKS)
+    stacks: list[tuple[str, ...]] = []
+    cursor = 0
+    for index in range(TECH_STACKS):
+        size = base + (1 if index < extra else 0)
+        stacks.append(shuffled[cursor : cursor + size])
+        cursor += size
+    return tuple(stacks)
+
+
+def deal_tech_pool_stacks(
+    config: RulesetConfig, shuffled: tuple[str, ...]
+) -> tuple[tuple[str, ...], ...]:
+    """Divide ``config``'s shuffled Tech tile pool (``tech_tile_pool_of``)
+    into its three stacks, as evenly as possible, the first tile of each its
+    face-up top: the Tech Module's on the Ixian Embassy [Bloodlines p. 6]
+    or, with Rise of Ix, both modules' on the Ix board ("될 수 있는 대로
+    고르게 큰 더미 셋으로", [Bloodlines p. 7], docs/rules/rise-of-ix.md 10a).
+    Anything but the pool, each tile once, is refused."""
+
+    if sorted(shuffled) != sorted(tech_tile_pool_of(config)):
+        raise ValueError("the Tech stacks hold the game's Tech tile pool, each once")
+    return deal_tech_stacks(shuffled)
+
+
+def deal_ix_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Divide Rise of Ix's shuffled 18 Tech tiles into the Ix board's three
+    stacks of six, in the order given, the first tile of each stack its top
+    (face up): "Ix board의 세 더미" [Rise of Ix p. 4]
+    (docs/rules/rise-of-ix.md 4, plan 17.10 item 1).
+
+    The tiles are the 18 of ``IX_TECH_IDS``, each once; setup (``_ix_setup``)
+    deals them from its shuffle. Anything else is refused.
+    """
+
+    if sorted(shuffled) != sorted(IX_TECH_IDS):
+        raise ValueError("the Ix stacks hold the 18 Rise of Ix Tech tiles, each once")
+    return deal_tech_stacks(shuffled)
+
+
+def ix_tech_tiles_decision() -> ChanceDecision:
+    """Shuffle Rise of Ix's 18 Tech tiles face down [Rise of Ix p. 3]
+    (docs/rules/rise-of-ix.md 3 item 2); ``deal_ix_tech_stacks`` divides the
+    result into the Ix board's three stacks."""
+
+    return _shuffle_decision(
+        "setup:ix_tech_tiles",
+        "Shuffle the Rise of Ix Tech tiles",
+        tuple(IX_TECH_IDS),
+    )
+
+
+def _ix_setup(
+    config: RulesetConfig, resolver: ChanceResolver
+) -> tuple[tuple[str, ...], ...] | None:
+    """The Ix board's three Tech stacks of six, the top of each face up
+    [Rise of Ix p. 3], shuffled through the chance stream; None without the
+    option. Resolved after the expansions' decisions and before the starting
+    decks' shuffles; a game without Rise of Ix resolves nothing here, so its
+    chance stream keeps its order. With the Tech Module too, the Bloodlines
+    setup has shuffled both modules' tiles into the Ix board's stacks
+    (``_bloodlines_setup``, [Bloodlines p. 7]), so nothing is left here."""
+
+    if not config.rise_of_ix or config.tech_module:
+        return None
+    return deal_ix_tech_stacks(resolver.resolve(ix_tech_tiles_decision()).values)
+
+
+def _with_ix(
+    state: GameState, tech_stacks: tuple[tuple[str, ...], ...] | None
+) -> GameState:
+    """Lay the Ix board's Tech stacks on a freshly built state."""
+
+    if tech_stacks is None:
+        return state
+    return replace(state, tech_stacks=tech_stacks)
+
+
+def navigation_deck_decision(
+    base_game: BaseGame = BaseGame.UPRISING,
+) -> ChanceDecision:
+    """Shuffle Steersman Y'rkoon's ten Navigation cards [Steersman Y'rkoon
+    card]; the original game's nine, "Spy를 놓거나 회수하는 Navigation 카드를
+    뺀다" [Bloodlines p. 3] (docs/rules/bloodlines.md 2a)."""
+
+    return _shuffle_decision(
+        "setup:navigation",
+        "Shuffle the Navigation cards",
+        navigation_card_instance_ids(base_game),
+    )
+
+
+def twisted_deck_decision() -> ChanceDecision:
+    """Shuffle Piter De Vries' twelve Twisted Intrigue cards [Piter De Vries card]."""
+
+    return _shuffle_decision(
+        "setup:twisted_intrigue",
+        "Shuffle the Twisted Intrigue deck",
+        twisted_intrigue_instance_ids(),
+    )
+
+
+def _bloodlines_setup(
+    config: RulesetConfig,
+    resolver: ChanceResolver,
+) -> BloodlinesSetup | None:
+    """Deal the Skill tiles when the Bloodlines option is on.
+
+    The shuffled 14-tile stack shows four face up [Bloodlines p. 3]; the
+    Commander placement itself is static (``_with_bloodlines``).
+    """
+
+    if not config.bloodlines:
+        return None
+    skills = resolver.resolve(skill_stack_decision(config.base_game)).values
+    # The Twisted deck is shuffled whether or not Piter is picked (the
+    # draft chooses Leaders later); it waits in ``twisted_deck_stock``.
+    twisted = resolver.resolve(twisted_deck_decision()).values
+    navigation = resolver.resolve(navigation_deck_decision(config.base_game)).values
+    tech_stacks: tuple[tuple[str, ...], ...] = ()
+    if config.tech_module:
+        # With Rise of Ix too this is the one shuffle of both modules' tiles
+        # (``_ix_setup`` then resolves nothing).
+        tech_stacks = deal_tech_pool_stacks(
+            config, resolver.resolve(tech_tiles_decision(config)).values
+        )
+    return BloodlinesSetup(
+        skill_face_up=skills[:SKILL_FACE_UP],
+        skill_stack=skills[SKILL_FACE_UP:],
+        twisted_deck=twisted,
+        navigation_deck=navigation,
+        tech_stacks=tech_stacks,
+    )
+
+
+def _with_bloodlines(state: GameState, setup: BloodlinesSetup | None) -> GameState:
+    """Place the Commanders and the dealt Skills on a freshly built state.
+
+    Five Commanders go on their printed spaces plus one on Assembly Hall in
+    a four-player game, and the last one waits in the bank for Sardaukar
+    Standard [Bloodlines p. 3]: the original board's spaces on the original
+    game, and with Rise of Ix the two the overlay covers move to Dreadnought
+    and Tech Negotiation (``commander_setup_space_ids``, [Bloodlines pp. 3,
+    7]).
+    """
+
+    if setup is None:
+        return state
+    config = state.config
+    commander_spaces = commander_setup_space_ids(
+        config.base_game, rise_of_ix=config.rise_of_ix, players=config.players
+    )
+    return assign_secret_project(
+        assign_navigation_deck(
+            assign_twisted_deck(
+                replace(
+                    state,
+                    sardaukar_commander_space_ids=commander_spaces,
+                    sardaukar_commanders_bank=COMMANDER_TOTAL - len(commander_spaces),
+                    skill_face_up=setup.skill_face_up,
+                    skill_stack=setup.skill_stack,
+                    twisted_deck_stock=setup.twisted_deck,
+                    navigation_stock=setup.navigation_deck,
+                    tech_stacks=setup.tech_stacks,
+                )
+            )
+        )
+    )
+
+
+def tleilaxu_deck_decision(promo_cards: bool) -> ChanceDecision | None:
+    """Shuffle the Tleilaxu deck [Immortality p. 4], or None while it is empty."""
+
+    instance_ids = tleilaxu_deck_instance_ids(promo_cards)
+    if not instance_ids:
+        return None
+    return _shuffle_decision(
+        "setup:tleilaxu_deck", "Shuffle the Tleilaxu deck", instance_ids
+    )
+
+
+def _immortality_setup(
+    config: RulesetConfig,
+    resolver: ChanceResolver,
+) -> tuple[str, ...] | None:
+    """Shuffle the Tleilaxu deck when the Immortality option is on.
+
+    Resolved after the Bloodlines decisions so the chance stream of every
+    earlier option keeps its order.
+    """
+
+    if not config.immortality:
+        return None
+    decision = tleilaxu_deck_decision(config.promo_cards)
+    if decision is None:
+        return ()
+    return resolver.resolve(decision).values
+
+
+def _with_immortality(state: GameState, deck: tuple[str, ...] | None) -> GameState:
+    """Place the Bene Tleilax board pieces on a freshly built state.
+
+    Two spice wait on the Tleilaxu track's fourth space, every token starts
+    on the leftmost space, the Tleilaxu Row shows two cards next to the
+    fixed Reclaimed Forces, and each player holds a Family Atomics token
+    [Immortality pp. 4-5].
+    """
+
+    if deck is None:
+        return state
+    return replace(
+        state,
+        players=tuple(
+            replace(
+                player,
+                research_space=RESEARCH_START_ID,
+                tleilaxu_space=0,
+                family_atomics=True,
+            )
+            for player in state.players
+        ),
+        tleilaxu_row=deck[:TLEILAXU_ROW_SIZE],
+        tleilaxu_deck=deck[TLEILAXU_ROW_SIZE:],
+        tleilaxu_track_spice=TLEILAXU_SETUP_SPICE,
+    )
+
+
+def assign_twisted_deck(state: GameState) -> GameState:
+    """Hand the shuffled Twisted Intrigue deck to Piter De Vries' seat."""
+
+    if not state.twisted_deck_stock:
+        return state
+    piter = next(
+        (seat for seat in state.players if seat.leader_id == "piter_de_vries"), None
+    )
+    if piter is None:
+        return state
+    dealt = replace(piter, twisted_deck=state.twisted_deck_stock)
+    return replace(
+        state,
+        players=tuple(dealt if seat is piter else seat for seat in state.players),
+        twisted_deck_stock=(),
+    )
+
+
+def apply_leader_setup(player: PlayerState, leader_id: str) -> PlayerState:
+    """Seat ``leader_id`` with the setup its card prints.
+
+    Shared by the fixed Leader setup and the Leader draft's pick, so the two
+    paths apply the same printed setup rules.
+    """
+
+    definition = LEADERS_BY_ID[leader_id]
+    return replace(
+        player,
+        leader_id=leader_id,
+        # Double-sided Leaders begin on their printed setup face
+        # [Main p. 17]; every other Leader's face is its identity.
+        leader_face_id=definition.setup_face_id or leader_id,
+        # Printed setup rules may remove starting cards (Staban Tuek's
+        # Limited Allies, Y'rkoon's Strange Form); filtering keeps the order
+        # of an already-shuffled deck uniformly random.
+        deck=tuple(
+            instance_id
+            for instance_id in player.deck
+            if starting_card_for_instance(instance_id).card.card_id
+            not in definition.removed_starting_card_ids
+        ),
+        # Strange Form: "You start the game with no [water]" [Steersman
+        # Y'rkoon card].
+        # Arrakis Fiefdom: 1 spice and 1 Solari more [Rabban card].
+        resources=replace(
+            player.resources,
+            water=definition.starting_water,
+            spice=player.resources.spice + definition.extra_starting_spice,
+            solari=player.resources.solari + definition.extra_starting_solari,
+        ),
+        # Tactician: the Tactics token starts on the four-player space
+        # [Bloodlines p. 12].
+        tactics_track_space=(
+            TACTICS_TRACK_START if definition.uses_tactics_track else 0
+        ),
+    )
+
+
+def create_initial_state(
+    config: RulesetConfig,
+    seed: int,
+    leader_ids: tuple[str, ...],
+    recorded_outcomes: tuple[ChanceOutcome, ...] | None = None,
+) -> SetupResult:
+    """Build the complete pre-Round-Start state for four selected Leaders.
+
+    Leader choice remains an explicit caller decision because the official rules
+    permit either selection or random assignment without defining a draft order.
+    Every actual shuffle and deal is routed through the returned chance stream.
+    """
+
+    _require_content(config)
+    _validate_leader_selection(config, leader_ids)
+    resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
+
+    conflict = _conflict_setup(config, resolver)
+    players, first_player = _first_player_setup(config, resolver)
+    # The shuffle decision below then covers the reduced decks.
+    players = tuple(
+        apply_leader_setup(player, leader_id)
+        for player, leader_id in zip(players, leader_ids, strict=True)
+    )
+
+    imperium = _shuffled(
+        resolver,
+        "setup:imperium_deck",
+        "Shuffle the Imperium deck",
+        content_for(config).imperium_deck_instance_ids,
+    )
+    intrigue = _shuffled(
+        resolver,
+        "setup:intrigue_deck",
+        "Shuffle the Intrigue deck",
+        content_for(config).intrigue_deck_instance_ids,
+    )
+    # Sardaukar Commander sets aside both Sardaukar Contracts before the
+    # shuffle; only Shaddam can acquire them [Shaddam Corrino IV card].
+    sardaukar_set_aside = (
+        SARDAUKAR_CONTRACT_IDS
+        if config.choam_module and "shaddam_corrino_iv" in leader_ids
+        else ()
+    )
+    contracts = (
+        resolver.resolve(
+            contract_setup_decision(config, sardaukar_set_aside)
+        ).values
+        if config.choam_module
+        else ()
+    )
+    ix_contracts = _ix_contracts(config, resolver)
+    bloodlines = _bloodlines_setup(config, resolver)
+    immortality = _immortality_setup(config, resolver)
+    ix_tech_stacks = _ix_setup(config, resolver)
+    players = tuple(
+        apply_starting_deck_shuffle(
+            player,
+            resolver.resolve(starting_deck_shuffle_decision(player)),
+        )
+        for player in players
+    )
+    players, intrigue = deal_setup_intrigue(config, players, first_player, intrigue)
+
+    if recorded_outcomes is not None and not resolver.exhausted:
+        raise ChanceReplayError("recorded chance stream has unused outcomes")
+
+    state = GameState(
+        config=config,
+        seed=seed,
+        phase=GamePhase.ROUND_START,
+        first_player=first_player,
+        players=players,
+        maker_bonus_spice=content_for(config).maker_bonus_spice_for(leader_ids),
+        # The original game prints no Shield Wall [Main p. 5]
+        # (docs/rules/imperium-base.md 2).
+        shield_wall_present=config.base_game is BaseGame.UPRISING,
+        conflict_deck=conflict.deck,
+        unused_conflict_ids=conflict.unused,
+        imperium_deck=imperium[5:],
+        imperium_row=imperium[:5],
+        intrigue_deck=intrigue,
+        contract_bank=contracts[2:],
+        face_up_contract_ids=contracts[:2],
+        sardaukar_contract_ids=sardaukar_set_aside,
+        contract_box=ix_contracts,
+        reserve_stacks=tuple(
+            (stack.card.card_id, stack.copies)
+            for stack in content_for(config).reserve_stacks
+        ),
+    )
+    state = _with_ix(
+        _with_immortality(_with_bloodlines(state, bloodlines), immortality),
+        ix_tech_stacks,
+    )
+    # The original game's Baron chooses his Factions after every other setup
+    # step [FAQ p. 1] (``rules.masterstroke``); Rise of Ix's Hundro Moritani
+    # then looks at the Intrigue deck's top two, "모든 setup 뒤, 첫 라운드 전"
+    # (docs/rules/rise-of-ix.md 3, ``rules.intrigue_peek``).
+    # The Rise of Ix starting Contracts are setup's own (the CHOAM module's
+    # [Main p. 16]): each seat chooses before Hundro's look, which follows
+    # every setup step (``rules.starting_contracts``).
+    state = deal_starting_contracts(
+        assign_intelligence(assign_masterstroke(place_snooper_tokens(state)))
+    )
+    return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+def _conflict_setup(config: RulesetConfig, resolver: ChanceResolver) -> ConflictSetup:
+    """Resolve the Conflict tier decisions of ``config`` and build the deck."""
+
+    decisions = conflict_setup_decisions(config)
+    return build_conflict_setup(
+        tuple(resolver.resolve(decision) for decision in decisions), config
+    )
+
+
+def _unshuffled_players(config: RulesetConfig) -> tuple[PlayerState, ...]:
+    """The four players of ``config`` before any setup decision."""
+
+    return create_unshuffled_players(config)
+
+
+def deal_setup_intrigue(
+    config: RulesetConfig,
+    players: tuple[PlayerState, ...],
+    first_player: int,
+    intrigue: tuple[str, ...],
+) -> tuple[tuple[PlayerState, ...], tuple[str, ...]]:
+    """Deal Epic Game Mode's Intrigue card to each player; return the rest.
+
+    Each player draws one Intrigue card at setup [Rise of Ix p. 10]. The
+    rulebook sets no order, so the shuffled deck's top cards go out one each
+    in seat order from the First Player (project convention,
+    ``docs/rules/epic-game-mode.md`` section 7). The shuffle already fixed
+    every card, so this adds no chance decision.
+
+    Every Leader is already known when it is called: "A player using
+    Viscount Hundro Moritani as their Leader should wait until all players
+    have drawn their Intrigue card" [Rise of Ix p. 10]. The fixed-Leader
+    setup deals after ``apply_leader_setup``; the OQ-007 draft deals after
+    its last pick (``leader_draft._finish_draft_setup``), so nobody picks a
+    Leader while holding the card.
+    """
+
+    if not config.epic_game:
+        return players, intrigue
+    seats = len(players)
+    dealt = {
+        (first_player + position) % seats: intrigue[position]
+        for position in range(seats)
+    }
+    return (
+        tuple(
+            replace(
+                player,
+                intrigue_cards=(*player.intrigue_cards, dealt[player.player_id]),
+            )
+            for player in players
+        ),
+        intrigue[seats:],
+    )
+
+
+LEADER_DRAFT_POOL_SIZE: Final = 6
+
+
+def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
+    """Return the seeded face-up six-Leader deal of the OQ-007 draft."""
+
+    return ChanceDecision(
+        decision_id="setup:leader_draft_pool",
+        prompt="Deal six face-up Leaders for the draft",
+        options=tuple(leader.leader_id for leader in content_for(config).leaders),
+        count=LEADER_DRAFT_POOL_SIZE,
+    )
+
+
+def create_draft_initial_state(
+    config: RulesetConfig,
+    seed: int,
+    recorded_outcomes: tuple[ChanceOutcome, ...] | None = None,
+) -> SetupResult:
+    """Build the paused pre-pick state of the OQ-007 draft convention.
+
+    Everything independent of the Leader picks resolves eagerly through the
+    seeded chance stream: Conflict tiers, Objectives (which fix the First
+    Player), the public six-Leader pool, and full-set shuffles of the
+    Imperium deck, the Intrigue deck, the standard Contracts, and every
+    starting deck. The state then waits in ``GamePhase.SETUP`` on a
+    ``leader_draft`` frame owned by the last seat of the round-1 turn order.
+    Each pick finalizes its seat — printed starting-card removals filter the
+    already-shuffled deck, which leaves the remaining order uniformly random
+    — and the final pick deals the Contract market (setting the Sardaukar
+    Contracts aside when Shaddam was picked), deals Epic Game Mode's
+    Intrigue cards (``deal_setup_intrigue``: drawn once every Leader is
+    known [Rise of Ix p. 10], so not here) and hands off to Round Start.
+    """
+
+    if not config.leader_draft:
+        raise ValueError("the draft setup requires the leader_draft option")
+    _require_content(config)
+    resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
+
+    conflict = _conflict_setup(config, resolver)
+    players, first_player = _first_player_setup(config, resolver)
+    pool = resolver.resolve(leader_draft_pool_decision(config)).values
+    imperium = _shuffled(
+        resolver,
+        "setup:imperium_deck",
+        "Shuffle the Imperium deck",
+        content_for(config).imperium_deck_instance_ids,
+    )
+    intrigue = _shuffled(
+        resolver,
+        "setup:intrigue_deck",
+        "Shuffle the Intrigue deck",
+        content_for(config).intrigue_deck_instance_ids,
+    )
+    # The full Contract order is drawn now; whether the Sardaukar Contracts
+    # leave it is only known after the picks, so the market is dealt then.
+    contracts = (
+        resolver.resolve(contract_setup_decision(config)).values
+        if config.choam_module
+        else ()
+    )
+    # Rise of Ix's tiles are shuffled now and dealt after the last pick
+    # (``rules.starting_contracts``).
+    ix_contracts = _ix_contracts(config, resolver)
+    bloodlines = _bloodlines_setup(config, resolver)
+    immortality = _immortality_setup(config, resolver)
+    ix_tech_stacks = _ix_setup(config, resolver)
+    players = tuple(
+        apply_starting_deck_shuffle(
+            player,
+            resolver.resolve(starting_deck_shuffle_decision(player)),
+        )
+        for player in players
+    )
+
+    if recorded_outcomes is not None and not resolver.exhausted:
+        raise ChanceReplayError("recorded chance stream has unused outcomes")
+
+    last_picker = (first_player + config.players - 1) % config.players
+    state = GameState(
+        config=config,
+        seed=seed,
+        phase=GamePhase.SETUP,
+        shield_wall_present=config.base_game is BaseGame.UPRISING,
+        # The base game's Maker spaces; the picks add Tuek's Sietch for Esmar
+        # (``leader_draft``).
+        maker_bonus_spice=content_for(config).maker_bonus_spice_for(()),
+        first_player=first_player,
+        players=players,
+        conflict_deck=conflict.deck,
+        unused_conflict_ids=conflict.unused,
+        imperium_deck=imperium[5:],
+        imperium_row=imperium[:5],
+        intrigue_deck=intrigue,
+        contract_bank=contracts,
+        contract_box=ix_contracts,
+        leader_draft_pool=pool,
+        reserve_stacks=tuple(
+            (stack.card.card_id, stack.copies)
+            for stack in content_for(config).reserve_stacks
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind=FrameKind.LEADER_DRAFT,
+                frame_id="setup:leader_draft",
+                decision=PlayerDecision(
+                    owner=last_picker,
+                    prompt="Pick a Leader from the face-up draft pool",
+                ),
+            ),
+        ),
+        event_log=(
+            GameEvent(
+                event_id="setup:leader_draft:pool",
+                kind="leader_draft_pool_revealed",
+                payload=(("leader_ids", tuple(pool)),),
+            ),
+        ),
+    )
+    state = _with_ix(
+        _with_immortality(_with_bloodlines(state, bloodlines), immortality),
+        ix_tech_stacks,
+    )
+    return SetupResult(state=state, chance_outcomes=resolver.outcomes)
+
+
+# The options the original game cannot be played with yet, and the stage of
+# docs/base-game-and-ix-plan.md that brings each (15.4): none now. Arrakeen
+# Scouts is open since stage P8b, with the original game's own schedule pools
+# (``content.arrakeen_scouts.scouts_pool``, plan 20); the pools' missions and
+# last items arrive with P8b-2 and P8c.
+# Bloodlines and its Tech Module are open since stage P7c ("When playing
+# BLOODLINES with DUNE: IMPERIUM" [Bloodlines p. 3], docs/rules/bloodlines.md
+# 2a; with Rise of Ix, [Bloodlines p. 7], rise-of-ix.md 10a). Rise of Ix
+# itself is open on the original game since stage P4c-5 (``_require_content``
+# still refuses it with Uprising, P7), and its Epic Game Mode with it since
+# stage P4e.
+# Immortality, the original game's own expansion ("Immortality는 원본 Dune:
+# Imperium의 두 번째 확장", docs/rules/immortality.md), and its Go to 11
+# variant [Immortality p. 12] are open since stage P7b. Its own promo cards
+# (Duncan, Loyal Blade; Jessica of Arrakis; Thumper) are open since stage P3
+# filled them (plan 16.1); the Leader draft deals six of its eight Leaders
+# (OQ-007), open since P2b brought them all.
+_IMPERIUM_PENDING_OPTIONS: Final[tuple[tuple[str, str], ...]] = ()
+# Uprising with Rise of Ix takes every option since stage P7f-2 (stage P7f,
+# docs/base-game-and-ix-plan.md 19.2): Bloodlines since P7c landed (its
+# Commanders on Assembly Hall and Gather Support, which the half overlay
+# covers, move to Tech Negotiation and Dreadnought [Bloodlines p. 7],
+# ``commander_setup_space_ids``); the Tech Module, whose Panopticon beside
+# Tessia Vernius's Snoopers takes its Endgame Influence Faction by Faction in
+# its owner's order (OQ-153's combination note,
+# ``rules.tech.apply_endgame_tech_effects``); the CHOAM module, which deals
+# the ten Rise of Ix contracts, two to each player, of which each keeps one
+# ("Playing the CHOAM Module with RISE OF IX" [Main p. 16],
+# ``rules.starting_contracts``); and Arrakeen Scouts, whose Uprising+Ix pool
+# trades Send for Aid (Gather Support, covered) for three Rise of Ix
+# missions ([Scouts schedule], ``content.arrakeen_scouts.missions_for``).
+# The options the original game never takes: the CHOAM module is Uprising's
+# [Main p. 16], and the user chose not to open it on the original board
+# (2026-10-30, "원판 + CHOAM은 열지 않음", docs/base-game-and-ix-plan.md 19.4
+# P7-1), an exception to "every expansion combines with either base game".
+_IMPERIUM_CLOSED_OPTIONS: Final = (
+    ("choam_module", "user decision, plan 19.4 P7-1"),
+)
+
+
+def _require_content(config: RulesetConfig) -> None:
+    """Refuse a combination whose content is not in the engine yet, rather
+    than play it without: Rise of Ix plays on the original game
+    (docs/base-game-and-ix-plan.md stage P4) and with Uprising (P7f, every
+    option since P7f-2), and the original game takes every option
+    (``_IMPERIUM_PENDING_OPTIONS`` lists the ones still to come: none since
+    Arrakeen Scouts, P8b) but Epic Game Mode without Rise of Ix; it never
+    takes the CHOAM module (``_IMPERIUM_CLOSED_OPTIONS``).
+
+    Epic Game Mode is the Rise of Ix rulebook's ("12점까지. ... Uprising 위의
+    구현(epic-game-mode.md)을 다시 쓴다" [Rise of Ix p. 10],
+    docs/rules/rise-of-ix.md 11), so the original game plays it with
+    ``rise_of_ix`` only; Uprising plays it alone by user decision (OQ-092)."""
+
+    if not content_for(config).board_spaces:
+        message = f"the {config.base_game} base game has no board in the engine yet"
+        raise NotImplementedError(message)
+    if config.base_game is BaseGame.IMPERIUM:
+        for option, reason in _IMPERIUM_CLOSED_OPTIONS:
+            if getattr(config, option):
+                message = f"the original game does not take {option} ({reason})"
+                raise NotImplementedError(message)
+        for option, stage in _IMPERIUM_PENDING_OPTIONS:
+            if getattr(config, option):
+                message = (
+                    f"the original game takes {option} from stage {stage} of "
+                    "the base game plan"
+                )
+                raise NotImplementedError(message)
+        if config.epic_game and not config.rise_of_ix:
+            message = (
+                "the original game takes epic_game only with rise_of_ix: Epic "
+                "Game Mode is Rise of Ix's [Rise of Ix p. 10]"
+            )
+            raise NotImplementedError(message)
+    if config.imperium_cards and config.base_game is not BaseGame.UPRISING:
+        # The option shuffles the original game's cards into Uprising
+        # ("COMBINING WITH BASE DUNE: IMPERIUM" [Main p. 18],
+        # docs/rules/imperium-base.md 13.4); the original game holds them
+        # already. Refused like the combinations above, so the server answers
+        # it as a bad request (``server.sessions._reset``).
+        message = (
+            "the original game does not take imperium_cards: it brings the "
+            "original cards to Uprising"
+        )
+        raise NotImplementedError(message)
+
+
+def _first_player_setup(
+    config: RulesetConfig, resolver: ChanceResolver
+) -> tuple[tuple[PlayerState, ...], int]:
+    """The seats and the First Player: by the Objectives in Uprising
+    [Main p. 5]; at random in the original game, which prints no Objective
+    ("Determine a first player randomly" [DI p. 5], docs/rules/imperium-base.md
+    4 H) -- seat 0 with ``first_player_seat_zero`` (OQ-132)."""
+
+    players = _unshuffled_players(config)
+    if config.base_game is BaseGame.UPRISING:
+        return assign_objectives(
+            players, resolver.resolve(objective_setup_decision(config)), config
+        )
+    if config.first_player_seat_zero:
+        return players, 0
+    (seat,) = resolver.resolve(first_player_decision()).values
+    return players, int(seat)
+
+
+def first_player_decision() -> ChanceDecision:
+    """The original game's random First Player [DI p. 5]."""
+
+    return ChanceDecision(
+        decision_id="setup:first_player",
+        prompt="Randomly determine the First Player",
+        options=("0", "1", "2", "3"),
+    )
+
+
+def _shuffled(
+    resolver: ChanceResolver, decision_id: str, prompt: str, cards: tuple[str, ...]
+) -> tuple[str, ...]:
+    """A shuffle of ``cards``; none while the deck is empty (the original
+    game's Imperium and Intrigue decks until stage P3)."""
+
+    if not cards:
+        return ()
+    return resolver.resolve(_shuffle_decision(decision_id, prompt, cards)).values
+
+
+def _validate_leader_selection(
+    config: RulesetConfig,
+    leader_ids: tuple[str, ...],
+) -> None:
+    if len(leader_ids) != config.players:
+        raise ValueError("setup requires one Leader for each configured player")
+    if len(leader_ids) != len(set(leader_ids)):
+        raise ValueError("selected Leaders must be unique physical cards")
+
+    available = {leader.leader_id for leader in content_for(config).leaders}
+    unavailable = tuple(
+        leader_id for leader_id in leader_ids if leader_id not in available
+    )
+    if unavailable:
+        raise ValueError(f"Leader is not available in this ruleset: {unavailable[0]}")
+
+
+def _shuffle_decision(
+    decision_id: str,
+    prompt: str,
+    cards: tuple[str, ...],
+) -> ChanceDecision:
+    return ChanceDecision(
+        decision_id=decision_id,
+        prompt=prompt,
+        options=cards,
+        count=len(cards),
+    )

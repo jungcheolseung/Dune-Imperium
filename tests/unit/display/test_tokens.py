@@ -1,0 +1,446 @@
+"""Coverage and golden-text tests for personal-card enum token maps."""
+
+import sys
+from pathlib import Path
+
+from dune_imperium.content.core.card_effects import (
+    REVEAL_CHOICE_KEYS,
+)
+from dune_imperium.content.core.cards import PersonalCardDefinition
+from dune_imperium.content.core.effects import (
+    AllConditions,
+    EffectSection,
+    FactionBond,
+    GainInfluence,
+    GainResources,
+    HasHighCouncil,
+    HasSwordmaster,
+    RevealCount,
+    RevealCountKind,
+    RevealPersuasion,
+    RevealSwords,
+    SpiesPlacedAtLeast,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES,
+    TLEILAXU_CARDS_BY_ID,
+)
+from dune_imperium.content.registry.card_abilities import (
+    ACQUISITION_ABILITIES,
+    AGENT_BOX_KEYS,
+    DISCARD_ABILITIES,
+    ICON_CONDITION_KEYS,
+    REVEAL_ACQUISITION_ABILITIES,
+    TRASH_ABILITIES,
+    TURN_START_ABILITIES,
+)
+from dune_imperium.content.registry.imperium import IMPERIUM_CARDS
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
+    STARTING_DECK,
+)
+from dune_imperium.display.tokens import (
+    ACQUISITION_EFFECT_TEXT,
+    AGENT_EFFECT_TEXT,
+    DISCARD_EFFECT_TEXT,
+    ICON_CONDITION_TEXT,
+    REVEAL_ACQUISITION_EFFECT_TEXT,
+    REVEAL_CHOICE_EFFECT_TEXT,
+    TRASH_EFFECT_TEXT,
+    TURN_START_EFFECT_TEXT,
+    reveal_effect_text,
+)
+from dune_imperium.display.tokens_ko import (
+    ACQUISITION_EFFECT_TEXT_KO,
+    AGENT_EFFECT_TEXT_KO,
+    DISCARD_EFFECT_TEXT_KO,
+    ICON_CONDITION_TEXT_KO,
+    REVEAL_ACQUISITION_EFFECT_TEXT_KO,
+    REVEAL_CHOICE_EFFECT_TEXT_KO,
+    TRASH_EFFECT_TEXT_KO,
+    TURN_START_EFFECT_TEXT_KO,
+    reveal_effect_text_ko,
+)
+from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/unit/display/test_struct_text.py's identical comment).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
+    assert_no_stray_latin,
+    assert_no_summon_for_sandworm,
+    assert_placeholders_are_terms,
+    assert_trash_and_discard_match,
+    terms_keys,
+)
+
+_ALL_REVEAL_EFFECT_ENTRIES: tuple[PersonalCardDefinition, ...] = (
+    *IMPERIUM_CARDS,
+    *STARTING_DECK,
+    # Epic Game Mode's starting card is not in the base ``STARTING_DECK``.
+    CONTROL_THE_SPICE,
+    *RESERVE_STACKS,
+    *TLEILAXU_CARDS_BY_ID.values(),
+    RECLAIMED_FORCES,
+)
+
+
+# Reveal lines as records write them (``content.uprising.reveal_abilities``).
+_OPERATIVE = RevealLine(  # Bene Gesserit Operative
+    EffectSection((RevealPersuasion(2),), SpiesPlacedAtLeast(2))
+)
+_FLAT = RevealLine(EffectSection((RevealPersuasion(1), RevealSwords(1))))
+_WATERMASTER = RevealLine(  # Northern Watermaster
+    EffectSection((GainResources(spice=2),), FactionBond(Faction.FREMEN))
+)
+_PARACOMPASS = RevealLine(  # Paracompass's second line
+    EffectSection(
+        (RevealPersuasion(1),), AllConditions((HasHighCouncil(), HasSwordmaster()))
+    )
+)
+_PER_REVEALED = RevealLine(  # Sardaukar Coordination's shape
+    EffectSection(
+        (
+            RevealPersuasion(
+                2, RevealCount(RevealCountKind.REVEALED_FACTION_CARD, Faction.FREMEN)
+            ),
+        )
+    )
+)
+_PER_IN_PLAY = RevealLine(  # Stilgar, The Devoted
+    EffectSection(
+        (
+            RevealPersuasion(
+                2, RevealCount(RevealCountKind.FACTION_CARD_IN_PLAY, Faction.FREMEN)
+            ),
+        )
+    )
+)
+_SHISHAKLI = RevealLine(
+    EffectSection(
+        (GainInfluence(factions=(Faction.FREMEN,)),), FactionBond(Faction.FREMEN)
+    )
+)
+_TRADE = RevealLine(  # Interstellar Trade
+    EffectSection(
+        (RevealPersuasion(1, RevealCount(RevealCountKind.COMPLETED_CONTRACT)),)
+    )
+)
+
+
+def test_agent_effect_text_covers_every_member() -> None:
+    assert set(AGENT_EFFECT_TEXT.keys()) == AGENT_BOX_KEYS
+
+
+def test_trash_effect_text_covers_every_card_with_the_box() -> None:
+    assert set(TRASH_EFFECT_TEXT.keys()) == set(TRASH_ABILITIES)
+
+
+def test_discard_effect_text_covers_every_card_with_the_box() -> None:
+    assert set(DISCARD_EFFECT_TEXT.keys()) == set(DISCARD_ABILITIES)
+
+
+def test_icon_condition_text_covers_every_member() -> None:
+    assert set(ICON_CONDITION_TEXT.keys()) == ICON_CONDITION_KEYS
+
+
+def test_acquisition_effect_text_covers_every_card_with_the_box() -> None:
+    assert set(ACQUISITION_EFFECT_TEXT.keys()) == set(ACQUISITION_ABILITIES)
+
+
+def test_reveal_acquisition_effect_text_covers_every_card_with_the_box() -> None:
+    assert set(REVEAL_ACQUISITION_EFFECT_TEXT.keys()) == set(
+        REVEAL_ACQUISITION_ABILITIES
+    )
+
+
+def test_reveal_choice_effect_text_covers_every_member() -> None:
+    assert set(REVEAL_CHOICE_EFFECT_TEXT.keys()) == set(REVEAL_CHOICE_KEYS)
+
+
+def test_turn_start_effect_text_covers_every_card_with_the_box() -> None:
+    assert set(TURN_START_EFFECT_TEXT.keys()) == set(TURN_START_ABILITIES)
+
+
+def test_bene_gesserit_bond_trash_to_draw_has_no_arrow() -> None:
+    # Tread in Darkness: two icons side by side with no arrow between them
+    # (OQ-058) — the draw happens even if the trash is declined, unlike
+    # Shishakli's TRASH_PERSONAL_CARD_TO_DRAW_ONE, which is a real arrow.
+    text = AGENT_EFFECT_TEXT[
+        "trash_personal_card_to_draw_one_if_bene_gesserit_bond"
+    ]
+
+    assert "→" not in text
+    assert text == "If Bene Gesserit Bond: You may trash a card, Draw 1 card"
+
+
+def test_every_agent_effect_text_is_non_empty_or_documented_sentinel() -> None:
+    # No Agent box key is currently a "no effect" sentinel;
+    # every entry must therefore carry real text. If a future member is
+    # added as a sentinel, give it "" here and update this test alongside
+    # the module docstring's sentinel note.
+    assert all(text for text in AGENT_EFFECT_TEXT.values())
+
+
+def test_reveal_effect_text_bene_gesserit_operative_golden() -> None:
+    effect = _OPERATIVE
+
+    assert (
+        reveal_effect_text(effect)
+        == "If you have placed 2 or more Spies: +2 Persuasion"
+    )
+
+
+def test_reveal_effect_text_flat_persuasion_and_strength() -> None:
+    effect = _FLAT
+
+    assert reveal_effect_text(effect) == "+1 Persuasion, +1 sword"
+
+
+def test_reveal_effect_text_faction_bond_condition() -> None:
+    # Northern Watermaster.
+    effect = _WATERMASTER
+
+    assert reveal_effect_text(effect) == "If Fremen Bond: Gain 2 spice"
+
+
+def test_reveal_effect_text_high_council_and_swordmaster() -> None:
+    # Paracompass's second Reveal effect.
+    effect = _PARACOMPASS
+
+    assert (
+        reveal_effect_text(effect)
+        == "If High Council and Swordmaster: +1 Persuasion"
+    )
+
+
+def test_reveal_effect_text_per_revealed_faction_scales_the_gain() -> None:
+    # Sardaukar Coordination's shape: a gain per revealed Faction card.
+    effect = _PER_REVEALED
+
+    assert (
+        reveal_effect_text(effect)
+        == "+2 Persuasion per revealed Fremen card"
+    )
+
+
+def test_reveal_effect_text_per_in_play_faction_names_in_play() -> None:
+    # Stilgar, The Devoted: "2 Persuasion for each Fremen card you have in
+    # play (including this one)" [Stilgar, The Devoted card].
+    effect = _PER_IN_PLAY
+
+    assert reveal_effect_text(effect) == "+2 Persuasion per Fremen card in play"
+
+
+def test_reveal_effect_text_influence_gain_names_its_faction() -> None:
+    # Shishakli.
+    effect = _SHISHAKLI
+
+    assert reveal_effect_text(effect) == "If Fremen Bond: Gain 1 Fremen Influence"
+
+
+def test_reveal_effect_text_persuasion_per_completed_contract() -> None:
+    # Interstellar Trade.
+    effect = _TRADE
+
+    assert reveal_effect_text(effect) == "+1 Persuasion per completed Contract"
+
+
+# ---------- Korean (``*_KO``) ----------
+
+
+def test_agent_effect_text_ko_covers_every_member() -> None:
+    assert set(AGENT_EFFECT_TEXT_KO.keys()) == AGENT_BOX_KEYS
+
+
+def test_trash_effect_text_ko_covers_every_card_with_the_box() -> None:
+    assert set(TRASH_EFFECT_TEXT_KO.keys()) == set(TRASH_ABILITIES)
+
+
+def test_discard_effect_text_ko_covers_every_card_with_the_box() -> None:
+    assert set(DISCARD_EFFECT_TEXT_KO.keys()) == set(DISCARD_ABILITIES)
+
+
+def test_acquisition_effect_text_ko_covers_every_card_with_the_box() -> None:
+    assert set(ACQUISITION_EFFECT_TEXT_KO.keys()) == set(ACQUISITION_ABILITIES)
+
+
+def test_reveal_acquisition_effect_text_ko_covers_every_card_with_the_box() -> None:
+    assert set(REVEAL_ACQUISITION_EFFECT_TEXT_KO.keys()) == set(
+        REVEAL_ACQUISITION_ABILITIES
+    )
+
+
+def test_reveal_choice_effect_text_ko_covers_every_member() -> None:
+    assert set(REVEAL_CHOICE_EFFECT_TEXT_KO.keys()) == set(REVEAL_CHOICE_KEYS)
+
+
+def test_icon_condition_text_ko_covers_every_member() -> None:
+    assert set(ICON_CONDITION_TEXT_KO.keys()) == ICON_CONDITION_KEYS
+
+
+def test_turn_start_effect_text_ko_covers_every_card_with_the_box() -> None:
+    assert set(TURN_START_EFFECT_TEXT_KO.keys()) == set(TURN_START_ABILITIES)
+
+
+def test_every_agent_effect_text_ko_is_non_empty() -> None:
+    assert all(text for text in AGENT_EFFECT_TEXT_KO.values())
+
+
+def _all_ko_texts() -> list[tuple[str, str, str]]:
+    """(table name, English text, Korean text) for every table entry.
+
+    Built as separate concretely-typed comprehensions, one per table,
+    rather than a single loop over a list of (english dict, korean dict)
+    pairs: each table's ``Mapping`` has its own ``Enum`` key type, so a
+    shared list of them would only type-check as ``object`` under mypy.
+    """
+
+    result: list[tuple[str, str, str]] = []
+    result += [
+        ("AGENT", AGENT_EFFECT_TEXT[key], AGENT_EFFECT_TEXT_KO[key])
+        for key in AGENT_EFFECT_TEXT
+    ]
+    result += [
+        ("TRASH", TRASH_EFFECT_TEXT[key], TRASH_EFFECT_TEXT_KO[key])
+        for key in TRASH_EFFECT_TEXT
+    ]
+    result += [
+        ("DISCARD", DISCARD_EFFECT_TEXT[key], DISCARD_EFFECT_TEXT_KO[key])
+        for key in DISCARD_EFFECT_TEXT
+    ]
+    result += [
+        ("ACQUISITION", ACQUISITION_EFFECT_TEXT[key], ACQUISITION_EFFECT_TEXT_KO[key])
+        for key in ACQUISITION_EFFECT_TEXT
+    ]
+    result += [
+        (
+            "REVEAL_ACQUISITION",
+            REVEAL_ACQUISITION_EFFECT_TEXT[key],
+            REVEAL_ACQUISITION_EFFECT_TEXT_KO[key],
+        )
+        for key in REVEAL_ACQUISITION_EFFECT_TEXT
+    ]
+    result += [
+        (
+            "REVEAL_CHOICE",
+            REVEAL_CHOICE_EFFECT_TEXT[key],
+            REVEAL_CHOICE_EFFECT_TEXT_KO[key],
+        )
+        for key in REVEAL_CHOICE_EFFECT_TEXT
+    ]
+    result += [
+        ("ICON_CONDITION", ICON_CONDITION_TEXT[key], ICON_CONDITION_TEXT_KO[key])
+        for key in ICON_CONDITION_TEXT
+    ]
+    result += [
+        ("TURN_START", TURN_START_EFFECT_TEXT[key], TURN_START_EFFECT_TEXT_KO[key])
+        for key in TURN_START_EFFECT_TEXT
+    ]
+    return result
+
+
+def test_every_table_ko_text_uses_only_known_terms() -> None:
+    terms = terms_keys()
+    for _name, _en, ko in _all_ko_texts():
+        assert_placeholders_are_terms(ko, terms)
+
+
+def test_every_table_ko_text_has_no_stray_latin() -> None:
+    for _name, _en, ko in _all_ko_texts():
+        assert_no_stray_latin(ko)
+
+
+def test_every_table_ko_text_matches_english_trash_and_discard() -> None:
+    for _name, en, ko in _all_ko_texts():
+        assert_trash_and_discard_match(en, ko)
+
+
+def test_every_table_ko_text_never_summons_a_sandworm() -> None:
+    for _name, en, ko in _all_ko_texts():
+        assert_no_summon_for_sandworm(en, ko)
+
+
+def test_every_real_reveal_effect_ko_text_is_valid() -> None:
+    """The composed ``reveal_effect_text_ko`` renderer over every reveal
+    effect actually printed on a card (not only the golden unit-test
+    cases below), the same "no invalid placeholder / no stray Latin /
+    trash matches discard" guard the table tests above run."""
+
+    terms = terms_keys()
+    checked = 0
+    for entry in _ALL_REVEAL_EFFECT_ENTRIES:
+        for line in reveal_lines(entry):
+            checked += 1
+            en = reveal_effect_text(line)
+            ko = reveal_effect_text_ko(line)
+            assert isinstance(ko, str) and ko.strip()
+            assert_placeholders_are_terms(ko, terms)
+            assert_no_stray_latin(ko)
+            assert_trash_and_discard_match(en, ko)
+            assert_no_summon_for_sandworm(en, ko)
+    assert checked > 0
+
+
+def test_reveal_effect_text_ko_bene_gesserit_operative_golden() -> None:
+    effect = _OPERATIVE
+
+    assert (
+        reveal_effect_text_ko(effect)
+        == "{spy}를 2 이상 배치했다면: +{persuasion:2}"
+    )
+
+
+def test_reveal_effect_text_ko_flat_persuasion_and_strength() -> None:
+    effect = _FLAT
+
+    assert reveal_effect_text_ko(effect) == "+{persuasion:1}, +{sword:1}"
+
+
+def test_reveal_effect_text_ko_faction_bond_condition() -> None:
+    effect = _WATERMASTER
+
+    assert reveal_effect_text_ko(effect) == "프레멘의 유대감이면: {spice:2}"
+
+
+def test_reveal_effect_text_ko_high_council_and_swordmaster() -> None:
+    # Paracompass's second Reveal effect.
+    effect = _PARACOMPASS
+
+    assert reveal_effect_text_ko(effect) == (
+        "원로회 자리와 소드마스터를 보유했다면: +{persuasion:1}"
+    )
+
+
+def test_reveal_effect_text_ko_per_revealed_faction_scales_the_gain() -> None:
+    effect = _PER_REVEALED
+
+    assert reveal_effect_text_ko(effect) == (
+        "+{persuasion:2} (공개한 프레멘 카드마다)"
+    )
+
+
+def test_reveal_effect_text_ko_per_in_play_faction_names_in_play() -> None:
+    # Korean twin of ``test_reveal_effect_text_per_in_play_faction_names_in_play``
+    # (Stilgar, The Devoted).
+    effect = _PER_IN_PLAY
+
+    assert reveal_effect_text_ko(effect) == (
+        "+{persuasion:2} ({in_play}에 있는 프레멘 카드마다)"
+    )
+
+
+def test_reveal_effect_text_ko_influence_gain_names_its_faction() -> None:
+    effect = _SHISHAKLI
+
+    assert reveal_effect_text_ko(effect) == (
+        "프레멘의 유대감이면: {influence_fremen:1}"
+    )
+
+
+def test_reveal_effect_text_ko_persuasion_per_completed_contract() -> None:
+    effect = _TRADE
+
+    assert reveal_effect_text_ko(effect) == "+{persuasion:1} (완수한 {contract}마다)"

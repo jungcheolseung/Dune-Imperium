@@ -1,0 +1,276 @@
+"""Ruleset configuration for supported games."""
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import ClassVar, Final
+
+
+class BaseGame(StrEnum):
+    """The base game a ruleset is built on (docs/base-game-and-ix-plan.md 4.2).
+
+    ``UPRISING`` is Dune: Imperium - Uprising; ``IMPERIUM`` the original Dune:
+    Imperium (2020), whose boards, cards and Leaders arrive in stages P2-P4
+    of that plan.
+    """
+
+    UPRISING = "uprising"
+    IMPERIUM = "imperium"
+
+
+_IDENTIFIER_PREFIXES: Final = {
+    BaseGame.UPRISING: "uprising-4p-",
+    BaseGame.IMPERIUM: "imperium-4p-",
+}
+# Option tokens of an identifier, in the order they are written.
+_IDENTIFIER_TOKENS: Final = (
+    ("imperium-cards", "imperium_cards"),
+    ("promo", "promo_cards"),
+    ("ix", "rise_of_ix"),
+    ("bloodlines", "bloodlines"),
+    ("tech", "tech_module"),
+    ("ixtech", "ix_tech_tiles"),
+    ("ixleaders", "ix_leaders"),
+    ("immortality", "immortality"),
+    ("go11", "go_to_11"),
+    ("epic", "epic_game"),
+    ("scouts", "arrakeen_scouts"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RulesetConfig:
+    """Immutable selection of rules used to create a game.
+
+    The first implementation target is specifically the four-player Uprising
+    ruleset.  Keeping this restriction explicit prevents unsupported player
+    counts from silently entering engine state. ``base_game`` selects the
+    original Dune: Imperium instead (docs/base-game-and-ix-plan.md). Every
+    expansion combines with either base game and with the others (user
+    decision 2026-10-27: "모든 확장은 서로 서로 다양한 조합으로 결합될 수
+    있어야해. 다만 base나 uprising 둘 중 하나는 꼭 있어야 하고"); the
+    engine refuses to set up a combination whose content is not in it yet
+    (``rules.setup``).
+    """
+
+    players: int = 4
+    base_game: BaseGame = BaseGame.UPRISING
+    choam_module: bool = False
+    # OQ-007 project convention (not an official rule): deal six random
+    # Leaders face up after First Player is known, then pick in reverse
+    # round-1 turn order. Off by default so fixed-Leader test and sweep
+    # setups stay reproducible.
+    leader_draft: bool = False
+    # Shuffle the promo cards into their decks: the three Uprising promos
+    # (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit) into the Imperium
+    # deck, the Bloodlines promo Ruthless Leadership with ``bloodlines``, and
+    # the Immortality promo Piter, Genius Advisor into the Tleilaxu deck with
+    # ``immortality``. They are not part of the retail decks, so they stay
+    # out unless a table opts in.
+    promo_cards: bool = False
+    # The Bloodlines expansion (``docs/rules/bloodlines.md``): Sardaukar
+    # Commanders and their Skills, the new Imperium/Intrigue/Conflict cards
+    # and Leaders. Off by default so the retail Uprising game stays the
+    # baseline.
+    bloodlines: bool = False
+    # The Tech Module mini-expansion packaged with Bloodlines (Ixian Embassy
+    # board, Tech tiles, its two Imperium and two Intrigue cards, Kota Odax
+    # of Ix) [Bloodlines pp. 6-7]. Requires ``bloodlines``.
+    tech_module: bool = False
+    # The Immortality expansion (``docs/rules/immortality.md``): the Bene
+    # Tleilax board (research and Tleilaxu tracks, specimens), the Tleilaxu
+    # Row, Graft, the revised Research Station, Experimentation starting
+    # cards, Family Atomics, and its Imperium/Intrigue cards. Off by default;
+    # independent of ``bloodlines`` (the two may be combined) [Main p. 18].
+    immortality: bool = False
+    # The Immortality rulebook's "Go to 11" variant [Immortality p. 12]: a
+    # four-player table starts every Score marker at 0 instead of 1
+    # [Main p. 5] and still plays to 10 [Main p. 15]. Offered only with
+    # ``immortality`` (user decision, OQ-091). Off by default.
+    go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode [Rise of Ix p. 10]
+    # (``docs/rules/epic-game-mode.md``): play to 12, a Conflict deck of
+    # five II over five III (Economic Supremacy the fifth III [Main p. 18]),
+    # Control the Spice for one Dune, the Desert Planet (into the discard
+    # pile with ``immortality`` [Immortality p. 12]), one Intrigue card and
+    # five garrison troops. Needs no other option: the rest of Rise of Ix is
+    # not implemented (user decision, OQ-092). Off by default.
+    epic_game: bool = False
+    # The Arrakeen Scouts module of the Dire Wolf Game Room companion app
+    # (docs/rules/arrakeen-scouts.md): subcommittees, missions, events,
+    # auctions and sales revealed round by round. Off by default; combines
+    # with every other option.
+    arrakeen_scouts: bool = False
+    # OQ-132 project convention (not an official rule; user decision
+    # 2026-10-25): seat 0 ("Player 1") takes the Objective with the First
+    # Player marker and so starts round 1; the other three Objectives are
+    # dealt at random to seats 1-3. The rulebook deals all four at random
+    # and whoever gets the marker starts [Main p. 5]; with the seats
+    # themselves assigned at random the odds are the same. Off by default
+    # (the engine, CLIs and training keep the printed deal).
+    first_player_seat_zero: bool = False
+    # The Rise of Ix expansion (docs/rules/rise-of-ix.md): its board overlay,
+    # Tech tiles, Dreadnoughts, Shipping track and cards (stage P4 on the
+    # original game; with Uprising, [Main p. 18], stage P7). Off by default.
+    rise_of_ix: bool = False
+    # Uprising with the original Dune: Imperium's cards and Leaders
+    # (docs/rules/imperium-base.md 13.4, OQ-155): "You may shuffle all other
+    # Intrigue and Imperium cards with UPRISING if you wish" [Main p. 18] --
+    # every original Imperium and Intrigue card but Calculated Hire
+    # ("Uprising에는 Mentat가 없으므로 Calculated Hire Intrigue를 뺀다"), and
+    # the original game's eight Leaders (user decision 2026-10-30, plan 19.4
+    # P7-2 (가)); the original promos with ``promo_cards``. Uprising's
+    # Reserve, starting decks, board and Conflict cards stay (P7-3 (가)).
+    # Only an Uprising game takes it: setup refuses it on the original game,
+    # whose cards these are. Off by default.
+    imperium_cards: bool = False
+    # Part of Rise of Ix beside the Tech Module, instead of all of it
+    # (docs/base-game-and-ix-plan.md 20.5 P8-1, user ruling 2026-11-01).
+    # ``ix_tech_tiles``: "Rise of Ix의 Tech 타일만 쓸 때(Ix의 다른 구성물 없이):
+    # Detonation Devices와 Troop Transports를 빼고 나머지 16장을 Bloodlines
+    # 타일과 섞는다" [Bloodlines p. 7] (docs/rules/rise-of-ix.md 10a) -- on the
+    # Ixian Embassy, with no Ix board, Ix card or other Ix component.
+    # ``ix_leaders`` adds Rise of Ix's Leaders to those tiles, the Game Room
+    # app's "I'm using only the Leaders and Tech tiles from Rise of Ix."
+    # (``UsingIxLeadersAndTechOnly``), a project option: the same 16 tiles,
+    # and the four Leaders who need no Ix board (OQ-165, user 2026-11-01).
+    # Both need the Tech Module and exclude ``rise_of_ix`` (all of Rise of
+    # Ix); with Arrakeen Scouts only the Leaders-and-Tech mode is offered
+    # (user 2026-11-01). Off by default.
+    ix_tech_tiles: bool = False
+    ix_leaders: bool = False
+
+    # Options added after saves and records already held state hashes: the
+    # canonical state hash leaves each one out while it holds its default,
+    # so every game without it keeps the hash it was saved with
+    # (core.state.canonical_state_hash).
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset(
+        {
+            "first_player_seat_zero",
+            "base_game",
+            "rise_of_ix",
+            "imperium_cards",
+            "ix_tech_tiles",
+            "ix_leaders",
+        }
+    )
+
+    def __post_init__(self) -> None:
+        if self.players != 4:
+            message = "only four-player games are currently supported"
+            raise ValueError(message)
+        base_game = BaseGame(self.base_game)
+        if base_game is not self.base_game:
+            # A plain string names its base game too (a save or a CLI).
+            object.__setattr__(self, "base_game", base_game)
+        if self.tech_module and not self.bloodlines:
+            message = "the Tech Module requires the Bloodlines expansion"
+            raise ValueError(message)
+        if self.go_to_11 and not self.immortality:
+            message = "the Go to 11 variant requires the Immortality expansion"
+            raise ValueError(message)
+        if self.ix_tech_tiles and not self.tech_module:
+            message = "Rise of Ix's Tech tiles alone require the Tech Module"
+            raise ValueError(message)
+        if self.ix_tech_tiles and self.rise_of_ix:
+            message = "rise_of_ix is all of Rise of Ix; ix_tech_tiles is part of it"
+            raise ValueError(message)
+        if self.ix_leaders and not self.ix_tech_tiles:
+            message = "Rise of Ix's Leaders join only its Tech tiles (ix_tech_tiles)"
+            raise ValueError(message)
+        if self.ix_tech_tiles and not self.ix_leaders and self.arrakeen_scouts:
+            # User ruling 2026-11-01: with Arrakeen Scouts a game takes all of
+            # Rise of Ix or its Leaders and Tech, never its Tech tiles alone.
+            message = (
+                "with Arrakeen Scouts, Rise of Ix's Tech tiles come with its Leaders"
+            )
+            raise ValueError(message)
+
+    @property
+    def ix_tech_in_play(self) -> bool:
+        """Whether Rise of Ix's Tech tiles are in the game: all of Rise of Ix,
+        or its tiles beside the Tech Module (``ix_tech_tiles``)."""
+
+        return self.rise_of_ix or self.ix_tech_tiles
+
+    @property
+    def ix_leaders_in_play(self) -> bool:
+        """Whether Rise of Ix's Leaders are offered: all of Rise of Ix, or
+        its Leaders and Tech beside the Tech Module (``ix_leaders``)."""
+
+        return self.rise_of_ix or self.ix_leaders
+
+    @property
+    def starting_victory_points(self) -> int:
+        """Return the Score track space every player starts on.
+
+        Four-player setup puts the Score marker on 1 [Main p. 5]; the Go to
+        11 variant starts it on 0 [Immortality p. 12].
+        """
+
+        return 0 if self.go_to_11 else 1
+
+    @property
+    def endgame_victory_points(self) -> int:
+        """Return the score that opens the Endgame at a round's end.
+
+        Ten [Main p. 15]; twelve in Epic Game Mode [Rise of Ix p. 10]. With
+        ``go_to_11`` as well, the game runs from 0 to 12 (OQ-093).
+        """
+
+        return 12 if self.epic_game else 10
+
+    @property
+    def starting_garrison_troops(self) -> int:
+        """Return the troops each player starts with in their garrison.
+
+        Three [Main p. 5]; five in Epic Game Mode [Rise of Ix p. 10]. The rest
+        of the twelve start in the supply.
+        """
+
+        return 5 if self.epic_game else 3
+
+    @property
+    def identifier(self) -> str:
+        """Return a stable, human-readable ruleset identifier."""
+
+        module = "choam" if self.choam_module else "base"
+        options = "".join(
+            f"+{token}" for token, option in _IDENTIFIER_TOKENS if getattr(self, option)
+        )
+        # Like the Leader draft, ``first_player_seat_zero`` changes only who
+        # gets which Objective, not the cards or the action catalog, so it
+        # is left out: a trained network answers for either deal. An Uprising
+        # identifier is unchanged by the base-game axis (``uprising-4p-``).
+        return f"{_IDENTIFIER_PREFIXES[self.base_game]}{module}{options}"
+
+    @classmethod
+    def from_identifier(cls, identifier: str) -> RulesetConfig:
+        """Rebuild the configuration behind an ``identifier`` string.
+
+        Checkpoints and reports carry only the identifier; the inverse lets
+        them rebuild their ruleset (and so their action catalog) later.
+        ``leader_draft`` and ``first_player_seat_zero`` are not part of the
+        identifier and stay off.
+        """
+
+        games = [
+            (base_game, prefix)
+            for base_game, prefix in _IDENTIFIER_PREFIXES.items()
+            if identifier.startswith(prefix)
+        ]
+        if not games:
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        ((base_game, prefix),) = games
+        module, *options = identifier.removeprefix(prefix).split("+")
+        if module not in ("base", "choam"):
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        order = tuple(token for token, _ in _IDENTIFIER_TOKENS)
+        if len(set(options)) != len(options) or any(o not in order for o in options):
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        if options != [o for o in order if o in options]:
+            raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        return cls(
+            base_game=base_game,
+            choam_module=module == "choam",
+            **{option: token in options for token, option in _IDENTIFIER_TOKENS},
+        )

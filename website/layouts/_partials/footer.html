@@ -1,0 +1,12 @@
+<footer class="site-footer">
+  <div class="wrap footer-top">
+    <div><a class="footer-brand" href="{{ .Site.Home.RelPermalink }}">Dune: Imperium AI</a><p>{{ i18n "footerText" }}</p></div>
+    <nav aria-label="{{ i18n "footerMenu" }}">
+      <a href="{{ (site.GetPage "/about/support").RelPermalink }}">{{ i18n "support" }}</a>
+      <a href="{{ (site.GetPage "/about/roadmap").RelPermalink }}">{{ i18n "roadmap" }}</a>
+      <a href="{{ .Site.Params.repository }}">GitHub ↗</a>
+      {{ with .Site.Home.OutputFormats.Get "RSS" }}<a href="{{ .RelPermalink }}">RSS</a>{{ end }}
+    </nav>
+  </div>
+  <div class="wrap footer-bottom"><p>{{ i18n "legal" }}</p></div>
+</footer>

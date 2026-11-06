@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Sandworm</title>
+  <rect width="64" height="64" rx="14" fill="#173e3c"/>
+  <path d="M10 55c0-12 8-22 20-30l15 10c-11 5-16 12-11 20Z" fill="#dfbd83"/>
+  <g fill="none" stroke="#173e3c" stroke-width="2.2"><path d="m14 44 17 7m-19-1 21 6m-14-18 15 7"/></g>
+  <ellipse cx="35" cy="25" rx="17" ry="19" transform="rotate(25 35 25)" fill="#dfbd83"/>
+  <ellipse cx="35" cy="25" rx="12" ry="14" transform="rotate(25 35 25)" fill="#173e3c"/>
+  <g fill="#dfbd83">
+    <path d="m31 11 2 7 3-7m6 3-3 6 6-2m4 6-7 1 6 4m-5 7-2-7-3 8m-8 2 3-7-7 3m-5-8 7 2-5-6m3-8 2 7 4-5"/>
+  </g>
+</svg>

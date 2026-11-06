@@ -1,0 +1,375 @@
+"""Acquiring from the Tleilaxu Row [Immortality pp. 8-9].
+
+"You can spend your specimens in the Axolotl tanks to acquire a Tleilaxu
+card in the Tleilaxu Row (paying the specimen cost shown in the top right
+corner)" during the Reveal turn; the card goes to the discard pile, or, once
+the first genetic marker is reached, may go on top of the deck [Immortality
+pp. 6, 8]. "The Tleilaxu Row must always have two cards plus Reclaimed
+Forces. Whenever it does not, replace missing cards from the top of the
+Tleilaxu deck. The Reclaimed Forces card is never removed ... When a player
+'acquires' it, they choose one of its effects (to recruit two troops, or
+advance their Tleilaxu token one space on the Tleilaxu track), but leave the
+card in place" [Immortality p. 9].
+"""
+
+from copy import replace
+
+from dune_imperium.content.immortality.board import (
+    TLEILAXU_ROW_SIZE,
+    genetic_markers_reached,
+)
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES,
+    reclaimed_forces_reward,
+    tleilaxu_card_for_instance,
+)
+from dune_imperium.content.immortality.tleilaxu import (
+    RECLAIMED_FORCES_CHOICES as RECLAIMED_FORCES_CHOICES,
+)
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import (
+    AcquireBlock,
+    apply_acquisition_track_effects,
+    deck_top_offered,
+    resolve_acquisition_bonus,
+    with_pending_draw,
+)
+from dune_imperium.rules.deck_top import place_on_deck_top
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.frames import (
+    FrameKind,
+    frame_context,
+    owned_top_frame,
+    replace_player,
+    with_context,
+)
+from dune_imperium.rules.immortality import advance_tleilaxu, tleilaxu_track_finished
+from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
+from dune_imperium.rules.scouts_missions import (
+    RECLAIMED_FORCES as BACK_ROOM_DEAL_GOODS,
+)
+from dune_imperium.rules.scouts_missions import claim_goods_at
+from dune_imperium.rules.specimens import spend_specimens
+
+
+def refill_tleilaxu_row(state: GameState) -> GameState:
+    """Fill the Row back up to two cards from the top of the Tleilaxu deck."""
+
+    row = list(state.tleilaxu_row)
+    deck = list(state.tleilaxu_deck)
+    while len(row) < TLEILAXU_ROW_SIZE and deck:
+        row.append(deck.pop(0))
+    return replace(state, tleilaxu_row=tuple(row), tleilaxu_deck=tuple(deck))
+
+
+def legal_tleilaxu_acquisitions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the Row cards and Reclaimed Forces the revealer can pay for."""
+
+    if not tleilaxu_shop_is_open(state, player):
+        return ()
+    owner = state.players[player]
+    deck_top_allowed = deck_top_is_allowed(state, player)
+    actions: list[DomainAction] = []
+    for instance_id in state.tleilaxu_row:
+        if tleilaxu_acquisition_block(owner, instance_id) is not None:
+            continue
+        actions.append(
+            DomainAction(
+                action_id="acquire_tleilaxu",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+        )
+        if deck_top_allowed:
+            actions.append(
+                DomainAction(
+                    action_id="acquire_tleilaxu",
+                    actor=player,
+                    arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+                )
+            )
+    actions.extend(
+        DomainAction(
+            action_id="acquire_reclaimed_forces",
+            actor=player,
+            arguments=(("choice", choice),),
+        )
+        for choice in RECLAIMED_FORCES_CHOICES
+        if reclaimed_forces_block(owner, choice) is None
+    )
+    return tuple(actions)
+
+
+def deck_top_is_allowed(state: GameState, player: int) -> bool:
+    """Whether a Tleilaxu card ``player`` acquires may go on top of the deck:
+    once the first genetic marker is reached [Immortality pp. 6, 8], or while
+    Recruitment Mission is effective in their Reveal turn (``deck_top_offered``,
+    [FAQ p. 3]), which covers every card they acquire there."""
+
+    space = state.players[player].research_space
+    return (
+        bool(space) and genetic_markers_reached(space) >= 1
+    ) or deck_top_offered(state, player)
+
+
+def tleilaxu_shop_is_open(state: GameState, player: int) -> bool:
+    """Whether ``player`` is in their own Reveal with the Tleilaxu Row in play."""
+
+    return (
+        state.config.immortality
+        and owned_top_frame(state, FrameKind.REVEAL, player) is not None
+    )
+
+
+def tleilaxu_acquisition_block(
+    owner: PlayerState, instance_id: str
+) -> AcquireBlock | None:
+    """Why ``owner`` cannot acquire a Tleilaxu Row card now: its specimen cost.
+
+    ``legal_tleilaxu_acquisitions`` offers exactly the cards without one, and
+    the page's greyed-out rows read the same block (``display.unavailable``).
+    """
+
+    if tleilaxu_card_for_instance(instance_id).specimen_cost > owner.specimens:
+        return AcquireBlock.SPECIMENS
+    return None
+
+
+def reclaimed_forces_block(
+    owner: PlayerState, choice: str | None = None
+) -> AcquireBlock | None:
+    """Why ``owner`` cannot "acquire" Reclaimed Forces now [Immortality p. 9].
+
+    With ``choice``, why that effect is not offered: a specimen cost that
+    buys nothing is not offered (OQ-071, user decision 2026-09-29), so the
+    Tleilaxu advance is withheld once the token is on the track's last
+    space (``tleilaxu_track_finished``, OQ-048). The troop choice always
+    recruits: "Whenever you spend a specimen, return it to your supply"
+    [Immortality p. 8], so the three spent specimens are in the supply
+    before the two troops are recruited, and OQ-071's "supply에 troop이
+    없고 되돌릴 specimen도 없는 recruit" cannot arise. The card itself is
+    therefore never blocked by its rewards, only by its cost.
+    """
+
+    if owner.specimens < RECLAIMED_FORCES.specimen_cost:
+        return AcquireBlock.SPECIMENS
+    if choice == "tleilaxu" and tleilaxu_track_finished(owner):
+        return AcquireBlock.TLEILAXU_TRACK_END
+    return None
+
+
+def apply_tleilaxu_acquisition(state: GameState, action: DomainAction) -> RuleResult:
+    """Pay the specimens, take the card, refill the Row, pay the acquire box."""
+
+    if action not in legal_tleilaxu_acquisitions(state, action.actor):
+        raise ValueError("action is not a legal Tleilaxu Row acquisition")
+    player = action.actor
+    arguments = dict(action.arguments)
+    source = f"round:{state.round_number}:player:{player}:acquire_tleilaxu"
+    if action.action_id == "acquire_reclaimed_forces":
+        return acquire_reclaimed_forces(
+            state, player, str(arguments["choice"]), source=source
+        )
+    return acquire_tleilaxu_card(
+        state,
+        player,
+        str(arguments["instance_id"]),
+        to_deck_top=arguments.get("to_deck_top") is True,
+        source=source,
+    )
+
+
+def acquire_tleilaxu_card(
+    state: GameState,
+    player: int,
+    instance_id: str,
+    *,
+    to_deck_top: bool,
+    source: str,
+) -> RuleResult:
+    """Take a Row card for its specimens (also for Harvest Cells' offer)."""
+
+    if instance_id not in state.tleilaxu_row:
+        raise ValueError("the card is not in the Tleilaxu Row")
+    definition = tleilaxu_card_for_instance(instance_id)
+    if to_deck_top and not deck_top_is_allowed(state, player):
+        raise ValueError(
+            "the deck top needs the first genetic marker or Recruitment Mission"
+        )
+    owner = spend_specimens(state.players[player], definition.specimen_cost)
+    # "you may put Tleilaxu cards you acquire on top of your deck"
+    # [Immortality p. 6]; otherwise the discard pile [Immortality p. 8]. A
+    # card put on top is known to every seat until it is drawn or the deck
+    # is shuffled (OQ-145, ``rules.deck_top``).
+    next_owner = (
+        place_on_deck_top(owner, instance_id)
+        if to_deck_top
+        else replace(owner, discard_pile=(*owner.discard_pile, instance_id))
+    )
+    bonus = resolve_acquisition_bonus(state, player, instance_id, next_owner)
+    next_state = refill_tleilaxu_row(
+        replace(
+            state,
+            players=replace_player(state.players, bonus.owner),
+            tleilaxu_row=tuple(
+                card_id for card_id in state.tleilaxu_row if card_id != instance_id
+            ),
+            intrigue_deck=bonus.intrigue_deck,
+            pending_intrigue_draws=with_pending_draw(state, bonus.pending_draw),
+        )
+    )
+    if bonus.places_spy or bonus.takes_contract or bonus.recruited:
+        # No shipped Tleilaxu card recruits a troop in its acquire box, but a
+        # future one would need this counted toward the owner's turn like
+        # Arrakis Revolt's and Occupation's [Main p. 10] [FAQ p. 4]; fail
+        # loudly rather than let the troop reach the garrison uncounted.
+        raise NotImplementedError(
+            "Tleilaxu acquire boxes never place Spies, take Contracts or "
+            "recruit troops"
+        )
+    tracked = apply_acquisition_track_effects(
+        next_state, player, definition, source=f"{source}:{instance_id}"
+    )
+    # "In many ways, Tleilaxu cards are similar to Imperium cards. You acquire
+    # them during your Reveal turn" [Immortality p. 8]: acquiring one is
+    # acquiring a card, so a face-up Call to Arms ("During your Reveal turn
+    # this round, whenever you acquire a card:" [Call to Arms card]) fires,
+    # after the card's own acquire box (OQ-012), also after a frame that box
+    # opened, once answered (user ruling 2026-10-04). It checks the owner's
+    # Reveal itself, so Harvest Cells' offer at the end of a Conflict does
+    # not.
+    fired = fire_reveal_acquisition_intrigue(
+        tracked.state,
+        player,
+        source=f"{source}:{instance_id}",
+        started=state,
+    )
+    return RuleResult(
+        state=fired.state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:{instance_id}",
+                kind="tleilaxu_card_acquired",
+                # The identity was public in the Row. The instance is named
+                # only for the discard pile: the payload is kept as it was
+                # before OQ-145 made a deck-top card public too
+                # (``rules.deck_top``), so old saves replay their events.
+                payload=(
+                    ("card_id", definition.card.card_id),
+                    *(() if to_deck_top else (("instance_id", instance_id),)),
+                    ("player", player),
+                    ("specimens", definition.specimen_cost),
+                    ("to_deck_top", to_deck_top),
+                ),
+            ),
+            *bonus.events,
+            *tracked.events,
+            *fired.events,
+        ),
+    )
+
+
+def acquire_reclaimed_forces(
+    state: GameState, player: int, choice: str, *, source: str
+) -> RuleResult:
+    """"Acquire" Reclaimed Forces for its specimens: one of its effects, the
+    card left in the Row [Immortality p. 9] (also for Harvest Cells' offer).
+
+    "When a player 'acquires' it, they choose one of its effects (to recruit
+    two troops, or advance their Tleilaxu token one space on the Tleilaxu
+    track), but leave the card in place." [Immortality p. 9]. Harvest
+    Cells' "You may also acquire a Tleilaxu card (paying its normal cost)"
+    [Harvest Cells card] may take it too (user ruling 2026-10-06, OQ-066's
+    "acquiring it is acquiring a card"); the caller offers ``choice`` only
+    without a ``reclaimed_forces_block``. The troops count toward the
+    owner's Reveal only when acquired in it.
+    """
+
+    # Arrakeen Scouts' Back Room Deal: the Solari on the card go to the next
+    # seat to acquire it [Scouts mission: Back Room Deal].
+    deal = claim_goods_at(
+        state, player, BACK_ROOM_DEAL_GOODS, source=f"{source}:reclaimed_forces"
+    )
+    state = deal.state
+    owner = spend_specimens(state.players[player], RECLAIMED_FORCES.specimen_cost)
+    event = GameEvent(
+        event_id=f"{source}:reclaimed_forces",
+        kind="reclaimed_forces_acquired",
+        payload=(
+            ("choice", choice),
+            ("player", player),
+            ("specimens", RECLAIMED_FORCES.specimen_cost),
+        ),
+    )
+    # "In many ways, Tleilaxu cards are similar to Imperium cards. You
+    # acquire them during your Reveal turn" [Immortality p. 8], and
+    # Reclaimed Forces is acquired the same way, just left in place instead
+    # of going to the discard pile [Immortality p. 9] (user ruling,
+    # 2026-09-26, OQ-066): a face-up Call to Arms ("During your Reveal turn
+    # this round, whenever you acquire a card:" [Call to Arms card]) fires
+    # after the chosen effect (OQ-012), also after a frame it opened, once
+    # answered (user ruling 2026-10-04); neither choice opens one today.
+    if choice == "tleilaxu":
+        paid = replace(state, players=replace_player(state.players, owner))
+        advanced = advance_tleilaxu(
+            paid, player, reclaimed_forces_reward("tleilaxu").count
+        )
+        fired = fire_reveal_acquisition_intrigue(
+            advanced.state,
+            player,
+            source=f"{source}:reclaimed_forces",
+            started=state,
+        )
+        return RuleResult(
+            state=fired.state,
+            events=(event, *deal.events, *advanced.events, *fired.events),
+        )
+    troops = reclaimed_forces_reward("troops").count
+    recruited_owner, recruited = recruit_troops(owner, troops)
+    next_state = replace(state, players=replace_player(state.players, recruited_owner))
+    if tleilaxu_shop_is_open(next_state, player):
+        # A Reveal-turn recruit may deploy with a Combat icon [Bloodlines
+        # p. 5]; Harvest Cells' offer after a Conflict recruits to the
+        # garrison and counts toward no turn.
+        next_state = _record_reveal_recruits(next_state, recruited)
+    fired = fire_reveal_acquisition_intrigue(
+        next_state,
+        player,
+        source=f"{source}:reclaimed_forces",
+        started=state,
+    )
+    return RuleResult(
+        state=fired.state,
+        events=(
+            event,
+            *deal.events,
+            *recruit_shortfall_events(
+                f"{source}:reclaimed_forces",
+                player,
+                troops,
+                recruited,
+            ),
+            *fired.events,
+        ),
+    )
+
+
+def _record_reveal_recruits(state: GameState, recruited: int) -> GameState:
+    """Count Reveal-turn recruits toward a Combat-icon deployment [Bloodlines p. 5]."""
+
+    frame = state.decision_stack[-1]
+    context = frame_context(frame)
+    previous = context.get("reveal_troops_recruited", 0)
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Reveal frame has an invalid recruit count")
+    context["reveal_troops_recruited"] = previous + recruited
+    return replace(
+        state, decision_stack=(*state.decision_stack[:-1], with_context(frame, context))
+    )

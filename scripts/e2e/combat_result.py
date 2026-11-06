@@ -1,0 +1,598 @@
+"""E2E of the Combat result line (UI ITEM 5, 2026-09-24).
+
+Before this, nothing on screen said who won a Conflict or what the viewing
+seat got: the last Combat Intrigue pass jumped straight to the next
+decision (the next round's turn choice, or -- for the winner -- a reward
+choice whose prompt never says it is a reward). The reward is public in the log
+(combat_reward_gained begins each recipient's reward, and since stage B2 each
+icon it resolves leaves combat_reward_icon_resolved and, for resources, a
+resources_gained; conflict_won); render.js's combatResultLine
+now reads it and shows one muted line above the banner's prompt from the
+moment a Conflict resolves until the viewing seat's own next turn-taking
+step (`place_agent` / `reveal_turn` / `play_turn_start_card`; an Agent turn's
+card pick, `choose_agent_card`, does not end it, only the space pick does).
+
+This drives a human seat 0 (three heuristic seats) to the first Combat
+resolution in a base game and in an all-expansion game, and checks the
+line against an INDEPENDENT reading of the raw log (not against the
+client function under test) so a bug in that function's own bookkeeping
+would still be caught: the Conflict's name, every rank's seats and, for
+the viewing seat's own reward, its term icons (including Victory Points --
+the field Step A of this change added to the event payload). It then
+checks the line survives everything between the resolution and the
+viewing seat's own next turn (including a reward choice of its own, when
+the seed hands it one) and disappears the moment that next turn starts.
+Finally it checks the line carries no Hangul in English and no stray
+Latin in Korean.
+
+A third game (2026-09-29) has no Leader draft, so the setup itself reveals
+round 1's Conflict (engine.reset runs Round Start) and the log never names
+it: the line used to read "Null -- 1st: ..." there (seed 21, CHOAM +
+Arrakeen Scouts, scouts.py's game, at the start of round 2). Its expected
+name comes from the board at the start of the game instead, and the line
+must keep that name at every step up to the seat's own next turn.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+
+from common import (
+    RULE_OPTIONS,
+    SERVER_LOG_COPY,
+    Check,
+    chrome,
+    open_context,
+    server,
+    set_rule_options,
+)
+from lang import switch as switch_language
+from open_mode import settled
+from turn_controls import COMBAT
+
+check = Check()
+VIEWPORT = {"width": 1440, "height": 900}
+SEAT = 0
+
+# Found by trial (this script's own driving policy against seed 1..25):
+# round 1 always draws the game's one Tier ONE Conflict [Main p. 7], so
+# these are seeds where it is Skirmish (Crysknife) AND the viewing seat
+# places first -- the only Tier ONE reward row with a decision frame of
+# its own (choose an Influence), which is what actually exercises "still
+# shown while the seat chooses a reward" below. Every Tier ONE Conflict
+# grants no Victory Points by design, so the first resolution's
+# victory_points is always 0 here; Step A's nonzero and sandworm-doubled
+# cases are covered at the rules level (tests/unit/rules/test_combat.py).
+BASE_SEED = 5
+EXPANSION_SEED = 2
+# The seed the "Null" line was seen in (scouts.py's first game); with this
+# script's policy seat 0 places first in round 1 and still shows the line
+# in round 2's Scouts step, before its own first turn there.
+SETUP_REVEAL_SEED = 21
+
+# Mirrors render.js's OWN_TURN_ACTION_IDS: the action ids that start the
+# viewing seat's own next turn, at which point the line must be gone.
+OWN_TURN_ACTION_IDS = {"place_agent", "reveal_turn", "play_turn_start_card"}
+# The Agent turn's first step: picking the card. The line outlives it (only
+# the space pick, `place_agent`, starts the turn).
+CARD_PICK_ACTION_ID = "choose_agent_card"
+# Which way each scenario's seat takes its own next turn when it can (the
+# card pick, then the space pick, or a Reveal); the other path is the
+# fallback when that one is not on offer.
+PREFERRED_TURN_START = {
+    "base": CARD_PICK_ACTION_ID,
+    "expansions": "reveal_turn",
+    "setup-reveal": CARD_PICK_ACTION_ID,
+}
+
+HANGUL = re.compile("[가-힣]")
+# "AI" is the heuristic seat kind's Korean label suffix (SEAT_KINDS,
+# core.js) -- the same exception lang.py's KOREAN_CHROME_ENGLISH keeps.
+KOREAN_KEEPS_ENGLISH = ("AI",)
+
+REWARD_FIELDS = [
+    ("victory_points", "victory_point"),
+    ("solari", "solari"),
+    ("spice", "spice"),
+    ("water", "water"),
+    ("troops", "troop"),
+    ("intrigue", "intrigue"),
+    ("contracts", "contract"),
+]
+
+
+def create_game(
+    page, base: str, seed: int, expansions: bool, *, setup_reveal: bool = False
+) -> str:
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(
+            f"#seat-selects select[data-seat='{seat}']",
+            "human" if seat == SEAT else "heuristic",
+        )
+    if expansions:
+        set_rule_options(page, *RULE_OPTIONS)
+    elif setup_reveal:
+        # scouts.py's setup: no Leader draft, so no logged step comes
+        # before round 1's Round Start.
+        set_rule_options(page, "choam")
+        page.set_checked("#opt-leader-draft", False)
+        page.set_checked("#opt-scouts", True)
+    else:
+        set_rule_options(page)
+    page.fill("#opt-seed", str(seed))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    return page.evaluate("state.gameId")
+
+
+# The source of a Conflict reward icon's resources (a Contract icon's 2
+# Solari without CHOAM too), rules/combat.py.
+REWARD_SOURCE = re.compile(r"round:\d+:combat_reward:\d+:\d+(?::contract)?")
+
+
+def _reward_gain(kind: str, payload: dict) -> bool:
+    if kind == "combat_reward_icon_resolved":
+        return True
+    return kind == "resources_gained" and bool(
+        REWARD_SOURCE.fullmatch(str(payload.get("source", "")))
+    )
+
+
+def _add_reward_gain(bundle: dict, kind: str, payload: dict) -> None:
+    """One icon's gain on its recipient's reward (independently of
+    render.js's addCombatRewardGain)."""
+    reward = next(
+        (r for r in reversed(bundle["rewards"]) if r["player"] == payload["player"]),
+        None,
+    )
+    if reward is None:
+        return
+
+    def add(key: str, amount: object) -> None:
+        if isinstance(amount, int) and amount:
+            reward[key] = reward.get(key, 0) + amount
+
+    if kind == "resources_gained":
+        for key in ("solari", "spice", "water"):
+            add(key, payload.get(key))
+        return
+    effect = payload.get("effect")
+    for key in ("troops", "intrigue", "victory_points"):
+        add(key, payload.get(key))
+    if effect == "contract":
+        add("contracts", payload.get("contracts"))
+    elif effect == "faction_influence":
+        reward["faction"] = payload["faction"]
+        add("faction_influence", payload.get("influence"))
+    elif effect == "choose_influence":
+        add("choose_influence", 1)
+    elif effect == "control":
+        reward["control_space_id"] = payload["space_id"]
+
+
+def find_resolution(entries: list[dict], seat: int) -> dict | None:
+    """Independent re-derivation of render.js's latestCombatResolution,
+    read straight off the raw log entries -- this checks the engine's
+    public events, not the client function it is meant to cross-check."""
+    conflict_id = None
+    bundle: dict | None = None
+    saw_rewards = False
+    for entry in entries:
+        if entry.get("undone"):
+            continue
+        for event in entry.get("events") or []:
+            kind = event["kind"]
+            payload = event.get("payload") or {}
+            if kind == "conflict_revealed":
+                conflict_id = payload["conflict_id"]
+                saw_rewards = False
+            elif kind == "combat_reward_gained":
+                if not saw_rewards:
+                    bundle = {"conflict_id": conflict_id, "rewards": []}
+                    saw_rewards = True
+                # The recipient's reward begins; its icons follow, one row
+                # each (stage B2, OQ-112).
+                bundle["rewards"].append(dict(payload))
+            elif saw_rewards and bundle is not None and _reward_gain(kind, payload):
+                _add_reward_gain(bundle, kind, payload)
+            elif kind == "combat_cleaned_up" and not saw_rewards:
+                bundle = None
+        if (
+            bundle is not None
+            and entry.get("type") == "action"
+            and entry.get("actor") == seat
+            and entry.get("action_id") in OWN_TURN_ACTION_IDS
+        ):
+            bundle = None
+    return bundle
+
+
+def _choose_action_js() -> str:
+    combat = json.dumps(COMBAT)
+    return f"""(() => {{
+      if (!state.actions || !state.actions.actions.length) return null;
+      const A = state.actions.actions;
+      const deploy = A.filter((a) => a.action_id === 'deploy_troops');
+      if (deploy.length) return deploy[0].index;
+      const combat = {combat};
+      // An Agent turn is two steps: the placement's card pick, then (at the
+      // next call, with the card picked) the space pick that completes it.
+      const toCombat = placementActions().find((a) =>
+        combat.includes(a.arguments.space_id));
+      if (toCombat) return toCombat.pickIndex ?? toCombat.index;
+      return A[0].index;
+    }})()"""
+
+
+CHOOSE_ACTION_JS = _choose_action_js()
+
+
+def step_toward_combat(page) -> None:
+    """One step of a blind driving policy for seat 0 (open_mode.py's own
+    pattern), biased to actually deploy troops into a Combat space -- it
+    is not enough to just reach a resolution, the viewing seat needs a
+    chance to be ranked in it for the reward half of the check to mean
+    anything."""
+    if page.evaluate("state.summary.confirmation === state.viewSeat"):
+        page.evaluate("confirmTurn()")
+    else:
+        index = page.evaluate(CHOOSE_ACTION_JS)
+        if index is None:
+            time.sleep(0.05)
+            return
+        page.evaluate(f"applyAction({index})")
+    assert settled(page, 20)
+
+
+def drive_to_resolution(page, limit: int = 500) -> bool:
+    for _ in range(limit):
+        assert settled(page, 20)
+        if page.evaluate("state.summary.finished"):
+            return False
+        entries = page.evaluate("state.log.entries")
+        if find_resolution(entries, SEAT) is not None:
+            return True
+        step_toward_combat(page)
+    return False
+
+
+def combat_result_dom(page) -> dict | None:
+    return page.evaluate(
+        """() => {
+            const line = document.querySelector('#decision-info .combat-result');
+            if (!line) return null;
+            return {
+                text: line.textContent,
+                amountTitles: [...line.querySelectorAll('.amount')].map(
+                    (el) => el.title
+                ),
+                iconLabels: [...line.querySelectorAll('.icon, .icon-text')].map(
+                    (el) => el.title || el.getAttribute('alt') || el.textContent
+                ),
+            };
+        }"""
+    )
+
+
+def expected_reward_terms(reward: dict) -> list[tuple[str, int | None]]:
+    terms = [(term, reward[key]) for key, term in REWARD_FIELDS if reward.get(key)]
+    if reward.get("faction_influence") and reward.get("faction"):
+        terms.append((f"influence_{reward['faction']}", reward["faction_influence"]))
+    if reward.get("choose_influence"):
+        terms.append(("influence_any", reward["choose_influence"]))
+    if reward.get("control_space_id"):
+        terms.append(("control", None))
+    return terms
+
+
+def check_resolution_content(
+    page, label: str, first_conflict: str | None = None
+) -> dict:
+    """The line's content against an independent read of the raw log (and,
+    for a Conflict the log never revealed, of the board at the start)."""
+    entries = page.evaluate("state.log.entries")
+    bundle = find_resolution(entries, SEAT)
+    if not check.ok(bundle is not None, f"{label}: a Conflict has resolved"):
+        return {}
+    dom = combat_result_dom(page)
+    if not check.ok(dom is not None, f"{label}: the combat result line is on screen"):
+        return bundle
+    conflict_id = bundle["conflict_id"] or first_conflict
+    if not check.ok(
+        conflict_id is not None, f"{label}: the log or the board names the Conflict"
+    ):
+        return bundle
+    conflict_name = page.evaluate(
+        f"state.catalog.conflicts[{json.dumps(conflict_id)}].name"
+    )
+    check.ok(
+        conflict_name in dom["text"] and "Null" not in dom["text"],
+        f"{label}: the line names the resolved Conflict",
+        (conflict_name, dom["text"]),
+    )
+    by_rank: dict[int, list[int]] = {}
+    for reward in bundle["rewards"]:
+        by_rank.setdefault(reward["rank"], []).append(reward["player"])
+    for rank, players in by_rank.items():
+        rank_label = page.evaluate(f"t('render.combat_result_rank_{rank}')")
+        names = [page.evaluate(f"playerLabel({p})") for p in players]
+        segment = f"{rank_label}: " + ", ".join(names)
+        check.ok(
+            segment in dom["text"],
+            f"{label}: rank {rank} lists {names} exactly as the reward events say",
+            (segment, dom["text"]),
+        )
+    own = next((r for r in bundle["rewards"] if r["player"] == SEAT), None)
+    if own is None:
+        unranked = page.evaluate("t('render.combat_result_unranked')")
+        check.ok(
+            unranked in dom["text"] and not dom["amountTitles"],
+            f"{label}: the viewing seat placed nowhere and the line says so",
+            dom,
+        )
+    else:
+        expected_amounts = []
+        expected_icons = []
+        for term, count in expected_reward_terms(own):
+            term_label = page.evaluate(f"termLabel('{term}')")
+            if count is None:
+                expected_icons.append(term_label)
+            else:
+                expected_amounts.append(f"{count} {term_label}")
+        check.ok(
+            sorted(dom["amountTitles"]) == sorted(expected_amounts),
+            f"{label}: the viewing seat's own reward matches its event payload "
+            "(including Victory Points)",
+            {
+                "shown": dom["amountTitles"],
+                "expected": expected_amounts,
+                "payload": own,
+            },
+        )
+        for term_label in expected_icons:
+            check.ok(
+                term_label in dom["iconLabels"],
+                f"{label}: the viewing seat's Control reward is shown",
+                dom["iconLabels"],
+            )
+    return bundle
+
+
+def check_language(page, conflict_name: str, label: str) -> None:
+    dom = combat_result_dom(page)
+    if not check.ok(
+        dom is not None, f"{label}: the line is on screen to check language"
+    ):
+        return
+    text = dom["text"]
+    if page.evaluate("TERM_LANGUAGE") == "en":
+        check.ok(
+            not HANGUL.search(text), f"{label}: English has no Hangul in the line", text
+        )
+        return
+    bare = text.replace(conflict_name, " ")
+    for word in KOREAN_KEEPS_ENGLISH:
+        bare = bare.replace(word, " ")
+    latin = re.findall(r"[A-Za-z]{2,}", bare)
+    check.ok(
+        not latin, f"{label}: Korean has no stray Latin in the line", (latin, text)
+    )
+
+
+def check_persistence(page, label: str, conflict_name: str | None) -> None:
+    """The line survives everything between the resolution and the seat's
+    own next turn-taking step (including its own reward choices, when the
+    seed hands it any), still naming the same Conflict, and is gone right
+    after that step."""
+    chose = []
+    unnamed = []
+    rounds = set()
+    for _ in range(400):
+        assert settled(page, 20)
+        if page.evaluate("state.summary.finished"):
+            check.ok(
+                True,
+                f"{label}: the game ended at the resolution (no next turn to check)",
+            )
+            return
+        dom = combat_result_dom(page)
+        if not check.ok(dom is not None, f"{label}: the line is still shown", dom):
+            return
+        rounds.add(page.evaluate("state.view.round_number"))
+        text = dom["text"]
+        if conflict_name and (conflict_name not in text or "Null" in text):
+            unnamed.append(text)
+        if page.evaluate("state.summary.confirmation === state.viewSeat"):
+            page.evaluate("confirmTurn()")
+            assert settled(page, 20)
+            continue
+        actions = page.evaluate("state.actions ? state.actions.actions : []")
+        if not actions:
+            time.sleep(0.05)
+            continue
+        ids = {action["action_id"] for action in actions}
+        # The card pick opens an Agent turn; the line must outlive it.
+        starting = sorted(ids & (OWN_TURN_ACTION_IDS | {CARD_PICK_ACTION_ID}))
+        if starting:
+            preferred = PREFERRED_TURN_START.get(label)
+            action_id = preferred if preferred in starting else starting[0]
+            index = next(a["index"] for a in actions if a["action_id"] == action_id)
+            check.ok(
+                True,
+                f"{label}: still shown right up to the seat's own next {action_id}",
+            )
+            check.ok(
+                bool(chose),
+                f"{label}: the line stayed on screen through the seat's reward choices",
+                chose,
+            )
+            check.ok(
+                bool(conflict_name) and not unnamed,
+                f"{label}: every step up to then named {conflict_name} "
+                f"(rounds {sorted(rounds)})",
+                unnamed[:3],
+            )
+            if action_id == CARD_PICK_ACTION_ID:
+                page.evaluate(f"applyAction({index})")
+                assert settled(page, 20)
+                picked = combat_result_dom(page)
+                check.ok(
+                    picked is not None,
+                    f"{label}: still shown after the card pick, before the space pick",
+                    picked,
+                )
+                spaces = page.evaluate("state.actions ? state.actions.actions : []")
+                place = next(
+                    (a for a in spaces if a["action_id"] == "place_agent"), None
+                )
+                if not check.ok(
+                    place is not None,
+                    f"{label}: the card pick leaves the space pick to take",
+                    [a["action_id"] for a in spaces],
+                ):
+                    return
+                action_id, index = "place_agent", place["index"]
+            page.evaluate(f"applyAction({index})")
+            assert settled(page, 20)
+            after = combat_result_dom(page)
+            check.ok(
+                after is None, f"{label}: gone after the seat's own {action_id}", after
+            )
+            return
+        # A decision that is not the seat's own next turn -- most often one
+        # of its own reward choices (an Influence pick, an optional cost, a
+        # trash, a Spy) -- exercises "still shown while choosing a reward".
+        chose.append(actions[0]["action_id"])
+        page.evaluate(f"applyAction({actions[0]['index']})")
+        assert settled(page, 20)
+    check.ok(False, f"{label}: reached the seat's own next turn within the step budget")
+
+
+# render.js's resolvedConflictId on a made-up board of two Conflicts: the
+# log's own id wins; otherwise the unrevealed one is the last on the board,
+# or just under a Conflict revealed since (a tie for first leaves it there,
+# which no seed here reaches); past the board, no id (the generic word).
+RESOLVED_ID_JS = """(() => {
+  const saved = state.view;
+  state.view = { ...saved, current_conflict_ids: ["older", "newer"] };
+  try {
+    return [
+      resolvedConflictId({ conflictId: "logged", laterReveals: 1 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 0 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 1 }),
+      resolvedConflictId({ conflictId: null, laterReveals: 2 }),
+    ];
+  } finally {
+    state.view = saved;
+  }
+})()"""
+
+
+def check_setup_reveal(page, label: str) -> str | None:
+    """The case under test: the first Conflict is on the board, not in the
+    log. Returns its id."""
+    first = page.evaluate("state.view.current_conflict_ids")
+    revealed = [
+        event
+        for entry in page.evaluate("state.log.entries")
+        for event in entry.get("events") or []
+        if event["kind"] == "conflict_revealed"
+    ]
+    check.ok(
+        len(first) == 1 and not revealed,
+        f"{label}: the setup revealed the first Conflict outside the log",
+        (first, revealed),
+    )
+    check.ok(
+        page.evaluate(RESOLVED_ID_JS) == ["logged", "newer", "older", None],
+        f"{label}: resolvedConflictId reads the log, then the board",
+        page.evaluate(RESOLVED_ID_JS),
+    )
+    return first[0] if first else None
+
+
+def scenario(
+    base,
+    browser,
+    *,
+    seed: int,
+    expansions: bool,
+    label: str,
+    setup_reveal: bool = False,
+) -> None:
+    kind = (
+        "CHOAM + Arrakeen Scouts, no Leader draft"
+        if setup_reveal
+        else "all expansions" if expansions else "base game"
+    )
+    print(f"[{label}] {kind}, seed {seed}")
+    context, page, rec = open_context(browser, label, VIEWPORT)
+    create_game(page, base, seed, expansions, setup_reveal=setup_reveal)
+    first_conflict = check_setup_reveal(page, label) if setup_reveal else None
+    reached = drive_to_resolution(page)
+    if not check.ok(reached, f"{label}: reached the first Combat resolution"):
+        context.close()
+        return
+    bundle = check_resolution_content(page, f"{label}/ko", first_conflict)
+    if setup_reveal and bundle:
+        check.ok(
+            bundle["conflict_id"] is None,
+            f"{label}: the log never revealed the resolved Conflict",
+            bundle["conflict_id"],
+        )
+    conflict_id = (bundle.get("conflict_id") or first_conflict) if bundle else None
+    conflict_name = (
+        page.evaluate(f"state.catalog.conflicts[{json.dumps(conflict_id)}].name")
+        if conflict_id
+        else None
+    )
+    if conflict_name:
+        check_language(page, conflict_name, f"{label}/ko")
+    switch_language(page, "en")
+    check_resolution_content(page, f"{label}/en", first_conflict)
+    en_name = (
+        page.evaluate(f"state.catalog.conflicts[{json.dumps(conflict_id)}].name")
+        if conflict_id
+        else None
+    )
+    if en_name:
+        check_language(page, en_name, f"{label}/en")
+    check_persistence(page, label, en_name)
+    failed = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
+    check.ok(not failed, f"{label}: no failed requests", failed[:5])
+    check.ok(not rec.js_errors, f"{label}: no JS exceptions", rec.js_errors[:5])
+    context.close()
+
+
+def main() -> None:
+    with server() as (base, log_path):
+        with chrome() as browser:
+            scenario(base, browser, seed=BASE_SEED, expansions=False, label="base")
+            scenario(
+                base, browser, seed=EXPANSION_SEED, expansions=True, label="expansions"
+            )
+            scenario(
+                base,
+                browser,
+                seed=SETUP_REVEAL_SEED,
+                expansions=False,
+                label="setup-reveal",
+                setup_reveal=True,
+            )
+        errors = [
+            line
+            for line in log_path.read_text().splitlines()
+            if "ERROR" in line or "Traceback" in line
+        ]
+        check.ok(not errors, f"no server errors (see {SERVER_LOG_COPY})", errors[:3])
+        SERVER_LOG_COPY.write_text(log_path.read_text())
+    check.finish()
+
+
+if __name__ == "__main__":
+    main()

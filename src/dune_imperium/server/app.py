@@ -1,0 +1,1129 @@
+"""FastAPI wiring over the framework-neutral game sessions.
+
+Endpoints translate HTTP to ``GameSessionManager`` calls one to one; every
+game decision, visibility judgment, and advance lives in the session layer
+and, below it, the rules engine. Errors map to conventional status codes:
+unknown games and saves are 404, non-human seats, seats the client does not
+hold and host operations without the admin key 403, stale revisions and
+seats already taken 409, and every other invalid request 400.
+
+Save files live on the server's local disk (``SaveStore``); HTTP responses
+only ever carry save metadata because the full document records shuffle
+outcomes and with them hidden deck orders.
+
+On a remote server (M14, ``docs/multiplayer-design.md``) a client proves
+itself with cookies: one ``HttpOnly`` cookie per claimed seat, scoped to
+that game's path, and one admin session that a login with the host's admin
+key hands out (never the key itself). This module only moves them between
+the request and ``Credentials``; the session layer judges.
+Cookies rather than header tokens because ``EventSource`` and ``<img>``
+cannot send headers, and because a token must never show in the address
+bar of a player who is sharing their screen.
+
+``GET /games/{id}/events`` is the doorbell (M14 slice 3, ``events``): a
+Server-Sent Events stream of public fields that tells a browser *that* the
+game changed. What changed it then fetches itself, through the judged
+snapshot call, so the stream never has to be filtered per seat.
+"""
+
+import logging
+import os
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Final, Literal
+
+import anyio
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from dune_imperium.display.board_layout import LEADER_TILE_BOXES
+from dune_imperium.display.images import (
+    RESEARCH_STATION_OVERLAY_IMAGE_ID,
+    resolve_card_images,
+)
+from dune_imperium.display.scouts_art import SCOUTS_ART_DIR
+from dune_imperium.server.access import (
+    ADMIN_SESSION_SECONDS,
+    AccessMode,
+    Credentials,
+)
+from dune_imperium.server.autosave import Autosaver
+from dune_imperium.server.catalog import build_catalog, card_image_url
+from dune_imperium.server.events import DEFAULT_HEARTBEAT_SECONDS, DoorbellHub
+from dune_imperium.server.guards import (
+    AllowedHosts,
+    LimitRequestBody,
+    LoginThrottle,
+    NoStorePrivateResponses,
+    validation_error_response,
+)
+from dune_imperium.server.persistence import (
+    SaveError,
+    SaveStore,
+    UnknownSaveError,
+    default_saves_directory,
+)
+from dune_imperium.server.seat_kinds import seat_kinds_payload
+from dune_imperium.server.seating import (
+    DEFAULT_FIRST_PLAYER,
+    DEFAULT_SEATING,
+    FIRST_PLAYERS,
+    SEATINGS,
+)
+from dune_imperium.server.sessions import (
+    AdminAccessError,
+    GameNotStartedError,
+    GameSessionManager,
+    JsonObject,
+    SeatAccessError,
+    SeatTakenError,
+    SessionError,
+    StaleRevisionError,
+    UnknownGameError,
+)
+
+ADMIN_COOKIE: Final = "dune_admin"
+_SEAT_COOKIE_PREFIX: Final = "dune_seat_"
+# A game runs for an evening but may be resumed weeks later; the cookie
+# dies earlier anyway when its seat is released or the server restarts.
+# The admin session lasts as long (``access.ADMIN_SESSION_SECONDS``).
+_COOKIE_MAX_AGE: Final = ADMIN_SESSION_SECONDS
+# uvicorn's own logger, so these lines reach the console like its own.
+_log = logging.getLogger("uvicorn.error")
+# Below this a response fits one packet anyway and compressing it is waste.
+_GZIP_MINIMUM_SIZE: Final = 1024
+
+_STATIC_DIR = Path(__file__).parent / "static"
+# Gitignored symlink to the private Dune-Imperium-assets checkout (cards/,
+# icons/, board/, rulebooks/); every default below lives under it.
+_ASSETS_DIR = Path(__file__).parents[3] / "assets"
+
+
+def default_card_images_directory() -> Path:
+    """Return the local card-image checkout (``cards/`` with its manifest).
+
+    ``DUNE_IMPERIUM_CARD_IMAGE_DIR`` overrides the default ``assets/cards``
+    (``assets`` is the repository's gitignored symlink to the private
+    assets checkout). Optional: without the directory or its
+    ``manifest.json`` the server simply serves no card images.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_CARD_IMAGE_DIR")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "cards"
+
+
+def default_icons_directory() -> Path:
+    """Return the local rulebook icon set location.
+
+    ``DUNE_IMPERIUM_ICON_DIR`` overrides the default ``assets/icons``, the
+    tree ``scripts/extract_rulebook_icons.py`` fills. Optional like the
+    card scans: without it the UI shows text.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_ICON_DIR")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "icons"
+
+
+def asset_url_versions(files: Mapping[str, Path]) -> frozenset[tuple[str, str]]:
+    """Return ``(url, version)`` for every asset URL whose file exists.
+
+    The version is the file's modification time and size, so replacing a
+    picture in place (same name, same URL) gives the catalog a new
+    ``?v=`` and the browsers fetch it instead of reusing what they cached:
+    the asset mounts send only ``Last-Modified``/``ETag``, which lets a
+    browser serve an old file for days without asking. Read once at server
+    start, like the file listings themselves.
+    """
+
+    versions: set[tuple[str, str]] = set()
+    for url, path in files.items():
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        versions.add((url, f"{stat.st_mtime_ns // 1_000_000:x}-{stat.st_size:x}"))
+    return frozenset(versions)
+
+
+def default_tokens_directory() -> Path:
+    """Return the local pictured-token location (the Combat markers).
+
+    ``DUNE_IMPERIUM_TOKEN_DIR`` overrides the default ``assets/tokens``
+    (``dune_imperium.display.token_images`` names the files). Optional like the
+    icons: without it the UI draws its own seat tokens.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_TOKEN_DIR")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "tokens"
+
+
+# The Uprising board's scan and its Korean edition (space names in Korean,
+# otherwise the same 6012x6005 picture), in the assets checkout's board/
+# folder. The English scan was ``map.jpg`` until 2026-11-06, when the two
+# base games' boards made that name ambiguous (user).
+UPRISING_BOARD: Final = "uprising.jpg"
+UPRISING_BOARD_KO: Final = "uprising_ko.jpg"
+
+
+def default_board_image_path() -> Path:
+    """Return the owner's local board scan location.
+
+    ``DUNE_IMPERIUM_BOARD_IMAGE`` overrides the default
+    ``assets/board/uprising.jpg``. Without the file the UI falls back to the
+    text board.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_BOARD_IMAGE")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "board" / UPRISING_BOARD
+
+
+def korean_board_image_path(board_image: Path) -> Path:
+    """Return the Uprising board with Korean space names beside its scan.
+
+    ``DUNE_IMPERIUM_BOARD_IMAGE_KO`` overrides it; by default it is
+    ``uprising_ko.jpg`` in the scan's folder. The page shows it in Korean
+    and the scan in English; without it, the scan in both.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_BOARD_IMAGE_KO")
+    if override:
+        return Path(override)
+    return board_image.with_name(UPRISING_BOARD_KO)
+
+
+# Rise of Ix's pictures beside the original board's (assets board/, its
+# README): the CHOAM overlay's two pieces and the Ix board, by catalog name.
+IX_BOARD_PICTURES: Final = {
+    "landsraad": "ix_overlay_landsraad.png",
+    "choam": "ix_overlay_choam.png",
+    "board": "ix_board.png",
+}
+
+
+def imperium_board_image_path(board_image: Path) -> Path:
+    """Return the original game's board picture beside the Uprising scan.
+
+    ``DUNE_IMPERIUM_IMPERIUM_BOARD_IMAGE`` overrides it; by default it is
+    ``imperium.jpg`` in the Uprising scan's folder (``assets/board/``), so a
+    server pointed at another scan folder finds the original board there
+    too. Without the file the original game keeps the text board
+    (docs/base-game-and-ix-plan.md 18, stage P5b).
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_IMPERIUM_BOARD_IMAGE")
+    if override:
+        return Path(override)
+    return board_image.with_name("imperium.jpg")
+
+
+def default_bene_tleilax_image_path() -> Path:
+    """Return the owner's local Bene Tleilax board scan (Immortality).
+
+    ``DUNE_IMPERIUM_BENE_TLEILAX_IMAGE`` overrides the default
+    ``assets/board/bene_tleilax.jpg``. Without the file the UI draws a
+    synthetic research grid instead.
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_BENE_TLEILAX_IMAGE")
+    if override:
+        return Path(override)
+    return _ASSETS_DIR / "board" / "bene_tleilax.jpg"
+
+
+class CreateGameRequest(BaseModel):
+    """Configuration for one new game."""
+
+    seats: list[str] = Field(
+        default=["human", "heuristic", "heuristic", "heuristic"],
+        min_length=4,
+        max_length=4,
+        description=(
+            "Per-seat assignment: 'human', or an agent kind of the evaluation "
+            "registry: 'app_ai', 'app_ai_medium', 'app_ai_easy' (the Steam "
+            "app's computer opponent at Hard, Medium and Easy; about 1-2 ms a "
+            "decision, no extra install), "
+            "'heuristic', 'random', 'rollout' (determinized search), "
+            "'rollout_strong' (the same search at twice the budget), "
+            "'checkpoint:<path>' (a trained policy; needs the train extra), "
+            "'search:<path>' (that policy with determinized search around it: "
+            "much stronger, about 1.4s a searched decision on the browser's "
+            "default rules, 3.3s at the 90th percentile, thought on a "
+            "background worker), or 'search' (the server's own search AI, "
+            "set with --search-checkpoint and seated as "
+            "'search:<path>::flip=0.01', plus '::turn_extend=<worlds>' where "
+            "the host runs --search-turn-extend; GET /whoami says whether it "
+            "has one)."
+        ),
+    )
+    # The base game (``RulesetConfig.base_game``): Dune: Imperium - Uprising,
+    # or the original Dune: Imperium (docs/base-game-and-ix-plan.md 18). The
+    # original takes only the promo cards, the Leader draft and Player 1 as
+    # First Player so far; any other option is refused (setup's pending
+    # options).
+    base_game: Literal["uprising", "imperium"] = "uprising"
+    choam_module: bool = False
+    leader_draft: bool = False
+    # Shuffle in the promo Imperium cards (not in the retail decks): the
+    # three Uprising promos, plus the Bloodlines promo Ruthless Leadership
+    # when the expansion is on (see docs/implementation-plan.md M6, M12).
+    promo_cards: bool = False
+    # The Bloodlines expansion and its Tech Module (docs/rules/bloodlines.md).
+    bloodlines: bool = False
+    tech_module: bool = False
+    # The Immortality expansion (docs/rules/immortality.md) and its Go to 11
+    # variant: every Score marker starts at 0 [Immortality p. 12]. Omitted
+    # means off; the browser setup box is checked by default (OQ-091).
+    immortality: bool = False
+    go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): play to 12,
+    # Conflict II over III, Control the Spice, an Intrigue card and five
+    # garrison troops [Rise of Ix p. 10]. Needs no other option; omitted
+    # means off, while the browser setup box is checked by default (OQ-092).
+    epic_game: bool = False
+    # Rise of Ix on the original game (docs/rules/rise-of-ix.md; stage P5f of
+    # docs/base-game-and-ix-plan.md). The engine refuses it with Uprising
+    # until stage P7.
+    rise_of_ix: bool = False
+    # Uprising with the original game's Imperium and Intrigue cards and its
+    # eight Leaders ("COMBINING WITH BASE DUNE: IMPERIUM" [Main p. 18],
+    # docs/rules/imperium-base.md 13.4, stage P7e). The engine refuses it on
+    # the original game, whose cards they are.
+    imperium_cards: bool = False
+    # Part of Rise of Ix beside Bloodlines' Tech Module instead of all of it
+    # (docs/base-game-and-ix-plan.md 20.5 P8-1): its Tech tiles alone, or
+    # with ``ix_leaders`` its Leaders and Tech tiles. The engine refuses them
+    # without the Tech Module, with ``rise_of_ix``, and the tiles alone with
+    # Arrakeen Scouts (user ruling 2026-11-01).
+    ix_tech_tiles: bool = False
+    ix_leaders: bool = False
+    # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
+    arrakeen_scouts: bool = False
+    # OQ-132 project convention: seat 0 takes the First Player Objective.
+    # Omitted means off (the printed deal [Main p. 5]); the browser setup
+    # box is checked by default (user decision 2026-10-25).
+    first_player_seat_zero: bool = False
+    # A remote room that draws its human seats when a seated player starts
+    # it (``GameSessionManager.start_game``); the browser asks for it for
+    # every game with a human seat on a remote server seating at random
+    # (``--seating random``, server/seating.py).
+    seats_at_start: bool = False
+    game_seed: int | None = None
+    policy_seed: int | None = None
+    # How the AI seats pace their answers for the tables: 'normal', 'fast'
+    # or 'instant' (server/pacing.py). Omitted means the server's default,
+    # which GET /whoami reports (the play server's --ai-pace).
+    ai_pace: str | None = None
+
+
+class AiPaceRequest(BaseModel):
+    """A running game's new AI pace (server/pacing.py)."""
+
+    pace: str
+
+
+class ApplyActionRequest(BaseModel):
+    """One indexed action from the legal-action listing."""
+
+    seat: int
+    revision: int
+    index: int
+    # Undo generation from the summary; optional for older clients, but the
+    # browser UI always sends it so a taken-back state cannot be acted on.
+    undo_count: int | None = None
+
+
+class UndoRequest(BaseModel):
+    """Take back the seat's own latest steps (M11 slice 6, OQ-010 boundary)."""
+
+    seat: int
+    revision: int
+    steps: int = Field(default=1, ge=1)
+    undo_count: int | None = None
+
+
+class ConfirmTurnRequest(BaseModel):
+    """Hand the turn over after the seat's still-undoable steps."""
+
+    seat: int
+    revision: int
+    undo_count: int | None = None
+
+
+class SaveGameRequest(BaseModel):
+    """Optional display name for one new save."""
+
+    name: str | None = Field(default=None, max_length=120)
+
+
+class AdminLoginRequest(BaseModel):
+    """The host's admin key, as printed by the server at startup."""
+
+    key: str = Field(min_length=1, max_length=200)
+
+
+class ClaimSeatRequest(BaseModel):
+    """The name a player sits down under.
+
+    The session layer cleans it and enforces the real length limit; the
+    bound here only keeps a request body small.
+    """
+
+    name: str = Field(max_length=200)
+
+
+class _RevalidateUIFiles:
+    """Make browsers revalidate ``index.html`` and ``/static`` on every load.
+
+    The UI is edited in place while the server runs; ``no-cache`` (the ETag
+    keeps it cheap) stops a browser from heuristically caching a stale
+    ``app.js``.
+
+    This wraps the ASGI ``send`` instead of using ``@app.middleware("http")``:
+    Starlette's ``BaseHTTPMiddleware`` raises ``RuntimeError("No response
+    returned.")`` for every request whose client leaves before the response
+    starts, and a page that reopens its doorbell closes an event stream it
+    has only just asked for. uvicorn logged a traceback for each of those.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope["path"] if scope["type"] == "http" else None
+        if path is None or not (path == "/" or path.startswith("/static/")):
+            await self._app(scope, receive, send)
+            return
+
+        async def send_revalidating(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = "no-cache"
+            await send(message)
+
+        await self._app(scope, receive, send_revalidating)
+
+
+def seat_cookie_name(game_id: str, seat: int) -> str:
+    """Name of the cookie that carries one claimed seat's token."""
+
+    return f"{_SEAT_COOKIE_PREFIX}{game_id}_{seat}"
+
+
+def _set_seat_cookie(response: Response, game_id: str, seat: int, token: str) -> None:
+    response.set_cookie(
+        seat_cookie_name(game_id, seat),
+        token,
+        max_age=_COOKIE_MAX_AGE,
+        path=f"/games/{game_id}",
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def _delete_seat_cookie(response: Response, game_id: str, name: str) -> None:
+    response.delete_cookie(
+        name, path=f"/games/{game_id}", httponly=True, samesite="strict"
+    )
+
+
+def _home_seat_cookies(
+    sessions: GameSessionManager,
+    request: Request,
+    response: Response,
+    game_id: str,
+    *,
+    keep: str | None = None,
+) -> None:
+    """Name every seat cookie after the seat its token holds now.
+
+    ``start_game`` deals the places of a waiting room to other seats, so a
+    cookie can still carry the name of the place it was claimed for. A later
+    claim of a seat with that name would overwrite it and lock its player
+    out of the drawn seat (review finding, 2026-10-25). Identity never rests
+    on the name (``_credentials``); this only keeps the names from
+    colliding. ``keep`` is a cookie name the caller is about to set itself.
+    """
+
+    prefix = f"{_SEAT_COOKIE_PREFIX}{game_id}_"
+    presented = {
+        name: value
+        for name, value in request.cookies.items()
+        if name.startswith(prefix)
+    }
+    if not presented:
+        return
+    held = sessions.held_seats(
+        game_id, credentials=_credentials(request, game_id)
+    )
+    homes = {
+        seat_cookie_name(game_id, seat): (seat, token) for token, seat in held.items()
+    }
+    for name, value in presented.items():
+        if value in held and name not in homes and name != keep:
+            _delete_seat_cookie(response, game_id, name)
+    for name, (seat, token) in homes.items():
+        if presented.get(name) != token and name != keep:
+            _set_seat_cookie(response, game_id, seat, token)
+
+
+def _credentials(request: Request, game_id: str | None = None) -> Credentials:
+    """Collect what a request presents: its seat tokens for one game, and admin.
+
+    Which seat a token belongs to is decided by comparing values in the
+    session layer, never by trusting a cookie's name.
+    """
+
+    seat_tokens: frozenset[str] = frozenset()
+    if game_id is not None:
+        prefix = f"{_SEAT_COOKIE_PREFIX}{game_id}_"
+        seat_tokens = frozenset(
+            value for name, value in request.cookies.items() if name.startswith(prefix)
+        )
+    # The admin cookie holds a session, never the key (``access``): a raw
+    # key there opens nothing, so the cookie is no way around the login's
+    # attempt limit.
+    return Credentials(
+        seat_tokens=seat_tokens, admin_session=request.cookies.get(ADMIN_COOKIE)
+    )
+
+
+def _client_address(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
+
+
+def create_app(
+    manager: GameSessionManager | None = None,
+    saves_dir: Path | None = None,
+    card_images_dir: Path | None = None,
+    icons_dir: Path | None = None,
+    tokens_dir: Path | None = None,
+    board_image: Path | None = None,
+    bene_tleilax_image: Path | None = None,
+    imperium_board_image: Path | None = None,
+    korean_board_image: Path | None = None,
+    heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+    public_url: str | None = None,
+    autosave: bool | None = None,
+    default_seating: str = DEFAULT_SEATING,
+    default_first_player: str = DEFAULT_FIRST_PLAYER,
+    allowed_hosts: Iterable[str] | None = None,
+    host_machine: str | None = None,
+    login_throttle: LoginThrottle | None = None,
+) -> FastAPI:
+    """Build the local play server around one session manager.
+
+    ``public_url`` is the address the other players reach this server at
+    (a Tailscale IP, a tunnel); the host's browser builds the room link from
+    it, because the host itself may well be looking at 127.0.0.1.
+
+    ``autosave`` keeps one current save per game, replaced whenever a turn
+    passes on (``server.autosave``). Left at ``None`` it follows the access
+    mode: on for a remote server, off for an open one, whose save
+    directory holds what its one user chose to save and nothing else.
+
+    ``default_seating`` is only reported (``GET /whoami``): whether the setup
+    screen shuffles the configured seats (``server.seating``; the browser
+    shuffles, game creation does not).
+    ``default_first_player`` likewise only says whether the setup screen's
+    "Player 1 starts" box opens checked (OQ-132, ``server.seating``).
+
+    ``allowed_hosts`` turns on the ``Host`` header check against DNS
+    rebinding (``guards.host_allowed``: any address literal, these names,
+    and ``host_machine``'s Tailscale names); the command line always passes
+    them, while ``None`` (tests' ``testserver``) checks nothing.
+    ``login_throttle`` limits wrong admin keys per client address (default
+    five a minute).
+    """
+
+    if default_seating not in SEATINGS:
+        raise ValueError(f"unknown seating {default_seating!r}")
+    if default_first_player not in FIRST_PLAYERS:
+        raise ValueError(f"unknown first player {default_first_player!r}")
+    sessions = manager if manager is not None else GameSessionManager()
+    hub = DoorbellHub()
+    sessions.add_change_listener(hub.publish)
+    saves = SaveStore(
+        saves_dir if saves_dir is not None else default_saves_directory()
+    )
+    images_dir = (
+        card_images_dir
+        if card_images_dir is not None
+        else default_card_images_directory()
+    )
+    # One index per UI language: each prefers its own language's picture
+    # and falls back to the other's per file (the catalog pairs them).
+    image_index = frozenset(
+        (kind, content_id, path)
+        for (kind, content_id), path in resolve_card_images(
+            images_dir, ("en", "ko")
+        ).items()
+    )
+    image_index_ko = frozenset(
+        (kind, content_id, path)
+        for (kind, content_id), path in resolve_card_images(
+            images_dir, ("ko", "en")
+        ).items()
+    )
+    # The board pieces laid on the printed scan (a Leader's tile, the
+    # Research Station overlay) keep the printed tile's shape: their scans
+    # alone, without the app renders the popovers show.
+    board_pieces = {*LEADER_TILE_BOXES, RESEARCH_STATION_OVERLAY_IMAGE_ID}
+    tile_index, tile_index_ko = (
+        frozenset(
+            (kind, content_id, path)
+            for (kind, content_id), path in resolve_card_images(
+                images_dir, languages, app_renders=False
+            ).items()
+            if kind == "location" and content_id in board_pieces
+        )
+        for languages in (("en", "ko"), ("ko", "en"))
+    )
+    icon_dir = icons_dir if icons_dir is not None else default_icons_directory()
+    icon_files = (
+        frozenset(path.name for path in icon_dir.iterdir() if path.is_file())
+        if icon_dir.is_dir()
+        else frozenset()
+    )
+    token_dir = tokens_dir if tokens_dir is not None else default_tokens_directory()
+    token_files = (
+        frozenset(path.name for path in token_dir.iterdir() if path.is_file())
+        if token_dir.is_dir()
+        else frozenset()
+    )
+    # The Arrakeen Scouts card's pictures (display.scouts_art), served from
+    # the card-image mount like the app's card faces.
+    scouts_art_dir = images_dir / SCOUTS_ART_DIR
+    scouts_art_files = (
+        frozenset(path.name for path in scouts_art_dir.iterdir() if path.is_file())
+        if scouts_art_dir.is_dir()
+        else frozenset()
+    )
+    board_path = (
+        board_image if board_image is not None else default_board_image_path()
+    )
+    imperium_board_path = (
+        imperium_board_image
+        if imperium_board_image is not None
+        else imperium_board_image_path(board_path)
+    )
+    korean_board_path = (
+        korean_board_image
+        if korean_board_image is not None
+        else korean_board_image_path(board_path)
+    )
+    bene_tleilax_path = (
+        bene_tleilax_image
+        if bene_tleilax_image is not None
+        else default_bene_tleilax_image_path()
+    )
+    asset_versions = asset_url_versions(
+        {
+            card_image_url(path): images_dir / path
+            for _, _, path in (
+                image_index | image_index_ko | tile_index | tile_index_ko
+            )
+        }
+        | {f"/icons/{name}": icon_dir / name for name in icon_files}
+        | {f"/tokens/{name}": token_dir / name for name in token_files}
+        | {
+            card_image_url(f"{SCOUTS_ART_DIR}/{name}"): scouts_art_dir / name
+            for name in scouts_art_files
+        }
+        | {
+            "/board-image": board_path,
+            "/board-image/ko": korean_board_path,
+            "/board-image/imperium": imperium_board_path,
+            "/bene-tleilax-image": bene_tleilax_path,
+        }
+        | {
+            f"/board-image/imperium/ix/{name}": imperium_board_path.with_name(file)
+            for name, file in IX_BOARD_PICTURES.items()
+        }
+    )
+    remote = sessions.access is AccessMode.REMOTE
+    # A remote server serves no interactive API pages: /docs and /redoc run a
+    # CDN's script in this origin, beside the host's admin cookie (security
+    # review finding 5). A local server keeps them for development.
+    app = FastAPI(
+        title="Dune: Imperium - Uprising local play server",
+        docs_url=None if remote else "/docs",
+        redoc_url=None if remote else "/redoc",
+        openapi_url=None if remote else "/openapi.json",
+    )
+    # Whoever runs the server ends the open event streams through this when
+    # it is asked to stop (``cli.server``); they never end by themselves.
+    app.state.doorbell_hub = hub
+    app.add_exception_handler(RequestValidationError, validation_error_response)
+    # JSON and the UI files shrink four- to tenfold, which is what a remote
+    # player's refresh is made of. Starlette's default exclusions already
+    # skip the card and board scans and ``text/event-stream``.
+    app.add_middleware(GZipMiddleware, minimum_size=_GZIP_MINIMUM_SIZE)
+    app.add_middleware(_RevalidateUIFiles)
+    app.add_middleware(NoStorePrivateResponses)
+    # Added last, so they run first: nothing below reads a body or a game
+    # for a request they refuse.
+    app.add_middleware(LimitRequestBody)
+    if allowed_hosts is not None:
+        app.add_middleware(AllowedHosts, names=allowed_hosts, machine=host_machine)
+    throttle = login_throttle if login_throttle is not None else LoginThrottle()
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "index.html")
+
+    @app.get("/catalog")
+    def catalog() -> JsonObject:
+        return build_catalog(
+            image_index,
+            icon_files,
+            board_path.is_file(),
+            board_image_ko=korean_board_path.is_file(),
+            bene_tleilax_image=bene_tleilax_path.is_file(),
+            imperium_board_image=imperium_board_path.is_file(),
+            ix_board_pictures=frozenset(
+                name
+                for name, file in IX_BOARD_PICTURES.items()
+                if imperium_board_path.with_name(file).is_file()
+            ),
+            token_files=token_files,
+            asset_versions=asset_versions,
+            image_index_ko=image_index_ko,
+            tile_index=tile_index,
+            tile_index_ko=tile_index_ko,
+            scouts_art_files=scouts_art_files,
+        )
+
+    @app.get("/board-image", include_in_schema=False)
+    def board_image_file() -> FileResponse:
+        if not board_path.is_file():
+            raise HTTPException(status_code=404, detail="no board image")
+        return FileResponse(board_path)
+
+    @app.get("/board-image/ko", include_in_schema=False)
+    def korean_board_image_file() -> FileResponse:
+        if not korean_board_path.is_file():
+            raise HTTPException(status_code=404, detail="no Korean board image")
+        return FileResponse(korean_board_path)
+
+    @app.get("/board-image/imperium", include_in_schema=False)
+    def imperium_board_image_file() -> FileResponse:
+        if not imperium_board_path.is_file():
+            raise HTTPException(status_code=404, detail="no original board image")
+        return FileResponse(imperium_board_path)
+
+    @app.get("/board-image/imperium/ix/{name}", include_in_schema=False)
+    def ix_board_picture_file(name: str) -> FileResponse:
+        file = IX_BOARD_PICTURES.get(name)
+        path = imperium_board_path.with_name(file) if file else None
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="no Rise of Ix board picture")
+        return FileResponse(path)
+
+    @app.get("/bene-tleilax-image", include_in_schema=False)
+    def bene_tleilax_image_file() -> FileResponse:
+        if not bene_tleilax_path.is_file():
+            raise HTTPException(status_code=404, detail="no Bene Tleilax board image")
+        return FileResponse(bene_tleilax_path)
+
+    # A remote server's host plays too, so the seed of a game in progress
+    # stays out of the save listings it serves (see ``save_metadata``).
+    hide_unfinished_seed = sessions.access is AccessMode.REMOTE
+    autosaving = (
+        autosave if autosave is not None else sessions.access is AccessMode.REMOTE
+    )
+    if autosaving:
+        sessions.add_hand_over_listener(
+            Autosaver(sessions, saves, hide_unfinished_seed=hide_unfinished_seed)
+        )
+
+    @app.get("/whoami")
+    def who_is_asking(request: Request) -> JsonObject:
+        # What a browser needs before any game exists: whether seats have to
+        # be claimed here at all, and whether it is the host's browser.
+        admin = sessions.is_admin(_credentials(request))
+        return {
+            "access": str(sessions.access),
+            "admin": admin,
+            "public_url": public_url if admin else None,
+            "autosave": autosaving,
+            # Whether the seat kind ``search`` is offered; never the path.
+            "search_ai": sessions.search_checkpoint is not None,
+            # The AI pace a new game starts with (server/pacing.py).
+            "ai_pace": sessions.default_ai_pace,
+            # Whether the setup screen shuffles the seats (server/seating.py).
+            "seating": default_seating,
+            # Whether its "Player 1 starts" box opens checked (OQ-132).
+            "first_player": default_first_player,
+            # The seats each base game's table takes (server/seat_kinds.py):
+            # the setup screen offers these, the server refuses the rest.
+            "seat_kinds": seat_kinds_payload(),
+        }
+
+    @app.post("/auth/admin")
+    def admin_login(
+        body: AdminLoginRequest, request: Request, response: Response
+    ) -> JsonObject:
+        address = _client_address(request)
+        # An open server has no key to guess (its login is always a 400).
+        wait = throttle.attempt(address) if remote else None
+        if wait is not None:
+            seconds = max(int(wait) + 1, 1)
+            raise HTTPException(
+                status_code=429,
+                detail=f"too many wrong admin keys; try again in {seconds} s",
+                headers={"Retry-After": str(seconds)},
+            )
+        try:
+            with _http_errors():
+                session = sessions.admin_login(body.key)
+        except HTTPException as error:
+            if error.status_code == 403:
+                _log.warning(
+                    "Wrong admin key from %s (%d recent failures)",
+                    address,
+                    throttle.failures(address),
+                )
+            raise
+        throttle.succeeded(address)
+        response.set_cookie(
+            ADMIN_COOKIE,
+            session,
+            max_age=_COOKIE_MAX_AGE,
+            path="/",
+            httponly=True,
+            samesite="strict",
+        )
+        return {"admin": True}
+
+    @app.post("/games")
+    def create_game(body: CreateGameRequest, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.create_game(
+                tuple(body.seats),
+                base_game=body.base_game,
+                choam_module=body.choam_module,
+                leader_draft=body.leader_draft,
+                promo_cards=body.promo_cards,
+                bloodlines=body.bloodlines,
+                tech_module=body.tech_module,
+                immortality=body.immortality,
+                go_to_11=body.go_to_11,
+                epic_game=body.epic_game,
+                arrakeen_scouts=body.arrakeen_scouts,
+                first_player_seat_zero=body.first_player_seat_zero,
+                rise_of_ix=body.rise_of_ix,
+                imperium_cards=body.imperium_cards,
+                ix_tech_tiles=body.ix_tech_tiles,
+                ix_leaders=body.ix_leaders,
+                seats_at_start=body.seats_at_start,
+                game_seed=body.game_seed,
+                policy_seed=body.policy_seed,
+                ai_pace=body.ai_pace,
+                credentials=_credentials(request),
+            )
+
+    @app.post("/games/{game_id}/ai-pace")
+    def set_ai_pace(game_id: str, body: AiPaceRequest, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.set_ai_pace(
+                game_id, body.pace, credentials=_credentials(request)
+            )
+
+    @app.get("/games")
+    def list_games(request: Request) -> list[JsonObject]:
+        with _http_errors():
+            return sessions.list_games(credentials=_credentials(request))
+
+    @app.get("/games/{game_id}")
+    def game_summary(game_id: str) -> JsonObject:
+        with _http_errors():
+            return sessions.summary(game_id)
+
+    @app.get("/games/{game_id}/me")
+    def who_am_i(game_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.identify(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
+    @app.get("/games/{game_id}/snapshot")
+    def game_snapshot(
+        game_id: str,
+        request: Request,
+        response: Response,
+        seat: int | None = None,
+        log_after: int = 0,
+        log_epoch: str | None = None,
+    ) -> JsonObject:
+        with _http_errors():
+            snapshot = sessions.snapshot(
+                game_id,
+                seat,
+                log_after=log_after,
+                log_epoch=log_epoch,
+                credentials=_credentials(request, game_id),
+            )
+            # Every page asks for a snapshot after a waiting room starts.
+            _home_seat_cookies(sessions, request, response, game_id)
+        return snapshot
+
+    @app.get("/games/{game_id}/events")
+    async def game_events(game_id: str, request: Request) -> StreamingResponse:
+        credentials = _credentials(request, game_id)
+        with _http_errors():
+            # An unknown game is a plain 404, not a stream that ends at once.
+            # Session calls take the session lock, which an advancing AI seat
+            # may hold for a while, so they stay off the event loop.
+            await run_in_threadpool(sessions.doorbell, game_id)
+
+        async def current() -> JsonObject | None:
+            try:
+                return await run_in_threadpool(sessions.doorbell, game_id)
+            except UnknownGameError:
+                return None
+
+        async def body() -> AsyncIterator[str]:
+            # Connecting inside the generator pairs it with the disconnect
+            # below even when the client is gone before the first byte.
+            try:
+                connection = await run_in_threadpool(
+                    sessions.connect, game_id, credentials=credentials
+                )
+            except UnknownGameError:
+                connection = None
+            try:
+                async for chunk in hub.stream(
+                    game_id, current, heartbeat_seconds=heartbeat_seconds
+                ):
+                    yield chunk
+            finally:
+                if connection is not None:
+                    # The stream ends by cancellation when the client
+                    # leaves; presence must still be taken down.
+                    with anyio.CancelScope(shield=True):
+                        await run_in_threadpool(
+                            sessions.disconnect, game_id, connection
+                        )
+
+        return StreamingResponse(
+            body(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.post("/games/{game_id}/start")
+    def start_game(game_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.start_game(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
+    @app.post("/games/{game_id}/seats/{seat}/claim")
+    def claim_seat(
+        game_id: str,
+        seat: int,
+        body: ClaimSeatRequest,
+        request: Request,
+        response: Response,
+    ) -> JsonObject:
+        with _http_errors():
+            claim = sessions.claim_seat(
+                game_id,
+                seat,
+                body.name,
+                credentials=_credentials(request, game_id),
+            )
+            # A cookie named after this seat may carry another seat's token
+            # (``start_game``): move it to its own name before the claim's
+            # cookie takes this one.
+            _home_seat_cookies(
+                sessions,
+                request,
+                response,
+                game_id,
+                keep=seat_cookie_name(game_id, seat),
+            )
+        _set_seat_cookie(response, game_id, seat, claim.token)
+        return claim.summary
+
+    @app.post("/games/{game_id}/seats/{seat}/release")
+    def release_seat(
+        game_id: str, seat: int, request: Request, response: Response
+    ) -> JsonObject:
+        with _http_errors():
+            summary = sessions.release_seat(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
+        # Harmless when the host released someone else's seat: that
+        # browser's cookie simply stopped matching anything.
+        response.delete_cookie(
+            seat_cookie_name(game_id, seat),
+            path=f"/games/{game_id}",
+            httponly=True,
+            samesite="strict",
+        )
+        return summary
+
+    @app.get("/games/{game_id}/seats/{seat}/view")
+    def seat_view(game_id: str, seat: int, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.view(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
+
+    @app.get("/games/{game_id}/seats/{seat}/actions")
+    def seat_actions(game_id: str, seat: int, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.legal_actions(
+                game_id, seat, credentials=_credentials(request, game_id)
+            )
+
+    @app.post("/games/{game_id}/actions")
+    def apply_action(
+        game_id: str, body: ApplyActionRequest, request: Request
+    ) -> JsonObject:
+        with _http_errors():
+            return sessions.apply_action(
+                game_id,
+                seat=body.seat,
+                revision=body.revision,
+                index=body.index,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
+            )
+
+    @app.post("/games/{game_id}/undo")
+    def undo_steps(game_id: str, body: UndoRequest, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.undo(
+                game_id,
+                seat=body.seat,
+                revision=body.revision,
+                steps=body.steps,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
+            )
+
+    @app.post("/games/{game_id}/confirm")
+    def confirm_turn(
+        game_id: str, body: ConfirmTurnRequest, request: Request
+    ) -> JsonObject:
+        with _http_errors():
+            return sessions.confirm_turn(
+                game_id,
+                seat=body.seat,
+                revision=body.revision,
+                undo_count=body.undo_count,
+                credentials=_credentials(request, game_id),
+            )
+
+    @app.get("/games/{game_id}/log")
+    def game_log(
+        game_id: str, seat: int, request: Request, after: int = 0
+    ) -> JsonObject:
+        with _http_errors():
+            return sessions.log(
+                game_id,
+                seat,
+                after=after,
+                credentials=_credentials(request, game_id),
+            )
+
+    @app.get("/games/{game_id}/vp-ledger")
+    def vp_ledger(game_id: str, request: Request) -> JsonObject:
+        # The same for every seat; on a remote server any of the game's seat
+        # cookies, or the room link once the game has finished.
+        with _http_errors():
+            return sessions.vp_ledger(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
+    @app.delete("/games/{game_id}")
+    def delete_game(game_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            sessions.delete(game_id, credentials=_credentials(request))
+        return {"deleted": game_id}
+
+    @app.post("/games/{game_id}/save")
+    def save_game(game_id: str, body: SaveGameRequest, request: Request) -> JsonObject:
+        with _http_errors():
+            document = sessions.save_game(
+                game_id, name=body.name, credentials=_credentials(request)
+            )
+            return saves.write(document, hide_unfinished_seed=hide_unfinished_seed)
+
+    @app.get("/saves")
+    def list_saves(request: Request) -> list[JsonObject]:
+        with _http_errors():
+            sessions.require_admin(_credentials(request))
+            return saves.list(hide_unfinished_seed=hide_unfinished_seed)
+
+    @app.post("/saves/{save_id}/load")
+    def load_save(save_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            credentials = _credentials(request)
+            # Checked before the file is read so a stranger learns nothing
+            # about which save IDs exist.
+            sessions.require_admin(credentials)
+            return sessions.restore_game(saves.read(save_id), credentials=credentials)
+
+    @app.delete("/saves/{save_id}")
+    def delete_save(save_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            sessions.require_admin(_credentials(request))
+            saves.delete(save_id)
+        return {"deleted": save_id}
+
+    @app.get("/games/{game_id}/review")
+    def review_game(game_id: str, seat: int) -> JsonObject:
+        with _http_errors():
+            return sessions.review(game_id, seat)
+
+    @app.get("/games/{game_id}/review/{step}")
+    def review_game_state(game_id: str, step: int, seat: int) -> JsonObject:
+        with _http_errors():
+            return sessions.review_state(game_id, seat, step)
+
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+    if images_dir.is_dir():
+        app.mount(
+            "/card-images",
+            StaticFiles(directory=images_dir),
+            name="card-images",
+        )
+    if icon_dir.is_dir():
+        app.mount("/icons", StaticFiles(directory=icon_dir), name="icons")
+    if token_dir.is_dir():
+        app.mount("/tokens", StaticFiles(directory=token_dir), name="tokens")
+    return app
+
+
+@contextmanager
+def _http_errors() -> Iterator[None]:
+    """Translate session errors into HTTP status codes."""
+
+    try:
+        yield
+    except (UnknownGameError, UnknownSaveError) as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except (SeatAccessError, AdminAccessError) as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except (StaleRevisionError, SeatTakenError, GameNotStartedError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except (SessionError, SaveError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error

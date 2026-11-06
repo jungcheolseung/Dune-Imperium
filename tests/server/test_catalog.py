@@ -1,0 +1,1538 @@
+"""Tests for the static display catalog behind the web UI."""
+
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+from dune_imperium.content.core.schema import GameOption
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.registry.board import IMPERIUM_BOARD_SPACES
+from dune_imperium.content.registry.imperium import IMPERIUM_CARDS
+from dune_imperium.content.registry.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES, IX_SPACE_IDS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
+from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.uprising.board import BOARD_SPACES
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
+from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
+from dune_imperium.display.board_layout_imperium import (
+    RESEARCH_STATION_OVERLAY_BOX as IMPERIUM_RESEARCH_STATION_OVERLAY_BOX,
+)
+from dune_imperium.server.catalog import build_catalog
+from dune_imperium.server.sessions import JsonValue
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (tests/server/ has no __init__.py, so pytest never puts the repo root on
+# sys.path for a test file here); reached by path instead, shared by every
+# generator's test file this way (tests/unit/display/test_struct_text.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "support"))
+from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
+    assert_no_stray_latin,
+    assert_placeholders_are_terms,
+    terms_keys,
+)
+
+
+def test_catalog_is_json_serializable_and_covers_every_card() -> None:
+    catalog = build_catalog()
+    json.dumps(catalog)
+
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    # Both base games' cards (the original game's since stage P5a of
+    # docs/base-game-and-ix-plan.md): its 43 and 3 promos, its Reserve.
+    imperium = (
+        entry.card.card_id
+        for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
+    )
+    reserve = (stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS)
+    for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *imperium, *reserve):
+        assert card_id in cards
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert set(intrigue) == {
+        entry.card.card_id
+        for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS)
+    }
+
+
+def test_objective_images_follow_language_and_versioned_asset_mapping() -> None:
+    from dune_imperium.content.uprising.objectives import OBJECTIVES
+
+    english = frozenset(
+        ("objective", card.objective_id,
+         f"en/uprising/objective/{card.objective_id}.png")
+        for card in OBJECTIVES
+    )
+    korean = frozenset(
+        ("objective", card.objective_id,
+         f"ko/uprising/objective/{card.objective_id}.png")
+        for card in OBJECTIVES
+        if card.objective_id != "objective_ornithopter_1_3p"
+    )
+    first = "objective_desert_mouse"
+    ko_url = f"/card-images/ko/uprising/objective/{first}.png"
+    catalog = build_catalog(
+        english,
+        image_index_ko=korean,
+        asset_versions=frozenset({(ko_url, "objective-v1")}),
+    )["objectives"]
+    assert isinstance(catalog, dict)
+    for card in OBJECTIVES:
+        entry = catalog[card.objective_id]
+        assert isinstance(entry, dict)
+        assert entry["image"] == (
+            f"/card-images/en/uprising/objective/{card.objective_id}.png"
+        )
+    entry = catalog[first]
+    ornithopter = catalog["objective_ornithopter_1_3p"]
+    assert isinstance(entry, dict) and isinstance(ornithopter, dict)
+    assert entry["image_ko"] == f"{ko_url}?v=objective-v1"
+    assert "image_ko" not in ornithopter
+    fallback = build_catalog()["objectives"]
+    assert isinstance(fallback, dict)
+    for entry in fallback.values():
+        assert isinstance(entry, dict)
+        assert entry["image"] is None
+
+
+def test_catalog_serves_the_tleilaxu_deck_and_the_bene_tleilax_board() -> None:
+    from dune_imperium.content.immortality.board import RESEARCH_SPACES
+    from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    for card_id in (*TLEILAXU_CARDS_BY_ID, "reclaimed_forces"):
+        assert card_id in cards
+    ghola = cards["ghola"]
+    assert isinstance(ghola, dict)
+    # Tleilaxu cards cost specimens, never Persuasion [Immortality p. 8].
+    assert ghola["cost"] is None and ghola["specimens"] == 3
+    assert ghola["graft"] is True
+    board = catalog["bene_tleilax"]
+    assert isinstance(board, dict)
+    spaces = board["research_spaces"]
+    assert isinstance(spaces, list) and len(spaces) == len(RESEARCH_SPACES)
+    assert board["genetic_marker_columns"] == [4, 8]
+    assert board["research_start"] == "c0r3"
+    track = board["tleilaxu_track"]
+    assert isinstance(track, list) and len(track) == 8
+
+
+def test_catalog_reclaimed_forces_names_both_acquire_choices() -> None:
+    # Acquire box (blue chevron): "[troop][troop] -OR- [Tleilaxu]" [Immortality
+    # p. 9] [Reclaimed Forces card]; personal_card_text() would otherwise
+    # print "(play data not transcribed)" for this Row-only card.
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    entry = cards["reclaimed_forces"]
+    assert isinstance(entry, dict)
+
+    text = entry["text"]
+    assert isinstance(text, list)
+    lines = [line for line in text if isinstance(line, str)]
+    assert len(lines) == len(text)
+    assert not any("(play data not transcribed)" in line for line in lines)
+    assert any("Recruit 2 troops" in line for line in lines)
+    assert any("Tleilaxu" in line for line in lines)
+
+
+def test_catalog_navigation_cards_have_no_timing_label() -> None:
+    # Navigation cards print no Plot/Combat/Endgame banner [Navigation card
+    # faces]; they are played by Plot Course, not chosen by timing.
+    catalog = build_catalog()
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+
+    for number in range(1, 11):
+        entry = intrigue[f"navigation_card_{number}"]
+        assert isinstance(entry, dict)
+        assert entry["timings"] == []
+        text = entry["text"]
+        assert isinstance(text, list)
+        lines = [line for line in text if isinstance(line, str)]
+        assert len(lines) == len(text)
+        assert not any(line.startswith("Plot —") for line in lines)
+
+
+def test_catalog_names_and_details_match_the_manifests() -> None:
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+
+    soldier = cards["sardaukar_soldier"]
+    assert isinstance(soldier, dict)
+    assert soldier["name"] == "Sardaukar Soldier"
+    assert isinstance(soldier["cost"], int)
+
+    spice_must_flow = cards["the_spice_must_flow"]
+    assert isinstance(spice_must_flow, dict)
+    assert spice_must_flow["cost"] == 9
+
+    dagger = cards["dagger"]
+    assert isinstance(dagger, dict)
+    assert dagger["cost"] is None
+    assert dagger["swords"] == 1
+
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    cunning = intrigue["cunning"]
+    assert isinstance(cunning, dict)
+    assert cunning["timings"] == ["plot"]
+    assert cunning["navigation"] is False
+    # A Navigation card has no timing banner; Plot Course plays it
+    # [Steersman Y'rkoon card], so the client labels it a Navigation card.
+    navigation = intrigue["navigation_card_10"]
+    assert isinstance(navigation, dict)
+    assert navigation["timings"] == []
+    assert navigation["navigation"] is True
+
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["name"] == "Staban Tuek"
+
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+    assert "high_council" in spaces
+
+
+def test_catalog_serves_the_reserve_stacks_printed_factions() -> None:
+    # Prepare the Way prints a purple "BENE GESSERIT" affiliation banner and
+    # The Spice Must Flow a red "SPACING GUILD" one [card face]; the catalog
+    # must expose each Reserve stack's own factions, not the empty tuple it
+    # used to hard-code.
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+
+    prepare_the_way = cards["prepare_the_way"]
+    assert isinstance(prepare_the_way, dict)
+    assert prepare_the_way["factions"] == ["bene_gesserit"]
+
+    spice_must_flow = cards["the_spice_must_flow"]
+    assert isinstance(spice_must_flow, dict)
+    assert spice_must_flow["factions"] == ["spacing_guild"]
+
+
+def test_catalog_serves_generated_effect_text() -> None:
+    catalog = build_catalog()
+
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    for entry in cards.values():
+        assert isinstance(entry, dict)
+        # A card with no dynamic effect data (no Agent/Reveal/acquire/
+        # discard/trash line beyond its printed Persuasion/strength) serves
+        # an empty list, not a made-up placeholder line (ITEM 8f,
+        # 2026-09-25); every line the list does serve must still be real,
+        # non-empty text.
+        assert isinstance(entry["text"], list)
+        assert all(isinstance(line, str) and line for line in entry["text"])
+
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    for card_id, entry in intrigue.items():
+        assert isinstance(entry, dict)
+        # Bloodlines / Immortality Intrigue awaiting transcription has no
+        # option text yet and never enters a deck until it does.
+        card = INTRIGUE_CARDS_BY_ID[card_id]
+        if entry["text"] == [] and (
+            (GameOption.BLOODLINES in card.requires)
+            or (GameOption.IMMORTALITY in card.requires)
+        ):
+            continue
+        # Rise of Ix's Intrigue whose play data stage P4d has not written yet
+        # has no text and never enters a deck until it does.
+        if entry["text"] == [] and not card.play_data_complete:
+            continue
+        assert entry["text"]
+
+    contracts = catalog["contracts"]
+    assert isinstance(contracts, dict)
+    for entry in contracts.values():
+        assert isinstance(entry, dict)
+        assert entry["condition"]
+        assert entry["reward"]
+        assert isinstance(entry["immediate"], bool)
+
+    conflicts = catalog["conflicts"]
+    assert isinstance(conflicts, dict)
+    for entry in conflicts.values():
+        assert isinstance(entry, dict)
+        rewards = entry["rewards"]
+        assert rewards is None or (
+            isinstance(rewards, list) and len(rewards) == 3
+        )
+        assert "shield_wall_protected" in entry
+        assert "icon" in entry
+
+
+def test_catalog_serves_korean_contract_and_conflict_text() -> None:
+    """``condition_ko``/``reward_ko``/``rewards_ko`` beside the English.
+
+    Feature decided 2026-09-25 (Korean twin of engine-*generated* effect
+    text); ``display.structs``'s ``*_ko`` renderers are the first
+    generator this covers. Every placeholder must be a real
+    ``static/labels.js`` ``TERMS`` key and the text must hold no stray
+    Latin (``tests/support/ko_text.py``, shared with the unit-level
+    ``display/structs.py`` tests).
+    """
+    from dune_imperium.content.registry.contracts import CONTRACTS_BY_ID
+    from dune_imperium.display.structs import _card_name, _card_name_ko
+
+    terms = terms_keys()
+    catalog = build_catalog()
+
+    contracts = catalog["contracts"]
+    assert isinstance(contracts, dict)
+    for contract_id, entry in contracts.items():
+        assert isinstance(entry, dict)
+        condition_ko = entry["condition_ko"]
+        reward_ko = entry["reward_ko"]
+        assert isinstance(condition_ko, str) and condition_ko.strip(), contract_id
+        assert isinstance(reward_ko, str) and reward_ko.strip(), contract_id
+        assert_placeholders_are_terms(condition_ko, terms)
+        assert_placeholders_are_terms(reward_ko, terms)
+        assert_no_stray_latin(reward_ko)
+        # A board space goes by its Korean name; an acquired card with no
+        # known Korean print keeps its English name.
+        acquired = CONTRACTS_BY_ID[contract_id].acquire_card
+        allowed: frozenset[str] = frozenset()
+        if acquired is not None:
+            english = _card_name(acquired)
+            korean = _card_name_ko(acquired)
+            allowed = frozenset({english}) if english == korean else frozenset()
+        assert_no_stray_latin(condition_ko, allowed)
+
+    conflicts = catalog["conflicts"]
+    assert isinstance(conflicts, dict)
+    for conflict_id, entry in conflicts.items():
+        assert isinstance(entry, dict)
+        rewards = entry["rewards"]
+        rewards_ko = entry["rewards_ko"]
+        assert (rewards is None) == (rewards_ko is None), conflict_id
+        if rewards_ko is None:
+            continue
+        assert isinstance(rewards_ko, list) and len(rewards_ko) == 3, conflict_id
+        for label, line in zip(("1등: ", "2등: ", "3등: "), rewards_ko, strict=True):
+            assert isinstance(line, str)
+            assert line.startswith(label)
+            assert_placeholders_are_terms(line, terms)
+            assert_no_stray_latin(line)
+
+
+def test_catalog_serves_korean_personal_card_text() -> None:
+    """``cards[id].text_ko`` beside the English ``text`` (Step K2,
+    2026-09-25): every card carries the same number of Korean lines as
+    English ones (``display.cards.personal_card_text_ko``), each a valid
+    Korean line by the same guards ``ko_text.py`` gives every generator.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    cards = catalog["cards"]
+    assert isinstance(cards, dict)
+    assert cards, "no cards in the catalog"
+
+    for card_id, entry in cards.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), card_id
+        for _en_line, ko_line in zip(text, text_ko, strict=True):
+            assert isinstance(ko_line, str) and ko_line.strip(), card_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+
+
+def test_catalog_serves_korean_intrigue_text() -> None:
+    """``intrigue[id].text_ko`` beside the English ``text`` (Step K3,
+    2026-09-25): one Korean line per printed option, same length and order
+    as ``text`` (``display.effect_dsl_text_ko.intrigue_card_text_ko``), each
+    a valid Korean line by the same guards ``ko_text.py`` gives every
+    generator, and carrying the same " — " timing separator the client
+    strips (``core.js`` ``intrigueOptionBody()``) -- except a Navigation
+    card, whose lines carry no timing prefix in either language (Plot
+    Course plays it automatically [Steersman Y'rkoon card]).
+    """
+    from dune_imperium.display.effect_dsl_text import intrigue_card_text
+    from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert intrigue, "no intrigue cards in the catalog"
+
+    for intrigue_id, entry in intrigue.items():
+        assert isinstance(entry, dict)
+        text = entry["text"]
+        text_ko = entry["text_ko"]
+        assert isinstance(text, list) and isinstance(text_ko, list)
+        assert len(text_ko) == len(text), intrigue_id
+        # Matches the direct renderer call, confirming the catalog wires the
+        # same generator through rather than a stale/duplicated copy.
+        definition = INTRIGUE_CARDS_BY_ID[intrigue_id]
+        assert text_ko == intrigue_card_text_ko(definition), intrigue_id
+        assert text == intrigue_card_text(definition), intrigue_id
+        for ko_line in text_ko:
+            assert isinstance(ko_line, str) and ko_line.strip(), intrigue_id
+            assert_placeholders_are_terms(ko_line, terms)
+            assert_no_stray_latin(ko_line)
+            if not definition.navigation:
+                assert " — " in ko_line, (intrigue_id, ko_line)
+
+
+def test_catalog_includes_leader_alternate_faces_with_text() -> None:
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+
+    jessica = leaders["lady_jessica"]
+    assert isinstance(jessica, dict)
+    assert jessica["ability"] == "Other Memories"
+    assert jessica["ability_text"]
+    assert jessica["signet_text"]
+
+    reverend_mother = leaders["reverend_mother_jessica"]
+    assert isinstance(reverend_mother, dict)
+    assert reverend_mother["name"] == "Reverend Mother Jessica"
+    assert reverend_mother["ability"] == "Reverend Mother"
+    assert reverend_mother["signet"] == "Water of Life"
+    assert reverend_mother["ability_text"]
+
+
+def test_catalog_serves_korean_leader_text() -> None:
+    """Step K5 (2026-09-25): a scanned Leader face carries its Korean
+
+    ability/Signet Ring name and text beside the English ones;
+    ``reverend_mother_jessica`` has no Korean scan and so carries none of
+    the ``_ko`` keys, exactly like a field with no Korean twin anywhere
+    else in the catalog.
+    """
+
+    terms = terms_keys()
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["ability_ko"] == "전술가"
+    assert chani["signet_ko"] == "페다이킨의 책략"
+    for field in ("ability_text_ko", "signet_text_ko"):
+        value = chani[field]
+        assert isinstance(value, str) and value.strip()
+        assert_placeholders_are_terms(value, terms)
+        assert_no_stray_latin(value)
+    assert isinstance(chani["notes_ko"], list)
+
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["notes_ko"] == [
+        "한정된 조력자: 당신의 카드덱에서 외교를 제외한 채로 게임을 시작합니다."
+    ]
+
+    reverend_mother = leaders["reverend_mother_jessica"]
+    assert isinstance(reverend_mother, dict)
+    ko_fields = (
+        "ability_ko",
+        "signet_ko",
+        "ability_text_ko",
+        "signet_text_ko",
+        "notes_ko",
+    )
+    for field in ko_fields:
+        assert field not in reverend_mother
+
+
+def test_catalog_serves_leader_card_overlay_layouts() -> None:
+    from dune_imperium.display.leader_layout import leader_layout
+
+    catalog = build_catalog()
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    layouts = leader_layout()
+
+    feyd = leaders["feyd_rautha_harkonnen"]
+    assert isinstance(feyd, dict)
+    assert feyd["layout"] == layouts["feyd_rautha_harkonnen"]
+
+    chani = leaders["chani"]
+    assert isinstance(chani, dict)
+    assert chani["layout"] == layouts["chani"]
+
+    yrkoon = leaders["steersman_y_rkoon"]
+    assert isinstance(yrkoon, dict)
+    assert yrkoon["layout"] == layouts["steersman_y_rkoon"]
+
+    # A leader with no printed on-card token/slot state serves a null
+    # layout rather than leaving the key out.
+    staban = leaders["staban_tuek"]
+    assert isinstance(staban, dict)
+    assert staban["layout"] is None
+
+
+def test_catalog_spaces_carry_structured_board_data() -> None:
+    catalog = build_catalog()
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+    # Uprising's 22, Tuek's Sietch (Bloodlines) and the original board's 22,
+    # three of them (Arrakeen, Imperial Basin, Secrets) one print on both,
+    # and Rise of Ix's four on the original board (stage P5f).
+    assert len(spaces) == 22 + 1 + 22 - 3 + 4
+    assert {space_id for space_id, entry in spaces.items()
+            if isinstance(entry, dict) and entry["expansion"] == "rise_of_ix"} == {
+        "dreadnought", "tech_negotiation", "interstellar_shipping", "smuggling"}
+    # The four its CHOAM overlay covers on each board: the original's
+    # Landsraad and CHOAM pairs, and Uprising's top-right corner (stage P7f,
+    # docs/rules/rise-of-ix.md 17).
+    assert {space_id for space_id, entry in spaces.items()
+            if isinstance(entry, dict) and entry["removed_by"] == "rise_of_ix"} == {
+        "hall_of_oratory", "rally_troops", "secure_contract", "sell_melange",
+        "assembly_hall", "gather_support", "shipping", "accept_contract"}
+    for space_id, entry in spaces.items():
+        assert isinstance(entry, dict)
+        # Uprising's, with Rise of Ix's four on its overlay and Ix board
+        # since stage P7f.
+        on_uprising = space_id in {
+            space.space_id for space in (*BOARD_SPACES, *IX_BOARD_SPACES)
+        }
+        # The original board's, with Rise of Ix's four printed on its Ix board
+        # and CHOAM overlay, and a Leader's own tile laid beside either board
+        # (Tuek's Sietch, the original's with Bloodlines since stage P7c).
+        on_original = space_id in {
+            space.space_id for space in (*IMPERIUM_BOARD_SPACES, *IX_BOARD_SPACES)
+        } or space_id == "tuek_sietch"
+        assert entry["base_games"] == (
+            ["uprising"] * on_uprising + ["imperium"] * on_original
+        ), space_id
+
+    sardaukar = spaces["sardaukar"]
+    assert isinstance(sardaukar, dict)
+    assert sardaukar["agent_icon"] == "emperor"
+    assert sardaukar["options"] == [
+        {
+            "cost": {"solari": 0, "spice": 4, "water": 0},
+            "effect": (
+                "Gain 1 Emperor Influence, Draw 1 Intrigue card, "
+                "Recruit 4 troops"
+            ),
+            "effect_ko": "{influence_emperor:1}, {intrigue:1}, {troop:4}",
+        }
+    ]
+    assert sardaukar["choam_options"] is None
+    assert sardaukar["implemented"] is True
+
+    shipping = spaces["shipping"]
+    assert isinstance(shipping, dict)
+    assert shipping["requirement"] == {"faction": "spacing_guild", "amount": 2}
+    assert shipping["implemented"] is True
+    assert shipping["choam_implemented"] is True
+
+    dutiful_service = spaces["dutiful_service"]
+    assert isinstance(dutiful_service, dict)
+    assert dutiful_service["implemented"] is True
+    assert dutiful_service["choam_implemented"] is True
+    assert dutiful_service["choam_options"] is not None
+
+    imperial_basin = spaces["imperial_basin"]
+    assert isinstance(imperial_basin, dict)
+    assert imperial_basin["combat"] is True
+    assert imperial_basin["maker"] is True
+    assert imperial_basin["critical"] is True
+    assert imperial_basin["notes"]
+
+    swordmaster = spaces["swordmaster"]
+    assert isinstance(swordmaster, dict)
+    assert swordmaster["dynamic_cost"] == "swordmaster"
+    options = swordmaster["options"]
+    assert isinstance(options, list)
+    assert len(options) == 2
+    # Both printed costs stay listed (the client indexes them by the
+    # action's cost_option); the note says which applies when: "아무도
+    # Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는
+    # 6 Solari" `[Board Guide p. 2]` (docs/rules/board-spaces.md).
+    assert [
+        {"solari": 8, "spice": 0, "water": 0},
+        {"solari": 6, "spice": 0, "water": 0},
+    ] == [option["cost"] for option in options if isinstance(option, dict)]
+    assert swordmaster["notes"] == [
+        "Cost: 8 solari if no player has their Swordmaster;"
+        " 6 solari once any player does"
+    ]
+    assert swordmaster["notes_ko"] == [
+        "비용: 아무도 소드마스터가 없다면 {solari:8}, 누군가가 소드마스터를"
+        " 얻었다면 {solari:6}"
+    ]
+
+    sietch_tabr = spaces["sietch_tabr"]
+    assert isinstance(sietch_tabr, dict)
+    notes = sietch_tabr["notes"]
+    notes_ko = sietch_tabr["notes_ko"]
+    assert isinstance(notes, list) and isinstance(notes_ko, list)
+    assert len(notes) == len(notes_ko) == 1
+    assert str(notes[0]).startswith("Shield Wall: ")
+    assert str(notes_ko[0]).startswith("{shield_wall}: ")
+
+
+def test_catalog_image_urls_follow_the_resolved_index() -> None:
+    with_images = build_catalog(
+        frozenset(
+            {
+                (
+                    "imperium",
+                    "sardaukar_soldier",
+                    "en/uprising/imperium/Sardaukar Soldier.webp",
+                ),
+                ("location", "arrakeen", "ko/uprising/location/Arrakeen.webp"),
+                ("other", "dagger", "en/base/starting/Dagger.webp"),
+            }
+        )
+    )
+    cards = with_images["cards"]
+    assert isinstance(cards, dict)
+    soldier = cards["sardaukar_soldier"]
+    assert isinstance(soldier, dict)
+    # Printed names carry spaces: the URL is percent-encoded for the mount.
+    assert soldier["image"] == (
+        "/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp"
+    )
+    dagger = cards["dagger"]
+    assert isinstance(dagger, dict)
+    assert dagger["image"] == "/card-images/en/base/starting/Dagger.webp"
+    spice_must_flow = cards["the_spice_must_flow"]
+    assert isinstance(spice_must_flow, dict)
+    assert spice_must_flow["image"] is None
+    spaces = with_images["spaces"]
+    assert isinstance(spaces, dict)
+    arrakeen = spaces["arrakeen"]
+    assert isinstance(arrakeen, dict)
+    assert arrakeen["image"] == "/card-images/ko/uprising/location/Arrakeen.webp"
+
+    without_images = build_catalog()
+    cards = without_images["cards"]
+    assert isinstance(cards, dict)
+    soldier = cards["sardaukar_soldier"]
+    assert isinstance(soldier, dict)
+    assert soldier["image"] is None
+
+
+def test_catalog_flags_every_graft_card_the_engine_knows() -> None:
+    """Graft cards are in Immortality's Imperium deck as well as in the
+    Tleilaxu deck [Immortality p. 10]. The browser reads the flag for the
+    card's "Graft" mark and to tell which two hand cards may be played
+    together; the Imperium ones were missing until 2026-09-19."""
+
+    from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+    from dune_imperium.content.registry.imperium import IMPERIUM_CARDS_BY_ID
+    from dune_imperium.content.registry.personal_cards import card_is_graft
+
+    cards = build_catalog()["cards"]
+    assert isinstance(cards, dict)
+    flagged = {
+        card_id
+        for card_id, entry in cards.items()
+        if isinstance(entry, dict) and entry.get("graft")
+    }
+    engine = {
+        card_id
+        for card_id, entry in (
+            *IMPERIUM_CARDS_BY_ID.items(),
+            *TLEILAXU_CARDS_BY_ID.items(),
+        )
+        if card_is_graft(entry)
+    }
+    assert flagged == engine
+    assert "dissecting_kit" in flagged and "ghola" in flagged
+
+
+def test_catalog_pairs_each_korean_picture_with_the_english_one() -> None:
+    """The English UI's index prefers English pictures, the Korean UI's
+    Korean ones; an entry whose two differ carries both, versioned, and the
+    page shows the one of its language. One with the same picture in both
+    (no Korean file) carries only ``image``."""
+
+    english = frozenset(
+        {
+            ("imperium", "steersman", "en/uprising/imperium/Steersman.webp"),
+            ("other", "dagger", "en/base/starting/Dagger.webp"),
+            ("leader", "muad_dib", "en/uprising/leader/Muad'Dib.webp"),
+        }
+    )
+    korean = frozenset(
+        {
+            ("imperium", "steersman", "ko/uprising/imperium/Steersman.webp"),
+            ("other", "dagger", "en/base/starting/Dagger.webp"),
+            ("leader", "muad_dib", "ko/uprising/leader/Muad'Dib.webp"),
+        }
+    )
+    catalog = build_catalog(
+        english,
+        asset_versions=frozenset(
+            {("/card-images/ko/uprising/imperium/Steersman.webp", "k1")}
+        ),
+        image_index_ko=korean,
+    )
+    cards = catalog["cards"]
+    leaders = catalog["leaders"]
+    assert isinstance(cards, dict) and isinstance(leaders, dict)
+    steersman = cards["steersman"]
+    dagger = cards["dagger"]
+    muad_dib = leaders["muad_dib"]
+    assert isinstance(steersman, dict) and isinstance(dagger, dict)
+    assert isinstance(muad_dib, dict)
+    assert steersman["image"] == "/card-images/en/uprising/imperium/Steersman.webp"
+    assert steersman["image_ko"] == (
+        "/card-images/ko/uprising/imperium/Steersman.webp?v=k1"
+    )
+    assert muad_dib["image_ko"] == "/card-images/ko/uprising/leader/Muad%27Dib.webp"
+    assert "image_ko" not in dagger
+    # Without a Korean index nothing gains a Korean picture.
+    plain = build_catalog(english)["cards"]
+    assert isinstance(plain, dict)
+    plain_steersman = plain["steersman"]
+    assert isinstance(plain_steersman, dict)
+    assert "image_ko" not in plain_steersman
+
+
+def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
+    """``name_ko`` comes from the Korean edition's card faces
+    (``display.names_ko``); a card not read keeps only its English name.
+    A distinguisher the engine's English name carries but the card does
+    not print stays in the Korean name: a contract's numeral, a Skirmish's
+    battle icon in the glossary's words [Main p. 20]. Board spaces and
+    Objective cards are named from the Korean rulebooks instead (the Board
+    Space Guide; 목적 카드 [Main pp. 3, 5]), an Objective with the player
+    counts its face prints ("4/6P", "1-3P" [Main p. 5]) in both languages.
+    Navigation cards print no title and keep their number: 운항 카드 3."""
+
+    from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+
+    catalog = build_catalog()
+    hangul = re.compile(r"[가-힣]")
+    for section, names in KOREAN_CARD_NAMES.items():
+        entries = catalog[section]
+        assert isinstance(entries, dict), section
+        for entry_id, name in names.items():
+            entry = entries[entry_id]
+            assert isinstance(entry, dict)
+            assert entry["name_ko"] == name
+            assert hangul.search(name), name
+            # Latin only where the English has it too: a contract's numeral,
+            # or printed on the Korean card as well ("실험체 X-137", an
+            # Objective's "4/6P").
+            english = entry["name"]
+            assert isinstance(english, str)
+            for latin in re.findall(r"[A-Za-z]+", name):
+                assert latin in english, (name, english)
+    cards = catalog["cards"]
+    contracts = catalog["contracts"]
+    conflicts = catalog["conflicts"]
+    leaders = catalog["leaders"]
+    assert isinstance(cards, dict) and isinstance(contracts, dict)
+    assert isinstance(conflicts, dict) and isinstance(leaders, dict)
+
+    def korean(entries: dict[str, JsonValue], entry_id: str) -> JsonValue:
+        entry = entries[entry_id]
+        assert isinstance(entry, dict)
+        return entry.get("name_ko")
+
+    assert korean(cards, "steersman") == "조타수"
+    assert korean(cards, "treacherous_maneuver") == "기만적인 계책"
+    assert korean(contracts, "arrakeen_i") == "아라킨 I"
+    assert korean(contracts, "spice_refinery_i") == "스파이스 정제소 I"
+    # A second copy of a tile reads as the first.
+    assert korean(contracts, "harvest_3_copy_2") == "채취 3+"
+    assert korean(conflicts, "skirmish_crysknife") == "소규모 전투 (크리스나이프)"
+    assert korean(leaders, "shaddam_corrino_iv") == "샤담 코리노 4세"
+    # Bloodlines: its Skirmish's wild battle icon [Bloodlines p. 5], the
+    # Commander Skills and the Tech tiles; Immortality's Tleilaxu deck.
+    skills = catalog["skills"]
+    tech = catalog["tech"]
+    assert isinstance(skills, dict) and isinstance(tech, dict)
+    assert korean(conflicts, "skirmish_wild") == "소규모 전투 (와일드)"
+    assert korean(contracts, "bloodlines_harvest_4") == "채취 4+"
+    assert korean(skills, "canny") == "영리함"
+    assert korean(tech, "choam_transports") == "초암 수송선"
+    assert korean(cards, "subject_x_137") == "실험체 X-137"
+    # Not photographed: Lady Jessica's flip side and the Bloodlines Intrigue
+    # cards that lay in a pile.
+    intrigue = catalog["intrigue"]
+    assert isinstance(intrigue, dict)
+    assert korean(leaders, "reverend_mother_jessica") is None
+    assert korean(intrigue, "adaptive_tactics") is None
+    # Every board space of both boards (the original game's from its Korean
+    # rulebook's Board Space Guide [DI-ko pp. 17-18]) and every Objective card
+    # has its Korean name.
+    spaces = catalog["spaces"]
+    objectives = catalog["objectives"]
+    assert isinstance(spaces, dict) and isinstance(objectives, dict)
+    assert all(korean(spaces, space_id) for space_id in spaces)
+    assert korean(spaces, "conspire") == "흑막"
+    assert korean(spaces, "the_great_flat") == "대평지"
+    assert korean(leaders, "paul_atreides") == "폴 아트레이드"
+    # Not named in the Korean rulebook's text: English (plan 18.5 2).
+    assert korean(leaders, "duke_leto_atreides") is None
+    assert korean(cards, "arrakis_liaison") == "아라키스 연락책"
+    assert all(korean(objectives, objective_id) for objective_id in objectives)
+    assert korean(spaces, "imperial_privilege") == "제국 특권"
+    assert korean(spaces, "fremkit") == "프렘 행낭"
+    assert korean(spaces, "tuek_sietch") == "튜엑의 시치"
+    assert korean(objectives, "objective_crysknife_1") == "크리스나이프 목적 카드"
+    assert korean(objectives, "objective_crysknife_2") == "크리스나이프 목적 카드 4/6P"
+    assert korean(objectives, "objective_ornithopter_1_3p") == "오니솝터 목적 카드 1-3P"
+    # The English names the rules' way too [Board Guide pp. 3, 8], with the
+    # same printed mark as the Korean.
+    for entry in objectives.values():
+        assert isinstance(entry, dict)
+        english, name_ko = entry["name"], entry["name_ko"]
+        assert isinstance(english, str) and isinstance(name_ko, str)
+        assert english.split(" Objective")[1] == name_ko.split(" 목적 카드")[1]
+    english_names = {
+        objective_id: entry["name"]
+        for objective_id, entry in objectives.items()
+        if isinstance(entry, dict)
+    }
+    assert english_names["objective_crysknife_1"] == "Crysknife Objective"
+    assert english_names["objective_crysknife_2"] == "Crysknife Objective 4/6P"
+    assert english_names["objective_ornithopter_1_3p"] == "Ornithopter Objective 1-3P"
+    assert korean(intrigue, "navigation_card_3") == "운항 카드 3"
+
+
+def test_catalog_appends_the_version_of_every_asset_it_knows() -> None:
+    versions = frozenset(
+        {
+            ("/card-images/en/uprising/location/Arrakeen.webp", "c1"),
+            ("/icons/troop.png", "i1"),
+            ("/tokens/shield_wall.png", "t1"),
+            ("/board-image", "b1"),
+            ("/bene-tleilax-image", "s1"),
+        }
+    )
+    catalog = build_catalog(
+        frozenset(
+            {
+                ("location", "arrakeen", "en/uprising/location/Arrakeen.webp"),
+                ("other", "dagger", "en/base/starting/Dagger.webp"),
+            }
+        ),
+        frozenset({"troop.png", "spice.png"}),
+        True,
+        bene_tleilax_image=True,
+        token_files=frozenset({"shield_wall.png"}),
+        asset_versions=versions,
+    )
+    spaces = catalog["spaces"]
+    cards = catalog["cards"]
+    wall = catalog["shield_wall"]
+    scan = catalog["bene_tleilax"]
+    assert isinstance(spaces, dict) and isinstance(cards, dict)
+    assert isinstance(wall, dict) and isinstance(scan, dict)
+    arrakeen = spaces["arrakeen"]
+    dagger = cards["dagger"]
+    assert isinstance(arrakeen, dict) and isinstance(dagger, dict)
+    assert arrakeen["image"] == (
+        "/card-images/en/uprising/location/Arrakeen.webp?v=c1"
+    )
+    # An asset without a known version keeps its plain URL.
+    assert dagger["image"] == "/card-images/en/base/starting/Dagger.webp"
+    assert catalog["icons"] == {
+        "troop": "/icons/troop.png?v=i1",
+        "spice": "/icons/spice.png",
+    }
+    assert wall["image"] == "/tokens/shield_wall.png?v=t1"
+    assert catalog["board_image"] == "/board-image?v=b1"
+    assert scan["image"] == "/bene-tleilax-image?v=s1"
+
+
+def test_catalog_carries_the_log_pictures_only_with_their_files() -> None:
+    """The action log's own pictures (display.log_icons) come from the icon
+    folder too; without them the block is empty and the log is text only."""
+    assert build_catalog()["log_icons"] == {}
+
+    catalog = build_catalog(
+        frozenset(),
+        frozenset(
+            {"troop.png", "log_conflict.png", "log_round_3.png", "log_other.png"}
+        ),
+        asset_versions=frozenset({("/icons/log_conflict.png", "l1")}),
+    )
+    assert catalog["log_icons"] == {
+        "conflict": "/icons/log_conflict.png?v=l1",
+        "round_3": "/icons/log_round_3.png",
+    }
+    # A log picture is not a rulebook icon, and a rulebook icon not a log one.
+    assert catalog["icons"] == {"troop": "/icons/troop.png"}
+
+
+def test_catalog_lays_the_pieces_the_scan_does_not_print() -> None:
+    bare = build_catalog()
+    # The Shield Wall token on its marked position [Main p. 4]: always a
+    # place, a picture only with the local file.
+    wall = bare["shield_wall"]
+    assert isinstance(wall, dict)
+    assert wall["image"] is None
+    assert wall["rotation"] == 180
+    box = wall["box"]
+    assert isinstance(box, list) and len(box) == 4
+    with_wall = build_catalog(token_files=frozenset({"shield_wall.png"}))
+    pictured = with_wall["shield_wall"]
+    assert isinstance(pictured, dict)
+    assert pictured["image"] == "/tokens/shield_wall.png"
+
+    # A Sardaukar Commander stands on the top-right corner of its space's
+    # frame, leaving the frame to the Agents [Bloodlines p. 3]: always a spot,
+    # the rulebook figure only with the local picture.
+    assert bare["commander_token"] is None
+    spot = bare["commander_spot"]
+    assert isinstance(spot, dict)
+    assert spot["anchor"] == [0.89, 0.13]
+    assert spot["height"] == 0.95
+    assert spot["base"] == [0.434, 0.873]
+    with_commander = build_catalog(
+        token_files=frozenset({"sardaukar_commander.png"})
+    )
+    assert with_commander["commander_token"] == "/tokens/sardaukar_commander.png"
+
+    spaces = bare["spaces"]
+    assert isinstance(spaces, dict)
+    # Immortality's Research Station overlay: "Draw two cards and research"
+    # [Immortality pp. 5, 16] over the printed "Recruit 2 troops, Draw 2
+    # cards", with its own picture and the box it covers.
+    station = spaces["research_station"]
+    assert isinstance(station, dict)
+    assert station["options"] == [
+        {
+            "cost": {"solari": 0, "spice": 0, "water": 2},
+            "effect": "Recruit 2 troops, Draw 2 cards",
+            "effect_ko": "{troop:2}, {draw:2}",
+        }
+    ]
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    assert overlay["options"] == [
+        {
+            "cost": {"solari": 0, "spice": 0, "water": 2},
+            "effect": "Draw 2 cards, Research (advance your research token)",
+            "effect_ko": "{draw:2}, {research} (연구 토큰 전진)",
+        }
+    ]
+    assert overlay["image"] is None
+    tile_box = overlay["tile_box"]
+    assert isinstance(tile_box, list) and len(tile_box) == 4
+    overlays = [
+        space_id
+        for space_id, entry in spaces.items()
+        if isinstance(entry, dict) and entry["immortality"] is not None
+    ]
+    assert sorted(overlays) == ["imperium_research_station", "research_station"]
+    # The same tile covers the original Research Station [Immortality p. 5]
+    # (stage P7b) with the same text and pictures, in that board's own box.
+    original = spaces["imperium_research_station"]
+    assert isinstance(original, dict)
+    original_overlay = original["immortality"]
+    assert isinstance(original_overlay, dict)
+    assert original_overlay["options"] == overlay["options"]
+    assert original_overlay["tile_box"] == list(IMPERIUM_RESEARCH_STATION_OVERLAY_BOX)
+    assert original_overlay["tile_box"] != tile_box
+    assert original_overlay["tile_image"] == overlay["tile_image"]
+    assert original_overlay["image"] == overlay["image"]
+
+    with_overlay = build_catalog(
+        frozenset(
+            {
+                (
+                    "location",
+                    "research_station_overlay",
+                    "en/immortality/location/Research Station.jpg",
+                ),
+                ("location", "research_station", "en/uprising/location/RS.webp"),
+            }
+        )
+    )["spaces"]
+    assert isinstance(with_overlay, dict)
+    station = with_overlay["research_station"]
+    assert isinstance(station, dict)
+    assert station["image"] == "/card-images/en/uprising/location/RS.webp"
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    assert overlay["image"] == (
+        "/card-images/en/immortality/location/Research%20Station.jpg"
+    )
+
+    # A Leader's own tile is on the table only while that Leader plays
+    # [Bloodlines p. 12]; the scan has no print, so its picture is drawn,
+    # around the frame its hotspot follows.
+    tuek = spaces["tuek_sietch"]
+    assert isinstance(tuek, dict)
+    assert tuek["required_leader_id"] == "esmar_tuek"
+    assert tuek["tile_box"] == list(LEADER_TILE_BOXES["tuek_sietch"])
+    assert tuek["box"] == list(SPACE_BOXES["tuek_sietch"])
+    printed = [
+        space_id
+        for space_id, entry in spaces.items()
+        if isinstance(entry, dict) and entry["required_leader_id"] is None
+    ]
+    assert len(printed) == len(spaces) - 1
+    arrakeen = spaces["arrakeen"]
+    assert isinstance(arrakeen, dict)
+    assert arrakeen["tile_box"] is None
+    # Without the scan-only index no board piece has a picture of its own.
+    assert tuek["tile_image"] is None
+    assert overlay["tile_image"] is None
+    assert arrakeen["tile_image"] is None
+
+
+def test_catalog_lays_board_pieces_from_the_scans_and_pops_the_app_tiles() -> None:
+    """A Leader's tile (Tuek's Sietch) and the Research Station overlay are
+    laid on the printed board in boxes of the printed tiles' shape, which
+    the app's board-space renders do not have: those pieces carry the scan
+    as ``tile_image`` (paired with its Korean twin like ``image``), and the
+    popovers keep ``image``, the app render where there is one."""
+
+    tuek_en = "en/bloodlines/location/Tuek's Sietch.png"
+    tuek_ko = "ko/bloodlines/location/Tuek's Sietch.png"
+    overlay_en = "en/immortality/location/Research Station.jpg"
+    overlay_ko = "ko/immortality/location/Research Station.jpg"
+    english = frozenset(
+        {
+            (
+                "location",
+                "tuek_sietch",
+                "app/en/bloodlines/location/Tuek's Sietch.webp",
+            ),
+            # no English render: the English scan is the popover picture too
+            ("location", "research_station_overlay", overlay_en),
+            ("location", "arrakeen", "app/en/uprising/location/Arrakeen.webp"),
+        }
+    )
+    korean = frozenset(
+        {
+            (
+                "location",
+                "tuek_sietch",
+                "app/ko/bloodlines/location/Tuek's Sietch.webp",
+            ),
+            (
+                "location",
+                "research_station_overlay",
+                "app/ko/immortality/location/Research Station.webp",
+            ),
+            ("location", "arrakeen", "app/ko/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tiles = frozenset(
+        {
+            ("location", "tuek_sietch", tuek_en),
+            ("location", "research_station_overlay", overlay_en),
+            ("location", "arrakeen", "en/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tiles_ko = frozenset(
+        {
+            ("location", "tuek_sietch", tuek_ko),
+            ("location", "research_station_overlay", overlay_ko),
+            ("location", "arrakeen", "ko/uprising/location/Arrakeen.webp"),
+        }
+    )
+    tuek_ko_url = "/card-images/ko/bloodlines/location/Tuek%27s%20Sietch.png"
+    catalog = build_catalog(
+        english,
+        image_index_ko=korean,
+        tile_index=tiles,
+        tile_index_ko=tiles_ko,
+        asset_versions=frozenset({(tuek_ko_url, "t1")}),
+    )
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+
+    tuek = spaces["tuek_sietch"]
+    assert isinstance(tuek, dict)
+    assert tuek["image"] == (
+        "/card-images/app/en/bloodlines/location/Tuek%27s%20Sietch.webp"
+    )
+    assert tuek["image_ko"] == (
+        "/card-images/app/ko/bloodlines/location/Tuek%27s%20Sietch.webp"
+    )
+    assert tuek["tile_image"] == (
+        "/card-images/en/bloodlines/location/Tuek%27s%20Sietch.png"
+    )
+    # Versioned like every other picture URL.
+    assert tuek["tile_image_ko"] == f"{tuek_ko_url}?v=t1"
+
+    station = spaces["research_station"]
+    assert isinstance(station, dict)
+    # The overlay carries the board piece; the printed space has no box.
+    assert station["tile_box"] is None and station["tile_image"] is None
+    overlay = station["immortality"]
+    assert isinstance(overlay, dict)
+    overlay_en_url = "/card-images/en/immortality/location/Research%20Station.jpg"
+    assert overlay["image"] == overlay_en_url
+    assert overlay["tile_image"] == overlay_en_url
+    # One English scan, two Korean partners: the render for the popover,
+    # the Korean scan for the board piece.
+    assert overlay["image_ko"] == (
+        "/card-images/app/ko/immortality/location/Research%20Station.webp"
+    )
+    assert overlay["tile_image_ko"] == (
+        "/card-images/ko/immortality/location/Research%20Station.jpg"
+    )
+
+    # A printed space is part of the scan: no board piece, whatever the
+    # scan-only index holds for it.
+    arrakeen = spaces["arrakeen"]
+    assert isinstance(arrakeen, dict)
+    assert arrakeen["tile_image"] is None
+    assert "tile_image_ko" not in arrakeen
+    assert arrakeen["image"] == "/card-images/app/en/uprising/location/Arrakeen.webp"
+
+    # Without a Korean scan-only index the board pieces have one picture.
+    plain = build_catalog(english, tile_index=tiles)["spaces"]
+    assert isinstance(plain, dict)
+    plain_tuek = plain["tuek_sietch"]
+    assert isinstance(plain_tuek, dict)
+    assert "tile_image_ko" not in plain_tuek
+
+
+def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
+    catalog = build_catalog()
+    spaces = catalog["spaces"]
+    assert isinstance(spaces, dict)
+    for space_id, entry in spaces.items():
+        assert isinstance(entry, dict)
+        box = entry["box"]
+        # The board scan is Uprising's; the original board's own spaces have
+        # no layout before stage P5b (docs/base-game-and-ix-plan.md 18).
+        base_games = entry["base_games"]
+        assert isinstance(base_games, list)
+        # Rise of Ix's spaces are on its overlay and board, whose boxes are
+        # the "ix" table's (stage P7f), not the scan's.
+        if "uprising" not in base_games or space_id in IX_SPACE_IDS:
+            assert box is None
+            continue
+        assert isinstance(box, list) and len(box) == 4
+    ix: Any = catalog["ix"]
+    ix_board = ix["board"]
+    assert set(ix["space_boxes"]) | set(ix_board["space_boxes"]) == set(IX_SPACE_IDS)
+    assert set(ix["covered_posts"]) == {
+        "landsraad-assembly-hall-gather-support", "choam-shipping-accept-contract"}
+    assert set(ix["posts"]) | set(ix_board["posts"]) == {
+        "choam-interstellar-shipping-smuggling",
+        "landsraad-tech-negotiation-dreadnought",
+    }
+    assert catalog["space_frame"] == {"cut": [11.8, 15.3]}
+    posts = catalog["posts"]
+    assert isinstance(posts, dict)
+    assert len(posts) == 13
+    # Every drawn post can be named after the spaces it watches.
+    post_spaces = catalog["post_spaces"]
+    assert isinstance(post_spaces, dict)
+    # Rise of Ix's two posts on Uprising (stage P7f) are named too.
+    assert set(post_spaces) == set(posts) | {
+        "choam-interstellar-shipping-smuggling",
+        "landsraad-tech-negotiation-dreadnought",
+    }
+    for watched in post_spaces.values():
+        assert isinstance(watched, list) and watched
+        assert all(space_id in spaces for space_id in watched)
+    assert post_spaces["arrakis-hagga-basin"] == ["hagga_basin"]
+    assert catalog["post_size"] == 1.93
+    assert catalog["icons"] == {}
+    assert catalog["board_image"] is None
+    assert catalog["strength_tokens"] == [None, None, None, None]
+    assert catalog["seat_pieces"] == {}
+    # No First Player picture: the seat panel keeps its text badge.
+    assert catalog["first_player_token"] is None
+    # No card backs: every deck keeps its drawing.
+    assert catalog["card_backs"] == {}
+    # No Scouts card pictures: the card over the board is drawn in CSS.
+    assert catalog["scouts_art"] == {}
+
+    with_assets = build_catalog(
+        frozenset(),
+        frozenset({"troop.png", "spice.png", "not-an-icon.png"}),
+        True,
+        token_files=frozenset(
+            {
+                "strength_red.png",
+                "strength_red_plus20.png",
+                # A lone face does not make a token (display.token_images).
+                "strength_yellow.png",
+                *(f"troop_{c}.png" for c in ("blue", "red", "green", "yellow")),
+                "first_player.png",
+                "back_imperium.webp",
+                "back_conflict_2.webp",
+            }
+        ),
+    )
+    assert with_assets["icons"] == {
+        "troop": "/icons/troop.png",
+        "spice": "/icons/spice.png",
+    }
+    assert with_assets["board_image"] == "/board-image"
+    # One entry per seat, in seat order (seat 1 is red).
+    assert with_assets["strength_tokens"] == [
+        None,
+        {
+            "front": "/tokens/strength_red.png",
+            "plus20": "/tokens/strength_red_plus20.png",
+        },
+        None,
+        None,
+    ]
+    assert with_assets["seat_pieces"] == {
+        "troop": [f"/tokens/troop_{c}.png" for c in ("green", "red", "yellow", "blue")]
+    }
+    assert with_assets["first_player_token"] == "/tokens/first_player.png"
+    # Each back stands alone: the Conflict II deck shows its back while
+    # the other tiers keep the drawn box.
+    assert with_assets["card_backs"] == {
+        "imperium": "/tokens/back_imperium.webp",
+        "conflict_2": "/tokens/back_conflict_2.webp",
+    }
+    # The Scouts card's pictures come from the card-image mount, each on its
+    # own: an event painting and the parchment, nothing else.
+    scouts = build_catalog(
+        scouts_art_files=frozenset({"event.webp", "back.webp", "stray.png"}),
+        asset_versions=frozenset({("/card-images/app/scouts/event.webp", "7-a")}),
+    )
+    assert scouts["scouts_art"] == {
+        "event": "/card-images/app/scouts/event.webp?v=7-a",
+        "back": "/card-images/app/scouts/back.webp",
+    }
+
+
+def test_catalog_cross_section_id_overlaps_are_pinned() -> None:
+    """An id is unique only inside its section. An overlap is legal content
+    (a Contract named after the space it pays for), but pytest cannot see
+    the client that has to keep the two apart, and this pin once said it
+    did while the Commander strip showed the Deliver Supplies contract for
+    the space (docs/lessons.md 2026-09-27). The client's guard is core.js:
+    lookup() without a kind reports a shared id as a console error, and
+    scripts/e2e/catalog_kinds.py walks every client path that holds one of
+    the pinned kinds. A new overlap needs its own lines in that script."""
+
+    catalog = build_catalog()
+    # Every section the client searches, read from core.js itself: a hand
+    # copy here would silently stop covering a section added there.
+    core_js = (
+        Path(__file__).resolve().parents[2] / "src/dune_imperium/server/static/core.js"
+    ).read_text()
+    listed = re.search(r"const LOOKUP_SECTIONS = \[(.*?)\];", core_js, re.S)
+    assert listed is not None
+    sections = re.findall(r'"(\w+)"', listed.group(1))
+    assert len(sections) == 9 and all(
+        isinstance(catalog[section], dict) for section in sections
+    )
+    overlaps: dict[tuple[str, str], set[str]] = {}
+    for index, first in enumerate(sections):
+        first_section = catalog[first]
+        assert isinstance(first_section, dict)
+        for second in sections[index + 1 :]:
+            second_section = catalog[second]
+            assert isinstance(second_section, dict)
+            shared = set(first_section) & set(second_section)
+            if shared:
+                overlaps[(first, second)] = shared
+    assert overlaps == {("contracts", "spaces"): {"deliver_supplies"}}
+
+
+def test_catalog_card_pools_share_no_id() -> None:
+    """Starting, Reserve, Imperium and Tleilaxu cards fill the one `cards`
+    section by bare id, and the client strips each instance prefix before
+    it looks a card up, so a shared id would give every copy of one card
+    the other's name, picture and text (the last write wins, silently)."""
+
+    from dune_imperium.content.immortality.tleilaxu import (
+        RECLAIMED_FORCES,
+        TLEILAXU_CARDS_BY_ID,
+    )
+
+    pools = {
+        "starting": set(STARTING_CARDS_BY_ID),
+        "reserve": {stack.card.card_id for stack in RESERVE_STACKS},
+        "imperium": {entry.card.card_id for entry in IMPERIUM_CARDS},
+        "tleilaxu": {*TLEILAXU_CARDS_BY_ID, RECLAIMED_FORCES.card.card_id},
+    }
+    names = list(pools)
+    shared = {
+        (first, second): pools[first] & pools[second]
+        for index, first in enumerate(names)
+        for second in names[index + 1 :]
+        if pools[first] & pools[second]
+    }
+    assert shared == {}
+
+
+def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
+    from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
+    from dune_imperium.content.bloodlines.tech import TECH_IDS
+    from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
+
+    catalog = build_catalog()
+    skills = catalog["skills"]
+    assert isinstance(skills, dict)
+    assert set(skills) == set(SKILLS_BY_ID)
+    hardy = skills["hardy"]
+    assert isinstance(hardy, dict)
+    assert hardy["name"] == "Hardy"
+    assert hardy["kind"] in ("reveal", "combat", "passive")
+    assert isinstance(hardy["text"], list) and hardy["text"][0]
+    assert hardy["image"] is None or isinstance(hardy["image"], str)
+
+    tech = catalog["tech"]
+    assert isinstance(tech, dict)
+    # The Tech Module's tiles and Rise of Ix's (stage P5f).
+    assert set(tech) == set(TECH_IDS) | set(IX_TECH_IDS)
+    high_command = tech["sardaukar_high_command"]
+    assert isinstance(high_command, dict)
+    assert high_command["name"] == "Sardaukar High Command"
+    assert high_command["cost"] == 7
+    assert high_command["acquire"] == "Gain 1 VP"
+    assert high_command["text"] == [
+        "Acquire: Gain 1 VP",
+        str(high_command["ability"]),
+    ]
+    assert high_command["flips"] is False
+    plain = tech["training_depot"]
+    assert isinstance(plain, dict)
+    assert plain["acquire"] == ""
+    assert plain["text"] == [plain["ability"]]
+    embassy = catalog["embassy_image"]
+    assert embassy is None or isinstance(embassy, str)
+    json.dumps(catalog)
+
+
+def test_catalog_bene_tleilax_layout_covers_the_board() -> None:
+    """The scan overlay names every research space and all eight track
+    spaces, and the image URL appears only when the scan is present."""
+
+    from dune_imperium.content.immortality.board import RESEARCH_SPACES_BY_ID
+
+    without = build_catalog()["bene_tleilax"]
+    assert isinstance(without, dict)
+    assert without["image"] is None
+    layout = without["layout"]
+    assert isinstance(layout, dict)
+    points = layout["research_points"]
+    assert isinstance(points, dict)
+    assert set(points) == set(RESEARCH_SPACES_BY_ID)
+    for point in points.values():
+        assert isinstance(point, list) and len(point) == 2
+        for value in point:
+            assert isinstance(value, float) and 0 <= value <= 100
+    cells = layout["track_cells"]
+    assert isinstance(cells, list) and len(cells) == 8
+    # The tokens are the common player disc at this board's printed size
+    # (tests/unit/display/test_bene_tleilax_layout.py pins the geometry).
+    assert layout["disc_size"] == 5.84
+    for key in ("track_start_discs", "research_start_discs"):
+        spots = layout[key]
+        assert isinstance(spots, list) and len(spots) == 4
+    with_scan = build_catalog(bene_tleilax_image=True)["bene_tleilax"]
+    assert isinstance(with_scan, dict)
+    assert with_scan["image"] == "/bene-tleilax-image"
+
+
+def test_catalog_places_every_scouts_mission_piece() -> None:
+    """Every place an Arrakeen Scouts mission leaves pieces
+    (rules/scouts_missions.py; docs/rules/arrakeen-scouts.md 5) has an
+    anchor the client draws them at: a board space's free regions, an
+    observation post's disc, the Bene Tleilax board's Helix spot or its
+    third Tleilaxu track space, a seat's face-up Contract or the Tleilaxu
+    Row's Reclaimed Forces; and every kind of piece has a size."""
+
+    from dune_imperium.content.arrakeen_scouts import MISSIONS, MissionKind
+    from dune_imperium.content.arrakeen_scouts.types import UPRISING_POOLS
+    from dune_imperium.content.core.icons import AgentIcon
+    from dune_imperium.content.registry.board import BOARD_SPACES_BY_ID
+    from dune_imperium.content.registry.contracts import CONTRACTS_BY_ID
+    from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+    from dune_imperium.rules import scouts_missions
+
+    catalog = build_catalog()
+    tracks = catalog["tracks"]
+    assert isinstance(tracks, dict)
+    scouts = tracks["scouts"]
+    assert isinstance(scouts, dict)
+    regions = scouts["regions"]
+    sizes = scouts["sizes"]
+    posts = catalog["posts"]
+    bene_tleilax = catalog["bene_tleilax"]
+    assert isinstance(regions, dict) and isinstance(sizes, dict)
+    assert isinstance(posts, dict) and isinstance(bene_tleilax, dict)
+    overlay = bene_tleilax["layout"]
+    assert isinstance(overlay, dict)
+    bt_scouts = overlay["scouts"]
+    assert isinstance(bt_scouts, dict)
+    bt_regions = bt_scouts["regions"]
+    assert isinstance(bt_regions, dict)
+    contracts = catalog["contracts"]
+    cards = catalog["cards"]
+    assert isinstance(contracts, dict) and isinstance(cards, dict)
+
+    def posts_next_to(maker: bool) -> set[str]:
+        spaces = {
+            space_id
+            for space_id, space in BOARD_SPACES_BY_ID.items()
+            if (space.maker if maker else space.agent_icon is AgentIcon.CITY)
+        }
+        return {
+            f"post:{post.post_id}"
+            for post in OBSERVATION_POSTS
+            if spaces & set(post.connected_space_ids)
+        }
+
+    locations: dict[str, set[str]] = {}
+    for mission in MISSIONS:
+        if mission.rise_of_ix_only or not any(
+            pool in UPRISING_POOLS for pool in mission.pools
+        ):
+            # Stage P7f-2: Smuggling and Dreadnought are on the Ix board, which
+            # the Uprising scan's regions do not cover (the screens' stage);
+            # the original game's own missions lie on its board
+            # (test_catalog_places_every_original_scouts_mission_piece).
+            continue
+        places: set[str] = set()
+        if mission.space_id is not None:
+            places.add(mission.space_id)
+        match mission.kind:
+            case MissionKind.URBAN_SURVEILLANCE:
+                places |= posts_next_to(maker=False)
+            case MissionKind.PLANETARY_EXPLORATION:
+                places |= posts_next_to(maker=True)
+            case MissionKind.CHOAM_ESCORT:
+                places |= {f"contract:{contract}" for contract in CONTRACTS_BY_ID}
+            case MissionKind.SPONSORED_RESEARCH:
+                places.add(scouts_missions.HELIX)
+            case MissionKind.BACK_ROOM_DEAL:
+                places.add(scouts_missions.RECLAIMED_FORCES)
+            case MissionKind.TLEILAXU_OFFERING:
+                places.add(scouts_missions.TLEILAXU_OFFERING_SPACE)
+            case _:
+                pass
+        assert places, mission.mission_id
+        locations[mission.mission_id] = places
+
+    for mission_id, places in locations.items():
+        for location in places:
+            if location.startswith("post:"):
+                anchored = location.removeprefix("post:") in posts
+            elif location.startswith("contract:"):
+                anchored = location.removeprefix("contract:") in contracts
+            elif location == scouts_missions.HELIX:
+                anchored = "helix_spice_point" in bt_scouts
+            elif location == scouts_missions.RECLAIMED_FORCES:
+                anchored = location in cards
+            elif location == scouts_missions.TLEILAXU_OFFERING_SPACE:
+                anchored = location in bt_regions
+            else:
+                anchored = location in regions
+            assert anchored, (mission_id, location)
+    assert posts_next_to(maker=False) and posts_next_to(maker=True)
+
+    kinds = {"troop", "marker", "maker_hooks", "intrigue", "contract"}
+    for mission in MISSIONS:
+        for goods in (mission.goods, mission.seat_goods):
+            if goods is not None:
+                kinds |= {
+                    resource
+                    for resource in ("spice", "solari", "water")
+                    if getattr(goods, resource)
+                }
+    assert kinds <= set(sizes)
+
+
+def test_catalog_places_every_original_scouts_mission_piece() -> None:
+    """Arrakeen Scouts on the original board (stage P8e): every place an
+    original-pool mission leaves pieces (docs/rules/arrakeen-scouts.md 9a) has
+    an anchor the client draws them at -- the original board's regions, with
+    Rise of Ix the overlay's (the Mentat on the Landsraad piece, Smuggling on
+    the CHOAM piece) and the Ix board's (Dreadnought), and Immortality's
+    Bene Tleilax board and Tleilaxu Row as on Uprising -- and every kind of
+    piece has a size on the original board."""
+
+    from dune_imperium.content.arrakeen_scouts import MISSIONS, MissionKind
+    from dune_imperium.content.arrakeen_scouts.types import IMPERIUM_POOLS
+    from dune_imperium.rules import scouts_missions
+
+    catalog: Any = build_catalog()
+    board = catalog["boards"]["imperium"]
+    scouts = board["tracks"]["scouts"]
+    regions = scouts["regions"]
+    ix_regions = board["ix"]["scouts_regions"]
+    ix_board_regions = board["ix"]["board"]["scouts_regions"]
+    bt_regions = catalog["bene_tleilax"]["layout"]["scouts"]["regions"]
+    bt_scouts = catalog["bene_tleilax"]["layout"]["scouts"]
+    kinds = {"troop"}
+    for mission in MISSIONS:
+        if not any(pool in IMPERIUM_POOLS for pool in mission.pools):
+            continue
+        if mission.space_id is not None:
+            if mission.rise_of_ix_only:
+                assert mission.space_id in {**ix_regions, **ix_board_regions}, (
+                    mission.mission_id
+                )
+            else:
+                assert mission.space_id in regions, mission.mission_id
+            if not mission.no_rise_of_ix and mission.space_id in ix_regions:
+                assert ix_regions[mission.space_id], mission.mission_id
+        match mission.kind:
+            case MissionKind.SPONSORED_RESEARCH:
+                assert "helix_spice_point" in bt_scouts
+            case MissionKind.BACK_ROOM_DEAL:
+                assert scouts_missions.RECLAIMED_FORCES in catalog["cards"]
+            case MissionKind.TLEILAXU_OFFERING:
+                assert scouts_missions.TLEILAXU_OFFERING_SPACE in bt_regions
+            case _:
+                assert mission.space_id is not None, mission.mission_id
+        if mission.goods_cards:
+            kinds.add("intrigue")
+        if mission.parked_dreadnoughts:
+            kinds.add("dreadnought")
+        if mission.kind is MissionKind.SAPHO_JUICE:
+            kinds.add("marker")
+        for goods in (mission.goods, mission.seat_goods):
+            if goods is not None:
+                kinds |= {
+                    resource
+                    for resource in ("spice", "solari", "water")
+                    if getattr(goods, resource)
+                }
+    assert kinds >= {"troop", "spice", "solari", "intrigue", "dreadnought", "marker"}
+    assert kinds <= set(scouts["sizes"])
+
+
+def test_catalog_scouts_items_name_their_pools_and_auction_kind() -> None:
+    """Every Scouts item names the schedules it is drawn from (stage P8e):
+    the page tells two items of one schedule that share a name apart by
+    their kind -- the original game's auction Treachery and Immortality's
+    event Betrayal, both 배반 in the app's Korean, meet only on an original +
+    Immortality table. An auction says how it is called (sealed, Critical
+    Moment's cards, the original game's Mentat)."""
+
+    from dune_imperium.content.arrakeen_scouts import AUCTIONS_BY_ID
+    from dune_imperium.content.arrakeen_scouts.types import ScoutsPool
+
+    items: Any = build_catalog()["scouts_items"]
+    pools = {pool.value for pool in ScoutsPool}
+    for item_id, item in items.items():
+        assert item["pools"] and set(item["pools"]) <= pools, item_id
+        if item_id in AUCTIONS_BY_ID:
+            assert item["auction_kind"] == AUCTIONS_BY_ID[item_id].kind.value
+        else:
+            assert "auction_kind" not in item, item_id
+    assert items["treachery_mid"]["name_ko"] == items["betrayal"]["name_ko"]
+    shared = set(items["treachery_mid"]["pools"]) & set(items["betrayal"]["pools"])
+    assert shared == {"imperium_immortality"}

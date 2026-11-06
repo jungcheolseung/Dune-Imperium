@@ -1,0 +1,103 @@
+# Uprising 공통 시스템
+
+이 문서는 여러 phase와 보드 공간에 걸쳐 적용되는 공통 규칙을 모은다. 구체적인 턴 순서와 Combat 처리는 각각 `player-turns.md`와 `combat-and-round-end.md`를 따른다.
+
+## 구성물 공급과 자원
+
+- Solari, spice, water와 sandworm은 bank에 둔다. 이 공급은 제한 수량으로 보지 않으며 구성물이 모자라면 적절한 대체물을 사용할 수 있다. `[Main p. 5]`
+- 각 플레이어의 troop은 12개다. troop을 recruit할 때는 반드시 자신의 supply에서 가져오며, 기본 목적지는 garrison이다. Combat space에 Agent를 보낸 turn에 recruit한 troop은 즉시 Conflict에 deploy할 수 있다. supply에 troop이 없으면 더 recruit할 수 없다. `[Main pp. 5, 10, 20]` `[FAQ p. 4]`
+- Maker Hooks는 bank에 4개를 둔다. 플레이어는 이미 하나가 있으면 새 token을 얻지 않으며, sandworm을 소환할 때 token을 소비하지 않는다. `[Main pp. 5, 20]` `[FAQ p. 2]`
+- Reserve는 Prepare the Way 8장과 The Spice Must Flow 10장의 두 stack으로 시작한다. `[Main p. 3]`
+
+## deck-building과 카드 상태
+
+- 각 플레이어는 동일한 10장 starting deck으로 시작한다. 새 Imperium/Reserve 카드를 acquire하면 먼저 자신의 discard pile에 face-up으로 놓는다. `[Main pp. 3, 6, 13]`
+- 카드를 draw해야 하는데 deck이 비어 있으면 자신의 discard pile을 shuffle해 새 deck을 만든 뒤 필요한 수만큼 계속 draw한다. `[Main pp. 6, 20]`
+- 카드를 trash하면 남은 게임 동안 자신의 deck 순환에서 제거한다. 일반 카드는 box로 돌려보내고 Reserve 카드는 해당 Reserve stack으로 돌려보낸다. `[Main pp. 6, 20]`
+- 일반 trash 아이콘은 hand, discard pile, in play 가운데 카드 1장을 대상으로 한다. Intrigue trash 아이콘은 hand의 Intrigue card 1장을 대상으로 한다. `[Main p. 20]` Intrigue card에는 trash 더미가 없어, trash한 Intrigue card는 공용 Intrigue 버림 더미로 가서 다시 섞인다(OQ-061, 2026-10-04 사용자 판정 — 위 일반 trash의 '남은 게임 동안 제외'와 다른 project convention).
+- Agent turn에 play한 카드와 현재 Reveal turn에 reveal한 카드는 Reveal turn의 Clean Up 전까지 face-up `in play`다. 먼저 trash된 카드는 예외다. `[Main p. 20]`
+- 별도 위치를 지정하지 않고 `discard a card`라고 하면 hand의 카드를 뜻한다. 일반 카드 discard 지시는 Intrigue를 명시하지 않는 한 Intrigue card를 대상으로 하지 않는다. `[Main p. 20]` `[FAQ p. 2]`
+
+## 효과의 의무·선택과 비용
+
+- board space나 play한 카드의 효과는 원칙적으로 의무다. `may`라고 적힌 효과, arrow의 비용을 지불할지 선택하는 효과, 검은색 trash 아이콘으로 trash하는 효과는 선택이다. 단, 카드가 arrow 없이 자기 자신을 trash하라고 지시하면 의무다. `[FAQ p. 3]`
+- arrow의 왼쪽 또는 위쪽은 비용이고 오른쪽 또는 아래쪽은 결과다. 비용을 지불하지 않으면 결과를 받지 않는다. 같은 arrow 비용-결과는 한 turn에 한 번만 사용할 수 있다. Combat reward를 sandworm으로 배가하는 경우는 별도 예외다. `[Main pp. 9, 20]` `[FAQ p. 3]`
+- Intrigue card를 play할 때는 그 카드의 조건을 만족하고 비용을 지불해야 한다. Intrigue의 비용은 일반적인 선택형 arrow와 달리 play를 선택했다면 필수다. `[FAQ pp. 2-3]` 단, "—OR—" 없이 따로 인쇄된 줄이 여럿이면 각 줄이 별개 행동이며 쓰는 줄의 비용을 그때 낸다(사용자 판정, [OQ-058](open-questions.md#oq-058--intrigue-카드의-인쇄-줄은-각각-따로-쓰고-쓸-때-지불한다)). 2026-10-04부터는 그런 카드도 적어도 한 줄을 써야 끝낼 수 있다(같은 OQ의 재판정).
+- 효과의 일부(예: Impress의 "비용 3 이하 카드 acquire")를 실행할 대상이 없어도 play 조건은 아니다: 카드를 play할 수 있고 그 부분만 불발한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)). `[FAQ p. 2]` 다만 효과 **전부**가 지금 아무것도 바꿀 수 없으면 그 Intrigue option은 낼 수 없다(사용자 판정 2026-10-06 "원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수 없는거지" — 공식 문장에 없는 프로젝트 판정, [OQ-071](open-questions.md#oq-071--scouts-결정의-차례-순서와-판단-시점)의 카드 확장 2). Impress는 검 2가 늘 남아 그대로 내지만, 획득만 있는 Inspire Awe는 대상이 없으면 낼 수 없다(2026-09-09부터 같은 날 재판정 전까지는 낼 수 있었다).
+- 검은색 trash 아이콘에 의한 trash는 선택이지만, 비용으로 trash하거나 카드가 자기 자신을 trash하라고 지시하면 선택이 아니다. `[Main p. 20]`
+- 카드 규칙은 일반 규칙을 바꿀 수 있다. `[Main p. 6]`
+
+## Leader와 Signet Ring
+
+- 각 Leader에는 일반 능력과 Signet Ring 아이콘으로 표시된 능력이 있다. 일반 능력은 카드에 적힌 시점에 사용하고, Signet Ring 능력은 Signet Ring starting card를 Agent turn에 play할 때 발동한다. `[Main p. 6]`
+- Uprising은 양면 Leader를 포함한다. 개별 Leader의 setup 면과 전환 조건은 해당 Leader 텍스트 및 [공식 판정 색인](official-rulings-index.md)을 따른다. `[Main pp. 3, 17]`
+
+## Faction Influence
+
+- 네 Faction은 Emperor, Spacing Guild, Bene Gesserit, Fremen이다. 각 플레이어의 cube는 각 Influence track 맨 아래에서 시작한다. `[Main pp. 5, 7]`
+- Faction board space에 Agent를 보내면 해당 Faction Influence를 1 올린다. 카드나 다른 효과도 Influence를 올리거나 내릴 수 있다. `[Main p. 7]`
+- track은 6칸이다. 이미 6인 cube에 대한 추가 Influence 획득과, 고를 진영이 전부 6인 "진영을 골라 Influence" 보상의 처리는 공식 문서가 침묵한다 — [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상) project convention(획득 소멸). 그래서 진영을 고르는 선택(Conflict 보상, Intrigue·Imperium 카드·Leader의 Influence 선택, Shipping, Immortality 연구 칸 c6r6)은 이미 6인 진영을 제시하지 않고, 받을 것이 그런 Influence뿐인 비용 줄도 제시하지 않는다(2026-10-06 확장, OQ-060·OQ-071). 예외: Shipping은 네 진영이 모두 6이면 넷을 그대로 제시하고 획득이 사라진다(OQ-060의 알려진 경계), Tech tile의 획득 아이콘은 6인 진영도 제시한다.
+- Influence 2에 도달하면 1 VP를 얻는다. 이후 2 아래로 내려가면 그 VP를 잃는다. 여러 Influence를 한 번에 얻으며 2를 지나가는 것도 `reach 2`이고, 내려갈 때가 아니라 올라갈 때만 `reach`로 본다. Influence를 잃었다가 다시 올라오면 다시 도달할 수 있다. `[Main pp. 7, 17]`
+- Influence 4에 도달하면 track에 표시된 보너스를 얻는다("you earn the bonus shown on that space of the track" `[Main p. 7]`). 각 strip의 Influence 4 칸에 인쇄된 아이콘은 **Emperor: Spy 1개 배치, Spacing Guild: 3 Solari, Bene Gesserit: Intrigue card 1장, Fremen: water 1**이다 — 2026-09-19에 보드 스캔을 확대해 룰북 아이콘(회색 원기둥 = Spy, 숫자가 든 회색 동전 = Solari, 금색 카드 = Intrigue, 물방울 = water)과 대조해 다시 전사했다. 그 전의 "Emperor troop 2개, Spacing Guild water 3"은 룰북의 작은 보드 삽화를 잘못 읽은 값이었다(lessons.md 2026-09-19). 4 아래로 내려가도 보너스를 반환하지 않으며, 다시 4에 도달하면 같은 보너스를 다시 받을 수 있다. `[Main pp. 4, 7 board artwork]`
+- Emperor track의 Spy는 자기 turn(Agent·Reveal) 안에서 얻으면 그 turn의 의무 행동(`place_track_spy`)으로 남아, 다른 행동을 먼저 하고 turn 종료 전에 놓는다. 자기 turn 밖에서 얻으면 바로 놓는다(2026-10-04 사용자 판정, Steam 앱 방식; 디자이너는 즉시 배치를 판정했다 — [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) (15)). 배치 규칙은 일반 Spy 아이콘과 같다(빈 observation post 아무 곳, supply에 Spy가 있으면 의무, supply가 비었으면 먼저 하나를 recall할 수 있다 `[Main pp. 11, 20]`). 구현은 `GameState.pending_track_spies` 대기열과 공용 `spy_placement` frame이다.
+- Bene Gesserit track의 Intrigue 카드와 Princess Irulan의 Imperial Birthright(Emperor 2 도달 시 Intrigue 1)는 Spy와 달리 순서를 고르지 않는다: 자기 turn 안에서 도달하면 보너스는 그 단계에서 얻고, 카드는 그 Influence 단계 바로 다음의 소유자 단계 `draw_owed_intrigue`다 — 그 사이에 다른 효과·Plot·턴 종료가 들지 않고, Influence 단계는 되돌릴 수 있다. 자기 turn 밖이면 바로 뽑는다(2026-10-10 사용자 판정 [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 5, project convention; 같은 날 사용자 결정 "가 로 가자"로 디자이너 판정 "faction bonuses (such as drawing an Intrigue on the BG track) may interrupt this flow"(Message from designer)에 맞춘 곧바른 단계 14).
+
+## Alliance
+
+- Card의 Alliance 조건은 해당 Faction Influence가 4 이상인지가 아니라 현재 그 Faction의 Alliance token을 보유하는지 확인한다. Branching Path는 Bene Gesserit Alliance를 보유할 때만 Agent box의 선택형 비용(hand의 **Intrigue 카드 1장 trash** — Trash an Intrigue card 아이콘 `[Main p. 20]`)과 보상(Intrigue 1장 draw, spice 2)을 사용할 수 있다. `[Main p. 7]` `[Branching Path card]`
+- 한 Faction에서 처음 Influence 4에 도달한 플레이어는 Alliance token과 그 token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 **높은** 칸으로 올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 Main의 일반 이전 조건을 충족하지 않는다. `[Main p. 7]`
+- Alliance 보유자가 Influence를 잃기 전에 다른 플레이어와 이미 동률이었다면, 그 동률 플레이어가 token을 즉시 가져간다. 동률 플레이어가 여러 명이면 기존 보유자가 받을 한 명을 정한다. `[FAQ p. 1]`
+- 보유자가 Influence 3 이하로 내려가면 Alliance token을 잃는다. 다른 어느 플레이어도 Influence 4 이상이 아니면 token을 board로 돌려놓는다. `[FAQ p. 1]` 이때 4 이상인 후보가 여러 명이면 감소 직전 보유자와 Influence 4에서 동률이므로, 기존 보유자가 그중 한 명을 정한다. 한 칸씩 처리하는 track 전이에서는 직전 동률이 아닌 복수 후보가 발생하지 않는다.
+- 여러 칸을 한 번에 잃는 경우(Opportunism, For Humanity의 Influence 2 손실)는 **한 칸씩** 처리한다 — project convention이며 공식 규칙이 아니다(OQ-014 보강 2026-10-07). FAQ의 두 경우("You were previously tied for Influence with another player", "If you have fallen to 3 Influence or lower" `[FAQ p. 1]`)는 한 번의 손실을 전제로 쓰였고, 손실 전체를 한 번에 읽으면 결과가 다를 수 있다: Guild 6인 보유자가 5인 상대를 두고 2를 잃으면 4로 끝나 token을 지키지만, 한 칸씩 처리하면 6→5에서 동률이 되고 5→4에서 상대가 token을 가져간다. 구현 `rules/influence.lose_faction_influence`("Lose Influence one space at a time"). 보조 증거(공식 규칙 아님): 앱도 같은 결과다(로컬 분석, 2026-10-07).
+
+## Critical location과 Control
+
+- critical location은 Arrakeen, Spice Refinery, Imperial Basin 세 곳이다. 해당 이름의 Conflict를 이긴 플레이어는 그 공간의 flag에 자신의 Control marker를 놓으며 기존 opponent marker가 있으면 교체한다. `[Main pp. 10, 20]`
+- Control marker가 있는 동안 누가 그 공간에 Agent를 보내든 controller가 표시된 bonus를 받는다. Arrakeen과 Spice Refinery는 1 Solari, Imperial Basin은 1 spice다. `[Main p. 10]`
+- 자신이 이미 control하는 location의 Conflict가 Round Start에 reveal되면, 자신의 supply에서 troop 1개를 Conflict에 deploy할 수 있다. `[Main pp. 10, 20]`
+
+## Shield Wall
+
+- setup 때 Shield Wall token을 board에 놓는다. token이 있는 동안 Arrakeen, Spice Refinery, Imperial Basin의 Conflict에는 sandworm을 소환할 수 없다. `[Main pp. 4, 10]`
+- 해당 Conflict 카드 오른쪽 아래의 Shield Wall 표시는 detonation 효과가 아니라 현재 Conflict가 이 보호를 받는다는 표시다. Uprising 기본 Conflict에는 이 표시가 있는 카드가 여섯 장이다. `[Main p. 10 board artwork]`
+- Shield Wall detonation 아이콘은 token을 제거할 **선택권**을 준다. 제거한 token은 box로 돌아가고 게임이 끝날 때까지 복구되지 않는다. 제거된 뒤에는 어느 Conflict에도 Shield Wall로 인한 sandworm 금지가 없다. `[Main pp. 10, 20]` `[FAQ p. 4]`
+- Shield Wall로 보호되는 현재 Conflict에 대한 sandworm 효과는 아무 일도 하지 않는다. `[Main p. 20]`
+
+## troop과 sandworm
+
+- troop은 recruit되면 우선 garrison에 간다. Agent를 Combat space에 보낸 그 turn에 recruit한 troop은 해당 Conflict에 바로 deploy할 수 있다. `[Main pp. 10, 20]`
+- Combat space를 방문할 때 그 turn에 **어떤 출처에서든** recruit한 troop을 원하는 수만큼 deploy할 수 있고, 여기에 더해 기존 garrison troop을 최대 2개까지 deploy할 수 있다. garrison troop을 다시 recruit한 것으로 처리해 이 제한을 우회할 수 없다. `[Main p. 10]` `[FAQ p. 4]`
+- sandworm 아이콘은 허용되는 경우 bank에서 sandworm 1개를 가져와 즉시 Conflict에 deploy한다. sandworm은 garrison에 놓지 않는다. `[Main pp. 10, 20]`
+- sandworm 아이콘 앞의 Maker Hooks 표시는 그 token을 보유해야 한다는 requirement다. Maker Hooks는 사용해도 소모되지 않는다. `[Main pp. 10, 20]` `[FAQ p. 2]`
+
+## Spy와 observation post
+
+- board의 observation post는 하나 이상의 board space에 연결된다. Spy icon이 나오면 자신의 supply에서 Spy를 가져와 비어 있는 observation post 한 곳에 놓는다. 효과가 특정 Agent icon 연결을 요구하면 그 조건을 만족하는 post만 선택할 수 있다. `[Main pp. 11, 20]`
+- **Spy 배치는 supply에 Spy가 하나라도 있으면 의무다.** Main p. 11의 인쇄문은 "you may place a Spy"지만 디자이너가 그 "may"를 오기로 정정했다 — "The word 'may' is incorrectly used here. It is mandatory to place a Spy if you have at least one Spy in your supply."(Hidden Assets Discord, 커뮤니티 FAQ의 Errata 절; [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09) 채택분). 놓을 수 있는 post가 하나도 없으면 아이콘은 Spy 없이 해결된다. supply가 비었을 때의 선행 recall("you may first recall one of your Spies" `[Main pp. 11, 20]`)은 그대로 선택이므로, 그때는 배치하지 않고 넘어갈 수 있다. 인쇄가 선택지를 주는 효과(화살표 비용 뒤의 Spy, "Spy — OR — 검 2", 거절하면 face up으로 남는 2026-10-03 전 Distraction의 발동 시점 OQ-016)는 그 선택이 그대로다. 다만 "— OR —"의 선택은 선행 recall을 하기 전까지다 — recall한 뒤에는 Spy가 supply에 있으므로 배치가 의무다. Distraction은 2026-10-03부터 배치 뒤에 내는 Plot이라(OQ-016 재판정) 그 Spy는 다른 Intrigue Spy와 같다: supply에 Spy가 있으면 배치가 의무다.
+- Double Agent의 Spy는 "spying on the board space you sent an Agent to this turn"이다 — "[Spy] on [icon]"과 같은 배치 제한("the observation post must connect to a … board space" `[Main p. 20]`)이므로 이번 turn에 Agent를 보낸 space에 연결된 post에만 놓는다. 그 post에 다른 플레이어의 Spy가 있어도 함께 놓을 수 있다("You may place this Spy on the same observation post as another player's Spy.") — 이미 그 space를 spying 중일 필요는 없다. 같은 플레이어가 자기 Spy 둘을 한 post에 놓는 것은 허용되지 않는다. `[Double Agent card]` (2026-09-26 정정: 이전 문장은 "이미 spying 중일 때 board 어디서든 상대 post 공유"로 잘못 읽었다.)
+- Distraction의 "You may place this Spy on the same observation post as another player's Spy."도 허락을 더할 뿐이다. Spy는 평소처럼 비어 있는 post에 놓을 수 있고 `[Main p. 20]`, 다른 플레이어 Spy만 있는 post에도 놓을 수 있으며, 자기 Spy가 있는 post에는 놓을 수 없다 — Spy with Deep Cover와 같은 대상이다("you also have the option to ignore any opponents' Spies ... (You can't place the Spy where you already have a Spy of your own.)" `[Bloodlines p. 5]`). 그래서 board에 상대 Spy가 없어도 낼 수 있다(2026-10-03부터 배치 뒤에 내는 Plot, OQ-016 재판정). `[Distraction card]`
+- Guild Spy의 Reveal 효과에서 어떤 Faction을 spying 중인지는 자기 Spy가 놓인 observation post가 그 Faction space 하나 이상에 연결되는지로 판정한다. 같은 Faction에 연결된 Spy가 여러 개여도 그 Faction Influence는 한 번만 얻는다. `[Guild Spy card]`
+- Spy 배치를 선택했지만 supply에 Spy가 없다면, 먼저 board의 자기 Spy 하나를 효과 없이 recall할 수 있다. `[Main pp. 11, 20]`
+- Recall Spy 아이콘은 observation post의 자기 Spy 하나를 supply로 돌려보낼 수 있게 한다. `[Main pp. 11, 20]`
+- `Infiltrate`: 다른 플레이어의 Agent가 있는 space로 Agent를 보내려 할 때, 연결된 자기 Spy를 recall하면 그 Agent의 점유를 무시하고 같은 space에 Agent를 보낼 수 있다. 이 경우에도 Agent turn에 card를 play해야 한다. `[Main p. 11]` `[FAQ p. 4]`
+- `Gather Intelligence`: Agent를 space에 놓은 직후, board space와 Agent card의 효과를 받기 전에 연결된 자기 Spy를 recall하면 card 1장을 draw한다. 이 경우에도 실제 Agent card play가 필요하다. `[Main p. 11]` `[FAQ p. 4]`
+- 하나의 Spy를 Infiltrate와 Gather Intelligence 양쪽에 사용할 수 없다. 한 turn에 Spy 두 개를 recall하려면 각각 서로 다른 효과에 써야 한다 — "You may recall two Spies in one turn if each is used for a different effect. For example: … you can recall one to Infiltrate and one to Gather Intelligence, but not both to Gather Intelligence." `[FAQ p. 4]` 조건은 "서로 다른 효과"이고, Infiltrate + Gather Intelligence는 FAQ가 든 예다. `[Main p. 11]`
+- Gather Intelligence는 덱과 버린 더미가 모두 비어 뽑을 카드가 없어도 고를 수 있다: Spy는 supply로 돌아오고 draw는 아무것도 찾지 못하며, 그 recall은 "If you recalled a Spy this turn"에 센다(OQ-101). Gaius Helen Mohiam도 그때 회수해야 한다("Whenever you could recall a Spy to Gather Intelligence, you must." `[Gaius Helen Mohiam card]`). 공식 문서가 침묵하는 지점의 사용자 판정이다(2026-10-07 "허용 (앱처럼)", [OQ-099](open-questions.md#oq-099--덱과-버린-더미가-모두-비었을-때-gather-intelligence로-spy만-회수할-수-있는지)).
+- Spy Agent icon은 현재 자기 Spy가 있는 observation post와 연결된 board space를 Agent 목적지로 허용한다. 이 사용 자체로 Spy를 recall하지 않는다. `[Main pp. 9, 11]`
+
+Observation post 13개의 공식 board 연결선 전사는 [`observation-posts.md`](observation-posts.md)에 따로 둔다. `[Main pp. 4-5 board artwork]`
+
+## Maker space
+
+- 현재 4인 board에서 spice를 harvest할 수 있는 Maker space는 Deep Desert, Hagga Basin, Imperial Basin이다. `[Main p. 15]` `[FAQ p. 2]`
+- Maker phase의 누적과 space 방문 시 bonus spice 획득은 `combat-and-round-end.md`와 `board-spaces.md`에 정리한다.
+
+## 추가 icon과 용어
+
+- Alliance 조건 아이콘이 붙은 효과는 표시된 Faction의 Alliance token을 가진 경우에만 사용할 수 있다. `[Main p. 20]`
+- Fremen Bond 효과는 다른 Fremen card가 하나 이상 in play일 때 사용할 수 있다. Fremen Bond 카드 두 장은 play 순서와 관계없이 서로를 활성화할 수 있다. `[Main p. 20]`
+- 임의의 Faction Influence를 1 또는 2 얻거나 1 잃는 효과는 네 Faction 가운데 하나를 고른다. Influence 2를 얻을 때 서로 다른 Faction에 나누지 않는다. `[Main p. 20]`
+- Recall Agent는 이번 turn에 방금 보낸 Agent가 아닌 board의 다른 자기 Agent를 Leader로 돌린다. 돌아온 Agent는 같은 round의 이후 Agent turn에 다시 사용할 수 있다. `[Main p. 20]` Duncan Idaho(Bloodlines)의 Into the Fray로 Conflict에 간 Agent도 "자신의 다른 Agent" 중 하나이며(디자이너 판정 OQ-037 (d)), 방금 보낸 turn이 아니라면 Imperial Privilege, Steersman의 Recall Agent 아이콘, Sardaukar II·원로회(High Council) 계약 보상이 그 Agent를 대상으로 삼을 수 있다(2026-09-26 사용자 판정, OQ-068). Twisted Mentat는 반대로 이번 turn에 보낸 Agent만 recall하며, Into the Fray가 그 Agent를 Conflict로 옮겼어도 그 Agent를 recall할 수 있다 `[Twisted Mentat card]` (2026-09-26 사용자 판정, OQ-068).
+- Retreat는 troop을 Conflict에서 자기 garrison으로 옮긴다. 효과가 `any number`의 troop을 retreat하게 하면 0개도 선택할 수 있다. `[Main p. 20]` `[FAQ p. 3]`
+- Steal Intrigue는 Intrigue card가 4장 이상인 각 opponent에게서 무작위로 1장씩 받는 효과다. `[Main p. 20]`
+- Uprising 아이콘은 set 식별용이며 그 자체로 게임 효과가 없다. `[Main p. 20]`

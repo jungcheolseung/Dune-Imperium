@@ -1,0 +1,2324 @@
+"""Arrakeen Scouts: one seat's cost -> reward line, and the subcommittees.
+
+``push_scouts_effect`` opens a ``scouts_effect`` frame that resolves one
+item line (its record's ``EffectSection``) for one seat: its costs in
+order, then its rewards in order (docs/rules/arrakeen-scouts.md). Each step
+is either automatic (paid or gained at once, possibly opening another
+module's frame: a Spy placement, a Contract pick, a reshuffle) or a choice
+this frame offers (a card to discard or trash, a Spy to recall, a Faction,
+an Agent). The frame
+stays on the stack under any frame a step opens and moves its cursor before
+opening it, so it resumes by itself once that frame pops; the engine's
+automatic advance runs the automatic steps. A hidden draw printed after one
+of the line's reward choices is the exception: it waits as its own step
+(``reward_was_chosen``, user ruling 2026-10-10, OQ-106), so the step that
+made the choice reveals nothing. The same frame serves inside a turn (a
+subcommittee joined at the High Council) and in the Scouts step.
+
+A line a seat receives later because of an earlier choice -- a revealed
+secret pick's line without a cost, an auction winner's line -- first waits
+for that seat's own ``SCOUTS_COLLECT`` click, its one action; nothing of
+the line resolves before it (project convention, user decision 2026-11-01,
+OQ-164). A line the seat picks at that moment (an event's option, a
+subcommittee joined, a revealed pick's line with a cost) needs none: the
+choosing click receives it.
+
+Subcommittees [Scouts help] (docs/rules/arrakeen-scouts.md 4): taking a
+High Council seat lets the seat choose a subcommittee any time in that turn
+(OQ-076 alternative C); the choice lists the unclaimed subcommittees whose
+cost the seat can pay and whose reward can do something (OQ-071), and
+joining one opens its line.
+"""
+
+from collections.abc import Iterable, Mapping
+from copy import replace
+from typing import Final, cast
+
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.arrakeen_scouts import (
+    AUCTIONS_BY_ID,
+    EVENTS_BY_ID,
+    MISSIONS_BY_ID,
+    SALES_BY_ID,
+    SUBCOMMITTEES_BY_ID,
+    AuctionKind,
+    AuctionSlot,
+    AutomaticEffect,
+    EventKind,
+    Mission,
+    ScoutsAuction,
+    ScoutsEvent,
+    ScoutsSale,
+    Subcommittee,
+    auctions_of_base_game,
+    events_of_base_game,
+    sales_of_base_game,
+    subcommittees_of_base_game,
+)
+from dune_imperium.content.arrakeen_scouts.types import ScoutsCost, ScoutsReward
+from dune_imperium.content.core.effects import (
+    AcquireReserveCardToHand,
+    DiscardFromHand,
+    DiscardIntrigueCard,
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    EffectSection,
+    FlipBattleCard,
+    FlipFaceUpConflictCard,
+    GainInfluence,
+    GainLowestInfluence,
+    GainResources,
+    GainSpiceWithHelixBonus,
+    GenerateSpecimens,
+    GiveIntrigueToOpponent,
+    HandCardFilter,
+    LoseFactionInfluence,
+    LoseGarrisonTroops,
+    LoseHighestInfluence,
+    LoseInfluence,
+    LoseTroops,
+    ParkTroops,
+    PayResources,
+    PlaceSpy,
+    RecallOtherAgent,
+    RecallSpy,
+    RecruitToConflict,
+    RecruitTroops,
+    RetreatTroops,
+    Reward,
+    SpendSpecimens,
+    TakeMentat,
+    TrashCard,
+    TrashDiscardPileCard,
+    TrashIntrigueCard,
+    TrashPersonalCard,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import acquire_reserve_for_intrigue
+from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
+from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.effect_interpreter import (
+    apply_rewards,
+    pay_cost,
+    resource_cost,
+    reward_can_change_something,
+)
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    board_icon_is_pending,
+    current_agent_effect_context,
+    finish_board_icon,
+    recall_conflict_agent,
+    turn_agent_in_conflict,
+)
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    context_str,
+    owned_top_frame,
+    replace_player,
+    turn_owner_of,
+    update_turn_recruits,
+)
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.influence import (
+    MAX_INFLUENCE,
+    alliance_recipients_after_influence_loss,
+    gain_faction_influence,
+    influence_amount,
+    lose_faction_influence,
+)
+from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
+from dune_imperium.rules.optional_trash import optional_trash_frame
+from dune_imperium.rules.reveal_turn import add_reveal_strength
+from dune_imperium.rules.scouts_missions import (
+    collect_owed,
+    owed_payouts,
+    park_mission_troops,
+)
+from dune_imperium.rules.scouts_offers import (
+    BOARD_ICON_SUBCOMMITTEE,
+    CONFLICT_AGENT,
+    drop_reveal_subcommittee_offer,
+    open_subcommittees,
+    reveal_subcommittee_offer,
+)
+from dune_imperium.rules.specimens import return_specimens
+from dune_imperium.rules.spy_moves import spy_placement_frame
+from dune_imperium.rules.spy_placement import observation_post_ids_in_play
+from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.unit_loss import lose_unit, own_unit_loss_frame
+from dune_imperium.rules.unload import push_unload_hold, unload_holds
+
+_EFFECT_FRAME: Final = "Scouts effect frame"
+_OFFER_FRAME: Final = "Subcommittee offer frame"
+_CHOICE_FRAME: Final = "Scouts choice frame"
+# Political Equilibrium, per seat: one Influence off the highest track.
+_EQUILIBRIUM: Final = EffectSection(rewards=(), costs=(LoseHighestInfluence(),))
+# The original game's Tap into Spice Reserves, per seat: 1 spice from the
+# bank (docs/rules/arrakeen-scouts.md 9a), collected by each seat's own
+# click (user decision 2026-11-01, OQ-164 (a)).
+_TAP_INTO_SPICE: Final = EffectSection(rewards=(GainResources(spice=1),))
+# The original game's Mentat auction, its winner's line by the auction's slot
+# (docs/rules/arrakeen-scouts.md 9a, OQ-162): the mid one takes the Mentat for
+# the round (line 0) or, with the Mentat away from its space, one Influence
+# with a Faction of the winner's choice (line 1, OQ-162 (1)); the late one
+# takes the Mentat and draws a card (OQ-162 (3)).
+MENTAT_TAKEN: Final = 0
+MENTAT_AWAY: Final = 1
+_MENTAT_LINES: Final = {
+    AuctionSlot.MID: (
+        EffectSection(rewards=(TakeMentat(),)),
+        EffectSection(rewards=(GainInfluence(),)),
+    ),
+    AuctionSlot.LATE: (EffectSection(rewards=(TakeMentat(), DrawPersonalCards(1))),),
+}
+
+type ScoutsStep = ScoutsCost | ScoutsReward
+# Steps ``apply_rewards`` cannot take; the ones this module handles itself
+# never reach it, the rest arrive with later slices.
+_NOT_DSL_REWARDS: Final = (
+    LoseInfluence,
+    LoseTroops,
+    GiveIntrigueToOpponent,
+    RetreatTroops,
+    FlipBattleCard,
+    TrashDiscardPileCard,
+    FlipFaceUpConflictCard,
+)
+
+
+# --- Which option -------------------------------------------------------------------
+
+
+def scouts_option(item: str, index: int) -> EffectSection:
+    """Return option ``index`` of a Scouts item (a subcommittee has one)."""
+
+    if item in SUBCOMMITTEES_BY_ID:
+        return SUBCOMMITTEES_BY_ID[item].option
+    if item in EVENTS_BY_ID:
+        event = EVENTS_BY_ID[item]
+        if event.automatic is AutomaticEffect.POLITICAL_EQUILIBRIUM:
+            return _EQUILIBRIUM
+        if event.automatic is AutomaticEffect.TAP_INTO_SPICE_RESERVES:
+            return _TAP_INTO_SPICE
+        if event.secret_choices:
+            return event.secret_choices[index].option
+        return event.options[index]
+    if item in SALES_BY_ID:
+        return SALES_BY_ID[item].options[index]
+    if item in MISSIONS_BY_ID:
+        return mission_card_line(MISSIONS_BY_ID[item])
+    if item in AUCTIONS_BY_ID:
+        auction = AUCTIONS_BY_ID[item]
+        if auction.kind is AuctionKind.OPEN_MENTAT:
+            return _MENTAT_LINES[auction.slot][index]
+        return EffectSection(rewards=auction.rank_rewards[index])
+    raise ValueError(f"unknown Scouts item: {item!r}")
+
+
+def mission_card_costs(mission: Mission) -> tuple[ScoutsCost, ...]:
+    """The costs of ``mission``'s way in that are a card of the seat's choice:
+    the original game's Stationed Support discards one
+    (docs/rules/arrakeen-scouts.md 9a). Its join pays any resources, then
+    opens the frame of a line of these costs for the card, whose reward after
+    the discard (and any Unload it set off) parks the troops
+    (``scouts_missions.apply_mission_join``)."""
+
+    return tuple(
+        cost for cost in mission.participation_cost if isinstance(cost, DiscardFromHand)
+    )
+
+
+# A frame context key: the Faction a revealed secret pick named when it was
+# made (the original game's Covert Operation, stage P8c); the line's Influence
+# goes there, with no choice left (``named_line``). Absent from every other
+# frame.
+NAMED_FACTION: Final = "faction"
+
+
+def named_line(option: EffectSection, faction: object) -> EffectSection:
+    """``option`` with its Influence gain limited to ``faction`` (no choice
+    left), or ``option`` itself without one."""
+
+    if not isinstance(faction, str) or not faction:
+        return option
+    return replace(
+        option,
+        rewards=tuple(
+            replace(reward, factions=(Faction(faction),))
+            if isinstance(reward, GainInfluence)
+            else reward
+            for reward in option.rewards
+        ),
+    )
+
+
+def mission_card_line(mission: Mission) -> EffectSection:
+    """The line of ``mission_card_costs``, for a mission that has them: the
+    card is the cost, which comes first ("비용은 효과보다 먼저" [DI p. 9]), and
+    parking the printed troops is the reward after it."""
+
+    costs = mission_card_costs(mission)
+    if not costs:
+        raise ValueError(f"{mission.mission_id}: its way in costs no card")
+    return EffectSection(rewards=(ParkTroops(mission.parked_troops),), costs=costs)
+
+
+def starter_card_ids(config: RulesetConfig) -> frozenset[str]:
+    """The printed ids of the starter cards of ``config``'s ruleset: the cards
+    every player starts the game with (``content_for(config)``'s starting
+    deck and starting discard pile), so with Immortality Experimentation
+    instead of the two Dune, the Desert Planet, and in Epic Game Mode Control
+    the Spice -- also when Epic Game Mode with Immortality starts it in the
+    discard pile [Immortality p. 12] (docs/rules/arrakeen-scouts.md 9a)."""
+
+    content = content_for(config)
+    return frozenset(
+        entry.card.card_id
+        for entry in (*content.starting_deck_entries, *content.starting_discard_entries)
+    )
+
+
+def _printed_id(instance_id: str) -> str:
+    """The printed card id of a hand card's instance id (``player:0:starter:
+    seek_allies:0`` is ``seek_allies``, ``imperium:treachery:0`` is
+    ``treachery``)."""
+
+    parts = instance_id.split(":")
+    return parts[3] if ":starter:" in instance_id else parts[1]
+
+
+def hand_choices(
+    state: GameState, owner: PlayerState, only: HandCardFilter | None
+) -> tuple[str, ...]:
+    """The cards of ``owner``'s hand a cost with the filter ``only`` may take:
+    the whole hand without one (``HandCardFilter``)."""
+
+    if only is None:
+        return owner.hand
+    starters = starter_card_ids(state.config)
+    chosen = []
+    for card in owner.hand:
+        printed = _printed_id(card)
+        if only.card_ids and printed not in only.card_ids:
+            continue
+        if printed in only.except_ids:
+            continue
+        if only.starter is not None:
+            is_starter = ":starter:" in card and printed in starters
+            if is_starter is not only.starter:
+                continue
+        chosen.append(card)
+    return tuple(chosen)
+
+
+def scouts_spy_items(base_game: BaseGame | None = None) -> tuple[str, ...]:
+    """The Scouts items with a line that places a Spy (the Spy placement
+    window's printer, ``spy_moves.spy_placement_frame``); with a
+    ``base_game``, those of its pools only (the original game's items never
+    join an Uprising catalog)."""
+
+    return _items_rewarding(PlaceSpy, base_game)
+
+
+def scouts_trash_items(base_game: BaseGame | None = None) -> tuple[str, ...]:
+    """The Scouts items with a line that trashes a card (the optional trash
+    window's printer, ``optional_trash.optional_trash_frame``; B3d-3); with a
+    ``base_game``, those of its pools only."""
+
+    return _items_rewarding(TrashPersonalCard, base_game)
+
+
+def _items_rewarding(
+    reward: type, base_game: BaseGame | None = None
+) -> tuple[str, ...]:
+    if base_game is None:
+        subcommittees: Iterable[Subcommittee] = SUBCOMMITTEES_BY_ID.values()
+        events: Iterable[ScoutsEvent] = EVENTS_BY_ID.values()
+        sales: Iterable[ScoutsSale] = SALES_BY_ID.values()
+        auctions: Iterable[ScoutsAuction] = AUCTIONS_BY_ID.values()
+    else:
+        subcommittees = subcommittees_of_base_game(base_game)
+        events = events_of_base_game(base_game)
+        sales = sales_of_base_game(base_game)
+        auctions = auctions_of_base_game(base_game)
+    lines: list[tuple[str, EffectSection]] = [
+        *((entry.subcommittee_id, entry.option) for entry in subcommittees),
+        *(
+            (event.event_id, line)
+            for event in events
+            for line in (
+                *event.options,
+                *(choice.option for choice in event.secret_choices),
+            )
+        ),
+        *((sale.sale_id, line) for sale in sales for line in sale.options),
+        *(
+            (auction.auction_id, EffectSection(rewards=rewards))
+            for auction in auctions
+            for rewards in auction.rank_rewards
+        ),
+    ]
+    return tuple(
+        dict.fromkeys(
+            item
+            for item, line in lines
+            if any(isinstance(piece, reward) for piece in line.rewards)
+        )
+    )
+
+
+def option_steps(option: EffectSection) -> tuple[ScoutsStep, ...]:
+    """Costs in printed order, then rewards (costs are paid in full first)."""
+
+    return (*option.costs, *option.rewards)
+
+
+def option_is_affordable(state: GameState, player: int, option: EffectSection) -> bool:
+    """Whether ``player`` can pay every cost of ``option`` now."""
+
+    owner = state.players[player]
+    solari = spice = water = 0
+    for cost in option.costs:
+        match cost:
+            case PayResources():
+                solari += cost.solari
+                spice += cost.spice
+                water += cost.water
+            case DiscardFromHand(count=count, only=only):
+                if len(hand_choices(state, owner, only)) < count:
+                    return False
+            case RecallSpy(count=count):
+                if len(owner.spy_post_ids) < count:
+                    return False
+            case TrashIntrigueCard() | DiscardIntrigueCard():
+                if not owner.intrigue_cards:
+                    return False
+            case TrashCard(hand_only=hand_only, only=only):
+                zones = (
+                    hand_choices(state, owner, only)
+                    if hand_only
+                    else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+                )
+                if not zones:
+                    return False
+            case LoseGarrisonTroops(count=count):
+                # A garrison Sardaukar Commander pays too (OQ-105).
+                if garrison_units(owner) < count:
+                    return False
+            case LoseTroops(count=count):
+                # The garrison's and the Conflict's units (OQ-163).
+                if losable_units(owner, cost) < count:
+                    return False
+            case SpendSpecimens(count=count):
+                if owner.specimens < count:
+                    return False
+            case LoseFactionInfluence(faction=faction, count=count):
+                if influence_amount(owner.influence, faction) < count:
+                    return False
+            case LoseHighestInfluence():
+                pass
+            case _:
+                # Influence losses are the only other costs; slice 5 adds them.
+                raise NotImplementedError(f"Scouts cost not supported yet: {cost!r}")
+    resources = owner.resources
+    return (
+        resources.solari >= solari
+        and resources.spice >= spice
+        and (resources.water >= water)
+    )
+
+
+def reward_has_effect(
+    state: GameState,
+    player: int,
+    reward: ScoutsReward,
+    *,
+    option: EffectSection,
+    exclude_space: str = "",
+) -> bool:
+    """Whether ``reward`` of ``option`` can change anything for ``player`` now.
+
+    The Scouts' own checks come first: a Reserve card whose stack is empty,
+    an Agent recall with no other Agent out, an Influence gain whose every
+    track is at the top (lost, OQ-060), and a recruit with no troop in the
+    supply (nor a specimen to return, Immortality). Every other reward is
+    judged as a card's is (``effect_interpreter.reward_can_change_something``:
+    a draw with both piles empty, Research drawing past the second genetic
+    marker, an Intrigue card with nothing to draw or shuffle, a Tleilaxu
+    advance at the track's end, a specimen with no troop in the supply). The
+    user's decision of 2026-09-29 (OQ-071) reads "비용이 있는 줄은 보상 중
+    하나라도 무언가를 바꿀 수 있을 때만 제시한다", and its card extension of
+    2026-10-06 made the card checks the same rule; the Scouts list had kept
+    only its first four (engine audit 2026-10-22, P2).
+    """
+
+    owner = state.players[player]
+    match reward:
+        case AcquireReserveCardToHand(card_id=card_id):
+            return dict(state.reserve_stacks).get(card_id, 0) > 0
+        case RecallOtherAgent():
+            return bool(_recallable_spaces(owner, exclude_space))
+        case GainInfluence():
+            return bool(_gainable_factions(owner, reward))
+        case RecruitTroops() | RecruitToConflict() | ParkTroops():
+            return owner.troops_supply > 0 or (
+                state.config.immortality and owner.specimens > 0
+            )
+    owner_after = pay_cost(owner, resource_cost((option,)))
+    return reward_can_change_something(
+        state, player, reward, option, owner_after, played_intrigue_held=False
+    )
+
+
+def line_is_offered(
+    state: GameState,
+    player: int,
+    option: EffectSection,
+    *,
+    exclude_space: str = "",
+) -> bool:
+    """Whether a seat may take ``option`` now.
+
+    Its costs must be payable, and a line with a cost must be able to give
+    something: "If you don't pay the cost, you don't get the effect"
+    [Main p. 20], and a cost that buys nothing is not offered (OQ-046, the
+    user's rulings of 2026-09-29 on Moment of Revelation and on arrow
+    costs, OQ-071).
+    """
+
+    if not option_is_affordable(state, player, option):
+        return False
+    if not option.costs or not option.rewards:
+        return True  # nothing bought, or a pure loss (Crackdown): no check
+    return any(
+        reward_has_effect(
+            state, player, reward, exclude_space=exclude_space, option=option
+        )
+        for reward in option.rewards
+    )
+
+
+def line_unavailable_reason(
+    state: GameState,
+    player: int,
+    option: EffectSection,
+    *,
+    exclude_space: str = "",
+) -> ScoutsStep | None:
+    """The step that keeps ``option`` from being offered now; None if offered.
+
+    The first cost the seat cannot pay, or else the reward that cannot
+    happen (``line_is_offered``). For the display only, which shows a line
+    the seat cannot take beside the reason; it reads the same checks, so the
+    two never disagree.
+    """
+
+    if line_is_offered(state, player, option, exclude_space=exclude_space):
+        return None
+    if not option_is_affordable(state, player, option):
+        return _first_unpaid_cost(state, player, option)
+    # Payable but not offered: every reward is one that cannot happen.
+    return next(
+        (
+            reward
+            for reward in option.rewards
+            if not reward_has_effect(
+                state, player, reward, exclude_space=exclude_space, option=option
+            )
+        ),
+        option.rewards[0],
+    )
+
+
+def _first_unpaid_cost(
+    state: GameState, player: int, option: EffectSection
+) -> ScoutsCost:
+    """The first cost, in printed order, that ``option_is_affordable`` fails on."""
+
+    resources = state.players[player].resources
+    solari = spice = water = 0
+    for cost in option.costs:
+        if isinstance(cost, PayResources):
+            solari += cost.solari
+            spice += cost.spice
+            water += cost.water
+            if (
+                solari > resources.solari
+                or spice > resources.spice
+                or water > resources.water
+            ):
+                return cost
+        elif not option_is_affordable(
+            state, player, EffectSection(rewards=(), costs=(cost,))
+        ):
+            return cost
+    return option.costs[0]  # not reached while the option is unaffordable
+
+
+# --- The effect frame --------------------------------------------------------------
+
+
+def push_scouts_effect(
+    state: GameState,
+    player: int,
+    item: str,
+    option: int,
+    *,
+    source: str,
+    exclude_space: str = "",
+    faction: str = "",
+    collect: bool = False,
+) -> GameState:
+    """Open the frame that resolves one seat's line of a Scouts item.
+
+    ``exclude_space`` is the space of the Agent that just took the High
+    Council seat (Contingencies recalls another, OQ-075); ``faction`` the
+    Faction a revealed secret pick named (``NAMED_FACTION``). ``collect``
+    holds the whole line until its seat's ``SCOUTS_COLLECT`` click (OQ-164).
+    """
+
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_EFFECT,
+        frame_id=f"{source}:effect",
+        decision=PlayerDecision(
+            owner=player, prompt="Resolve the Arrakeen Scouts effect"
+        ),
+        context=(
+            *(((_COLLECT, 1),) if collect else ()),
+            ("exclude_space", exclude_space),
+            *(((NAMED_FACTION, faction),) if faction else ()),
+            ("item", item),
+            ("option", option),
+            ("picked", 0),
+            ("player", player),
+            ("source", source),
+            ("step", 0),
+        ),
+    )
+    return state.push_decision(frame)
+
+
+def _effect_frame(state: GameState) -> DecisionFrame | None:
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    return frame if frame.kind == FrameKind.SCOUTS_EFFECT else None
+
+
+# The one action of a line its seat receives later (module doc): "자동으로
+# 받게 하지 말고, 플레이어가 무조건 선택으로 클릭해야 받을 수 있게 하자" (user
+# decision 2026-11-01, OQ-164). It reveals nothing itself; a draw the line
+# then makes at once (its first reward, or one printed with no choice before
+# it) is part of this click, as it was part of the line's automatic step.
+SCOUTS_COLLECT: Final = "scouts_collect_reward"
+# Set on a line's frame until that click (``push_scouts_effect(collect=True)``).
+_COLLECT: Final = "collect"
+
+
+def awaits_collect(frame: DecisionFrame) -> bool:
+    """Whether ``frame``'s line still waits for its seat's collect click."""
+
+    return dict(frame.context).get(_COLLECT) == 1
+
+
+# --- A mission's owed payout (OQ-164 (b)) ---------------------------------------------
+#
+# A payout a seat earns inside another action (``scouts_missions`` module doc)
+# waits in a frame of the same kind as a line received later, with the same
+# one action, but no line: the click pays the owed goods and closes it. It
+# opens as soon as the payout is owed, on top of whatever is being resolved,
+# the seat's own turn or another seat's (user decision 2026-11-01, "둘다
+# (가)로": the window opens at once in both cases), but never above a chance
+# decision, which resolves first; until the click nothing else of the
+# transition goes on (``scouts_payout_waits``), so what follows the payout
+# sees it paid, as before.
+_PAYOUT: Final = "payout"
+_PAYOUT_FRAME: Final = "Scouts payout frame"
+
+
+def is_payout(frame: DecisionFrame) -> bool:
+    """Whether ``frame`` is a mission's owed-payout window."""
+
+    return frame.kind == FrameKind.SCOUTS_EFFECT and dict(frame.context).get(
+        _PAYOUT
+    ) == 1
+
+
+def _payout_open(state: GameState, player: int, mission_id: str) -> bool:
+    return any(
+        is_payout(frame)
+        and dict(frame.context).get("player") == player
+        and dict(frame.context).get("item") == mission_id
+        for frame in state.decision_stack
+    )
+
+
+def scouts_payout_waits(state: GameState) -> bool:
+    """Whether an owed-payout window on top waits for its seat's click."""
+
+    return bool(state.decision_stack) and is_payout(state.decision_stack[-1])
+
+
+def scouts_payout_is_due(state: GameState) -> bool:
+    """Whether an owed payout has no window yet and one may open now."""
+
+    if state.decision_stack and isinstance(
+        state.decision_stack[-1].decision, ChanceDecision
+    ):
+        return False
+    return any(
+        not _payout_open(state, seat, mission_id)
+        for seat, mission_id in owed_payouts(state)
+    )
+
+
+def open_scouts_payout(state: GameState) -> RuleResult:
+    """Open the window of the oldest owed payout without one."""
+
+    seat, mission_id = next(
+        (seat, mission_id)
+        for seat, mission_id in owed_payouts(state)
+        if not _payout_open(state, seat, mission_id)
+    )
+    source = f"round:{state.round_number}:scouts_payout:{seat}:{mission_id}"
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_EFFECT,
+        frame_id=f"{source}:{len(state.event_log)}",
+        decision=PlayerDecision(
+            owner=seat, prompt="Collect the Arrakeen Scouts mission's goods"
+        ),
+        context=(
+            (_COLLECT, 1),
+            ("item", mission_id),
+            (_PAYOUT, 1),
+            ("player", seat),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def _cursor(frame: DecisionFrame) -> tuple[int, str, EffectSection, int, int]:
+    context = dict(frame.context)
+    player = context_int(context, "player", owner=_EFFECT_FRAME)
+    item = context_str(context, "item", owner=_EFFECT_FRAME)
+    option = named_line(
+        scouts_option(item, context_int(context, "option", owner=_EFFECT_FRAME)),
+        context.get(NAMED_FACTION),
+    )
+    step = context_int(context, "step", owner=_EFFECT_FRAME)
+    picked = context_int(context, "picked", owner=_EFFECT_FRAME)
+    return player, item, option, step, picked
+
+
+def _current_step(state: GameState, frame: DecisionFrame) -> ScoutsStep | None:
+    player, _, option, step, _ = _cursor(frame)
+    steps = _line_steps(frame, option)
+    if step >= len(steps):
+        return None
+    current = steps[step]
+    return current if _is_choice(state, player, frame, current) else None
+
+
+def _is_choice(
+    state: GameState, player: int, frame: DecisionFrame, step: ScoutsStep
+) -> bool:
+    """Whether ``step`` waits on this frame's own choice actions now."""
+
+    owner = state.players[player]
+    match step:
+        case (
+            RecruitTroops(count=count)
+            | RecruitToConflict(count=count)
+            | ParkTroops(count=count)
+        ):
+            return _specimen_top_up(state, owner, count, frame) > 0
+        case DiscardFromHand(only=only):
+            return bool(hand_choices(state, owner, only))
+        case RecallSpy():
+            return bool(owner.spy_post_ids)
+        case TrashIntrigueCard() | DiscardIntrigueCard():
+            return bool(owner.intrigue_cards)
+        case TrashCard(hand_only=hand_only, only=only):
+            return bool(
+                hand_choices(state, owner, only)
+                if hand_only
+                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+            )
+        case GainInfluence() if step.requires_choice:
+            # "대상이 하나뿐이어도 둘째 단계를 연다" (OQ-111 (2)): a lone
+            # Faction below the top is still the seat's pick (user decision
+            # 2026-10-26, Leverage; general rules audit 2026-10-25). With
+            # every track at the top there is no target and nothing to ask.
+            return bool(_gainable_factions(owner, step))
+        case GainLowestInfluence():
+            return len(_lowest_factions(owner)) > 1
+        case RecallOtherAgent():
+            return len(_frame_recallable(owner, frame)) > 0
+        case LoseFactionInfluence(faction=faction):
+            return len(_loss_actions(state, player, (faction,))) > 1
+        case LoseHighestInfluence():
+            # Political Equilibrium asks every seat: the one Faction it loses
+            # from when its highest track is alone, the confirm of losing
+            # nothing when every track is at 0 (user decision 2026-10-25:
+            # "모든 좌석에 창을 열어: 가장 높은 진영이 하나면 그 한 줄만 있는 창,
+            # 모두 0이면 확인 창"; OQ-131, the 2026-09-30 rule that a step
+            # passing by itself opens a window too).
+            return True
+        case LoseGarrisonTroops():
+            # The seat picks a troop or a Sardaukar Commander when its
+            # garrison holds both (OQ-105).
+            return owner.troops_garrison > 0 and owner.commanders_garrison > 0
+        case DrawIntrigueCards() | DrawPersonalCards():
+            # A draw after one of the line's reward choices is its own step
+            # (OQ-106), taken with ``scouts_rewards_first``.
+            return reward_was_chosen(frame)
+    return False
+
+
+# Set on a line once one of its rewards was a choice of its owner: a choice
+# step of the line itself (a Faction, a specimen top-up) or a frame a reward
+# opened (an optional trash, a Spy post, a Contract, a Research direction).
+_CHOSE: Final = "chose"
+
+
+def reward_was_chosen(frame: DecisionFrame) -> bool:
+    """Whether one of the line's rewards was a choice of its owner.
+
+    A hidden draw printed after it then waits as its own step instead of
+    being drawn by the step that settled the choice (user ruling 2026-10-10,
+    OQ-106: "그 외에는 전부 나누자. 특히 카드 드로우는 나눠야하는게, 드로우
+    하기 전에 버림더미 카드를 폐기하고 싶을 수 있잖아."), so the choice stays
+    undoable (OQ-010) and only the draw does not. A choice among the costs
+    does not count: an arrow cost and what it buys stay one unit (Rotating
+    Doors' "trash an Intrigue card -> [Intrigue] [draw 1]"), as do lines
+    whose draw is the line itself (Secrets for Sale, Forecasting).
+    """
+
+    return dict(frame.context).get(_CHOSE) == 1
+
+
+def _marked_chosen(frame: DecisionFrame) -> DecisionFrame:
+    if reward_was_chosen(frame):
+        return frame
+    context = dict(frame.context)
+    context[_CHOSE] = 1
+    return replace(frame, context=tuple(sorted(context.items())))
+
+
+def _specimen_top_up(
+    state: GameState, owner: PlayerState, needed: int, frame: DecisionFrame
+) -> int:
+    """How many specimens the seat may return before a recruit (0: none).
+
+    "You may return any of your specimens to your supply at any time"
+    [Immortality p. 8]; a Scouts line recruiting more troops than the supply
+    holds offers it first, once (user ruling 2026-09-29, OQ-050, OQ-074).
+    """
+
+    if not state.config.immortality or dict(frame.context).get("picked", 0):
+        return 0
+    short = needed - owner.troops_supply
+    return min(short, owner.specimens) if short > 0 else 0
+
+
+def scouts_effect_can_advance(state: GameState) -> bool:
+    """Whether the top Scouts effect frame waits on an automatic step."""
+
+    frame = _effect_frame(state)
+    return (
+        frame is not None
+        and not awaits_collect(frame)
+        and _current_step(state, frame) is None
+    )
+
+
+def _moved(state: GameState, frame: DecisionFrame, *, step: int) -> GameState:
+    """Replace the top frame's cursor (fresh step: no pick made yet)."""
+
+    context = dict(frame.context)
+    context["step"] = step
+    context["picked"] = 0
+    moved = replace(frame, context=tuple(sorted(context.items())))
+    return replace(state, decision_stack=(*state.decision_stack[:-1], moved))
+
+
+def advance_scouts_effect(state: GameState) -> RuleResult:
+    """Run the top frame's automatic step, or close the frame when done."""
+
+    frame = _effect_frame(state)
+    if frame is None:
+        raise ValueError("there is no Scouts effect frame")
+    player, item, option, step, _ = _cursor(frame)
+    context = dict(frame.context)
+    source = context_str(context, "source", owner=_EFFECT_FRAME)
+    steps = _line_steps(frame, option)
+    if step >= len(steps):
+        return RuleResult(
+            state=state.pop_decision(),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:resolved",
+                    kind="scouts_effect_resolved",
+                    payload=(("item_id", item), ("player", player)),
+                ),
+            ),
+        )
+    moved = _moved(state, frame, step=step + 1)
+    current = steps[step]
+    picked = context_int(context, "picked", owner=_EFFECT_FRAME)
+    if isinstance(current, LoseGarrisonTroops) and picked:
+        # Units already picked one at a time while both kinds were in the
+        # garrison count toward the cost (OQ-105).
+        current = replace(current, count=current.count - picked)
+    result = _apply_automatic(
+        moved, player, current, source=f"{source}:{step}", item=item
+    )
+    if step < len(option.costs):
+        return result
+    stack = result.state.decision_stack
+    index = next(
+        (i for i, above in enumerate(stack) if above.frame_id == frame.frame_id),
+        None,
+    )
+    if index is None or not any(
+        _owned_by(above, player) for above in stack[index + 1 :]
+    ):
+        return result
+    # The reward opened a choice of the owner's (a Spy post, an optional
+    # trash, a Contract, a Research direction): a draw printed after it
+    # waits for its own step (OQ-106).
+    marked = (*stack[:index], _marked_chosen(stack[index]), *stack[index + 1 :])
+    return RuleResult(
+        state=replace(result.state, decision_stack=marked), events=result.events
+    )
+
+
+# --- Rewards ahead of a pending choice (OQ-100) -------------------------------------
+
+# Rewards that may resolve while an earlier reward of the line waits on a
+# choice: gains that open no choice of their own (a draw may still shuffle).
+# Every Scouts line prints its choice rewards before these (Water Discipline,
+# Oversight, Leverage, Spies for Hire, CHOAM Negotiations, Shadow Warfare,
+# Competitive Study), so taking them first opens every order (OQ-100).
+_REWARDS_FIRST_KINDS: Final = (
+    DrawPersonalCards,
+    DrawIntrigueCards,
+    GainResources,
+    GenerateSpecimens,
+)
+_STOP: Final = "stop"
+
+
+def _line_steps(frame: DecisionFrame, option: EffectSection) -> tuple[ScoutsStep, ...]:
+    """The line's steps, without the rewards already taken ahead (``stop``)."""
+
+    steps = option_steps(option)
+    stop = dict(frame.context).get(_STOP)
+    return steps[:stop] if isinstance(stop, int) else steps
+
+
+def _rewards_ahead(
+    state: GameState, player: int
+) -> tuple[int, int, tuple[ScoutsStep, ...]] | None:
+    """The seat's Scouts line whose later rewards may resolve now, and those.
+
+    A reward of the line waits on a choice: either the line's own choice
+    step (a Faction, a card to trash from hand), or a frame that reward
+    opened on top of it (an optional trash, a Spy placement, a Contract
+    pick, a Research advance or bonus), recognised by its frame id. The rewards
+    printed after it must all be automatic gains. A draw that waits after one
+    of the line's reward choices (``reward_was_chosen``, OQ-106) is itself
+    the first of them: once the choice is made the draw is not taken by the
+    step that made it, but by this action. Returns the line's stack index,
+    the index of its first later reward and those rewards; None when nothing
+    may resolve ahead.
+    """
+
+    stack = state.decision_stack
+    if not stack or not _owned_by(stack[-1], player):
+        return None
+    if stack[-1].kind == FrameKind.SCOUTS_EFFECT:
+        index, line = len(stack) - 1, stack[-1]
+        if awaits_collect(line):
+            return None  # nothing of the line before its collect (OQ-164)
+        current = _current_step(state, line)
+        if current is None:
+            return None
+        waiting = _cursor(line)[3]
+        if isinstance(current, (DrawIntrigueCards, DrawPersonalCards)):
+            # The draw waiting after a reward's choice is itself the first
+            # of the rewards taken now (OQ-106).
+            waiting -= 1
+    elif (
+        len(stack) >= 2
+        and stack[-2].kind == FrameKind.SCOUTS_EFFECT
+        and not awaits_collect(stack[-2])
+    ):
+        index, line = len(stack) - 2, stack[-2]
+        waiting = _cursor(line)[3] - 1
+        source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+        if not stack[-1].frame_id.startswith(f"{source}:{waiting}:"):
+            return None
+    else:
+        return None
+    owner, _, option, _, _ = _cursor(line)
+    if owner != player or waiting < len(option.costs):
+        return None  # a cost is paid first [Main pp. 9, 20]
+    later = _line_steps(line, option)[waiting + 1 :]
+    if not later or not all(isinstance(step, _REWARDS_FIRST_KINDS) for step in later):
+        return None
+    return index, waiting + 1, later
+
+
+def _owned_by(frame: DecisionFrame, player: int) -> bool:
+    return isinstance(frame.decision, PlayerDecision) and frame.decision.owner == player
+
+
+def scouts_rewards_ahead(state: GameState, player: int) -> tuple[ScoutsStep, ...]:
+    """The rewards ``scouts_rewards_first`` would resolve now (empty: none)."""
+
+    found = _rewards_ahead(state, player)
+    return () if found is None else found[2]
+
+
+def legal_scouts_rewards_first_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer a line's later automatic rewards ahead of its pending choice,
+    or the draw that waits once that choice is made.
+
+    Icons of one line are independent effects whose order the owner picks
+    once the arrow cost is paid (OQ-015 (d), [Main p. 9]); for a Scouts line
+    that is the user's ruling of 2026-10-05 (OQ-100): Water Discipline's
+    card may be drawn before the trash, so the drawn card can be trashed.
+    Drawn after the choice, the card is its own step too (user ruling
+    2026-10-10, OQ-106: "그 외에는 전부 나누자"), so the trash, the Faction
+    of Leverage, the Spy post of Spies for Hire or the Contract of CHOAM
+    Negotiations can still be taken back before it.
+    """
+
+    if _rewards_ahead(state, player) is None:
+        return ()
+    return (DomainAction(action_id="scouts_rewards_first", actor=player),)
+
+
+def apply_scouts_rewards_first(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the line's later rewards now; a pending choice stays open."""
+
+    if action not in legal_scouts_rewards_first_actions(state, action.actor):
+        raise ValueError("action is not a legal Scouts rewards-first choice")
+    found = _rewards_ahead(state, action.actor)
+    if found is None:  # pragma: no cover - the legality check above
+        raise RuntimeError("no Scouts rewards wait behind a choice")
+    index, first, later = found
+    line = state.decision_stack[index]
+    source = context_str(dict(line.context), "source", owner=_EFFECT_FRAME)
+    # The line drops these rewards before they apply, so it closes once the
+    # choice is settled and a draw's reshuffle stacks above the open choice.
+    # Its cursor stays where it was.
+    context = dict(line.context)
+    context[_STOP] = first
+    stack = list(state.decision_stack)
+    stack[index] = replace(line, context=tuple(sorted(context.items())))
+    result = RuleResult(state=replace(state, decision_stack=tuple(stack)))
+    events: list[GameEvent] = []
+    item = context_str(context, "item", owner=_EFFECT_FRAME)
+    for step, reward in enumerate(later, start=first):
+        result = _apply_automatic(
+            result.state, action.actor, reward, source=f"{source}:{step}", item=item
+        )
+        events.extend(result.events)
+    return RuleResult(state=result.state, events=tuple(events))
+
+
+def _credit_turn(state: GameState, player: int, *, troops: int = 0) -> GameState:
+    """Count recruits toward ``player``'s own open turn only."""
+
+    if turn_owner_of(state) != player or not troops:
+        return state
+    return update_turn_recruits(state, troops_recruited=troops)
+
+
+def _apply_automatic(
+    state: GameState,
+    player: int,
+    step: ScoutsStep,
+    *,
+    source: str,
+    item: str,
+) -> RuleResult:
+    owner = state.players[player]
+    match step:
+        case PayResources(solari=solari, spice=spice, water=water):
+            # Every spend adds to ``spice_spent_turn``, so a line's cost inside
+            # the seat's open turn is not read as lost gains by Hungry for
+            # Spice or "gained spice this turn" (OQ-063, OQ-095 (3)).
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari - solari,
+                    spice=owner.resources.spice - spice,
+                    water=owner.resources.water - water,
+                ),
+                spice_spent_turn=owner.spice_spent_turn + spice,
+            )
+            next_state = replace(state, players=replace_player(state.players, paid))
+            return RuleResult(
+                state=next_state,
+                events=(
+                    resources_paid_event(
+                        source, player, solari=solari, spice=spice, water=water
+                    ),
+                ),
+            )
+        case LoseGarrisonTroops(count=count):
+            # Troops first, then Sardaukar Commanders: a Commander is a troop
+            # for card effects [Bloodlines p. 4] (OQ-105). The seat picks the
+            # kind when its garrison holds both (``_is_choice``), so this
+            # automatic path meets one kind only.
+            lost = min(count, owner.troops_garrison)
+            commanders = min(count - lost, owner.commanders_garrison)
+            result = RuleResult(state=state)
+            if lost or not commanders:
+                result = _lose_garrison_troops(state, player, lost, source=source)
+            events = list(result.events)
+            for index in range(commanders):
+                result = lose_unit(
+                    result.state,
+                    player,
+                    "garrison",
+                    commander=True,
+                    source=f"{source}:commander:{index}",
+                )
+                events.extend(result.events)
+            return RuleResult(state=result.state, events=tuple(events))
+        case LoseTroops(
+            count=count, from_conflict=from_conflict, troops_only=troops_only
+        ):
+            # The original game's Fremen Exchange (OQ-163): the seat loses each
+            # unit in the unit-loss window, picking the zone and, with
+            # Bloodlines, a Sardaukar Commander as a troop (OQ-036 (a),
+            # OQ-105), the window open even with one choice (OQ-036,
+            # 2026-09-30). The line's cost was checked payable.
+            if troops_only:
+                raise NotImplementedError("no Scouts line loses troops only")
+            working = state
+            printer = printer_value(Source.SCOUTS, item)
+            for index in range(count):
+                working = own_unit_loss_frame(
+                    working,
+                    player,
+                    source=f"{source}:{index}",
+                    printer=printer,
+                    conflict_only=from_conflict,
+                )
+            return RuleResult(state=working)
+        case SpendSpecimens(count=count):
+            paid_count = min(count, owner.specimens)
+            next_owner = replace(
+                owner,
+                specimens=owner.specimens - paid_count,
+                troops_supply=owner.troops_supply + paid_count,
+            )
+            if not paid_count:
+                return RuleResult(state=state)
+            return _owner_event(
+                state,
+                next_owner,
+                resources_paid_event(source, player, specimens=paid_count),
+            )
+        case RecruitToConflict(count=count):
+            deployed = min(count, owner.troops_supply)
+            next_owner = replace(
+                owner,
+                troops_supply=owner.troops_supply - deployed,
+                troops_conflict=owner.troops_conflict + deployed,
+            )
+            return _owner_event(
+                state,
+                next_owner,
+                GameEvent(
+                    event_id=f"{source}:scouts_troops_to_conflict",
+                    kind="scouts_troops_to_conflict",
+                    payload=(("count", deployed), ("player", player)),
+                ),
+            )
+        case ParkTroops(count=count):
+            # Stationed Support: after the discard, the supply's troops go to
+            # the mission's space, as many as it then holds (9a).
+            return park_mission_troops(state, player, item, count, source=source)
+        case PlaceSpy():
+            return RuleResult(
+                state=spy_placement_frame(
+                    state,
+                    player,
+                    observation_post_ids_in_play(state),
+                    source=source,
+                    printer=printer_value(Source.SCOUTS, item),
+                )
+            )
+        case TrashPersonalCard():
+            # The trash icon: optional [Main p. 20].
+            return RuleResult(
+                state=state.push_decision(
+                    optional_trash_frame(
+                        player, source, printer=printer_value(Source.SCOUTS, item)
+                    )
+                )
+            )
+        case AcquireReserveCardToHand(card_id=card_id):
+            if dict(state.reserve_stacks).get(card_id, 0) < 1:
+                return RuleResult(state=state)
+            acquired = acquire_reserve_for_intrigue(
+                state,
+                player,
+                card_id,
+                to_hand=True,
+                source=source,
+            )
+            return acquired.result
+        case GainInfluence() if step.requires_choice:
+            factions = _gainable_factions(owner, step)
+            if not factions:
+                return RuleResult(state=state)  # every track is at the top
+            return gain_faction_influence(
+                state, player, factions[0], step.times, event_prefix=source
+            )
+        case GainLowestInfluence():
+            (faction,) = _lowest_factions(owner)
+            return gain_faction_influence(
+                state, player, faction, 1, event_prefix=source
+            )
+        case RecallOtherAgent():
+            return RuleResult(state=state)  # no other Agent is out (OQ-075)
+        case GainSpiceWithHelixBonus(spice=spice, helix_spice=helix_spice):
+            # Offworld Operation: more once the seat's research token has
+            # reached the Helix, the first genetic marker (OQ-089 (b)).
+            helix = state.config.immortality and (
+                genetic_markers_reached(owner.research_space) >= 1
+            )
+            gained = helix_spice if helix else spice
+            return _owner_event(
+                state,
+                replace(
+                    owner,
+                    resources=replace(
+                        owner.resources, spice=owner.resources.spice + gained
+                    ),
+                ),
+                # A resource gain like any other (rule decision 3,
+                # cleanup-2c-5).
+                resources_gained_event(source, player, spice=gained),
+            )
+        case (
+            DiscardFromHand()
+            | RecallSpy()
+            | TrashIntrigueCard()
+            | DiscardIntrigueCard()
+            | TrashCard()
+        ):
+            # A choice with nothing left to choose (checked before paying a
+            # cost; a delayed reward's may run dry): nothing happens.
+            return RuleResult(state=state)
+        case LoseFactionInfluence(faction=faction, count=count):
+            return lose_faction_influence(
+                state, player, faction, count, event_prefix=source
+            )
+        case LoseHighestInfluence():
+            factions = highest_factions(owner)
+            if not factions:
+                return RuleResult(state=state)  # no Influence to lose
+            (faction,) = factions
+            return lose_faction_influence(
+                state, player, faction, 1, event_prefix=source
+            )
+    if isinstance(step, _NOT_DSL_REWARDS):
+        raise NotImplementedError(f"Scouts step not supported yet: {step!r}")
+    outcome = apply_rewards(state, player, (cast(Reward, step),), source=source)
+    next_state = _credit_turn(
+        outcome.result.state, player, troops=outcome.troops_recruited
+    )
+    return RuleResult(state=next_state, events=outcome.result.events)
+
+
+def losable_units(owner: PlayerState, cost: LoseTroops) -> int:
+    """The units a "lose troops" cost may take: the troops, and the Sardaukar
+    Commanders a card effect counts as troops [Bloodlines p. 4], in the
+    garrison and the Conflict (OQ-163, OQ-036 (a), OQ-105); the Conflict's
+    alone for one limited to it."""
+
+    commanders = not cost.troops_only
+    conflict = owner.troops_conflict + (owner.commanders_conflict if commanders else 0)
+    if cost.from_conflict:
+        return conflict
+    garrison = owner.troops_garrison + (
+        owner.commanders_garrison if commanders else 0
+    )
+    return conflict + garrison
+
+
+def garrison_units(owner: PlayerState) -> int:
+    """Troops and Sardaukar Commanders in the garrison: what a "lose a
+    garrison troop" cost may take (OQ-105, [Bloodlines p. 4])."""
+
+    return owner.troops_garrison + owner.commanders_garrison
+
+
+def _lose_garrison_troops(
+    state: GameState, player: int, count: int, *, source: str
+) -> RuleResult:
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        troops_garrison=owner.troops_garrison - count,
+        troops_supply=owner.troops_supply + count,
+    )
+    return _owner_event(
+        state,
+        next_owner,
+        GameEvent(
+            event_id=f"{source}:scouts_troops_lost",
+            kind="scouts_troops_lost",
+            payload=(("count", count), ("player", player)),
+        ),
+    )
+
+
+def _owner_event(state: GameState, owner: PlayerState, event: GameEvent) -> RuleResult:
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, owner)),
+        events=(event,),
+    )
+
+
+def _gainable_factions(owner: PlayerState, step: GainInfluence) -> tuple[Faction, ...]:
+    allowed = step.factions if step.factions is not None else tuple(Faction)
+    return tuple(
+        faction
+        for faction in allowed
+        if influence_amount(owner.influence, faction) < MAX_INFLUENCE
+    )
+
+
+def _lowest_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    lowest = min(influence_amount(owner.influence, faction) for faction in Faction)
+    return tuple(
+        faction
+        for faction in Faction
+        if influence_amount(owner.influence, faction) == lowest
+    )
+
+
+def highest_factions(owner: PlayerState) -> tuple[Faction, ...]:
+    """The seat's highest Influence tracks (none when every track is at 0)."""
+
+    highest = max(influence_amount(owner.influence, faction) for faction in Faction)
+    if highest == 0:
+        return ()
+    return tuple(
+        faction
+        for faction in Faction
+        if influence_amount(owner.influence, faction) == highest
+    )
+
+
+def _loss_actions(
+    state: GameState, player: int, factions: tuple[Faction, ...]
+) -> tuple[DomainAction, ...]:
+    """One loss per Faction, split by Alliance recipient when several tie."""
+
+    actions: list[DomainAction] = []
+    for faction in factions:
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        if len(recipients) > 1:
+            actions.extend(
+                DomainAction(
+                    action_id="scouts_lose_influence_to",
+                    actor=player,
+                    arguments=(
+                        ("alliance_recipient", recipient),
+                        ("faction", faction.value),
+                    ),
+                )
+                for recipient in recipients
+            )
+        else:
+            actions.append(
+                DomainAction(
+                    action_id="scouts_lose_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+            )
+    return tuple(actions)
+
+
+
+
+def _recallable_spaces(owner: PlayerState, excluded: str) -> tuple[str, ...]:
+    """The seat's other Agents: on the board but the one that took the seat
+    (``excluded``), and one sent into the Conflict by Into the Fray (every
+    Recall Agent effect may bring that one back, OQ-068, OQ-075 (D)).
+
+    The Conflict one is offered during the seat's own Reveal turn too
+    (Contingencies joined through Corrinth City's seat): the seat may pick
+    any of its other Agents, the Into the Fray one included, and its
+    strength is recomputed (user ruling 2026-09-29, OQ-075); "Reveal turn
+    중 효과가 unit 수나 strength를 바꾸면 Combat marker도 그에 맞게
+    갱신한다." [Main p. 13].
+    """
+
+    locations = list(owner.agent_locations)
+    if excluded in locations:
+        locations.remove(excluded)  # only the one Agent that took the seat
+    # The seat-taking Agent may itself have gone into the Conflict by Into
+    # the Fray this turn: "not the Agent you sent during this turn"
+    # [Main p. 20], as for every other Recall Agent effect (OQ-068).
+    sent_there = 1 if excluded == CONFLICT_AGENT else 0
+    if owner.agent_in_conflict - sent_there > 0:
+        locations.append(CONFLICT_AGENT)
+    return tuple(dict.fromkeys(locations))
+
+
+def _frame_recallable(owner: PlayerState, frame: DecisionFrame) -> tuple[str, ...]:
+    excluded = context_str(dict(frame.context), "exclude_space", owner=_EFFECT_FRAME)
+    return _recallable_spaces(owner, excluded)
+
+
+# --- Choices -------------------------------------------------------------------------
+
+
+def legal_scouts_effect_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Offer the current choice step's options."""
+
+    frame = owned_top_frame(state, FrameKind.SCOUTS_EFFECT, player)
+    if frame is None:
+        return ()
+    if awaits_collect(frame):
+        return (DomainAction(action_id=SCOUTS_COLLECT, actor=player),)
+    step = _current_step(state, frame)
+    owner = state.players[player]
+
+    def offer(
+        action_id: str, name: str, values: tuple[str, ...]
+    ) -> tuple[DomainAction, ...]:
+        return tuple(
+            DomainAction(action_id=action_id, actor=player, arguments=((name, value),))
+            for value in dict.fromkeys(values)
+        )
+
+    match step:
+        case (
+            RecruitTroops(count=count)
+            | RecruitToConflict(count=count)
+            | ParkTroops(count=count)
+        ):
+            top_up = _specimen_top_up(state, owner, count, frame)
+            return tuple(
+                DomainAction(
+                    action_id="scouts_return_specimens",
+                    actor=player,
+                    arguments=(("count", returned),),
+                )
+                for returned in range(top_up + 1)
+            )
+        case DiscardFromHand(only=only):
+            return offer("scouts_discard", "card_id", hand_choices(state, owner, only))
+        case TrashCard(hand_only=hand_only, only=only):
+            # A Row card borrowed with Usurp is not "in play" (OQ-054,
+            # ``counted_in_play``), so it is no trash target.
+            zones = (
+                hand_choices(state, owner, only)
+                if hand_only
+                else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
+            )
+            return offer("scouts_trash_card", "card_id", zones)
+        case TrashIntrigueCard():
+            return offer("scouts_trash_intrigue", "card_id", owner.intrigue_cards)
+        case DiscardIntrigueCard():
+            return offer("scouts_discard_intrigue", "card_id", owner.intrigue_cards)
+        case RecallSpy():
+            return offer("scouts_recall_spy", "post_id", owner.spy_post_ids)
+        case GainInfluence():
+            factions = _gainable_factions(owner, step)
+            return offer(
+                "scouts_choose_faction", "faction", tuple(f.value for f in factions)
+            )
+        case GainLowestInfluence():
+            factions = _lowest_factions(owner)
+            return offer(
+                "scouts_choose_faction", "faction", tuple(f.value for f in factions)
+            )
+        case RecallOtherAgent():
+            return offer(
+                "scouts_recall_agent",
+                "space_id",
+                _frame_recallable(owner, frame),
+            )
+        case LoseFactionInfluence(faction=faction):
+            return _loss_actions(state, player, (faction,))
+        case LoseHighestInfluence():
+            losses = _loss_actions(state, player, highest_factions(owner))
+            return losses or (
+                DomainAction(action_id=SCOUTS_NO_INFLUENCE, actor=player),
+            )
+        case LoseGarrisonTroops():
+            # A troop or a Sardaukar Commander (OQ-105, user ruling
+            # 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼 수 있게 해야지").
+            return (
+                DomainAction(action_id="scouts_lose_garrison_unit", actor=player),
+                DomainAction(
+                    action_id="scouts_lose_garrison_unit",
+                    actor=player,
+                    arguments=(("commanders", 1),),
+                ),
+            )
+    return ()
+
+
+def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve one pick of the current choice step."""
+
+    if action not in legal_scouts_effect_actions(state, action.actor):
+        raise ValueError("action is not a legal Arrakeen Scouts choice")
+    frame = state.decision_stack[-1]
+    if action.action_id == SCOUTS_COLLECT and is_payout(frame):
+        # The seat takes its owed payout and the window closes (OQ-164 (b)).
+        context = dict(frame.context)
+        mission_id = context_str(context, "item", owner=_PAYOUT_FRAME)
+        return collect_owed(state.pop_decision(), action.actor, mission_id)
+    if action.action_id == SCOUTS_COLLECT:
+        # The seat takes its line: the automatic advance resolves it from
+        # its first step, as it did unasked before OQ-164. Not a choice of
+        # the line's (``reward_was_chosen``): a draw it makes at once stays
+        # in this click.
+        context = dict(frame.context)
+        del context[_COLLECT]
+        collected = replace(frame, context=tuple(sorted(context.items())))
+        return RuleResult(
+            state=replace(
+                state, decision_stack=(*state.decision_stack[:-1], collected)
+            )
+        )
+    player, _, option, step, picked = _cursor(frame)
+    if step >= len(option.costs):
+        # A reward's choice: a draw printed after it waits (OQ-106).
+        frame = _marked_chosen(frame)
+        state = replace(state, decision_stack=(*state.decision_stack[:-1], frame))
+    context = dict(frame.context)
+    source = f"{context_str(context, 'source', owner=_EFFECT_FRAME)}:{step}"
+    current = option_steps(option)[step]
+    if action.action_id == "scouts_return_specimens":
+        # The recruit step itself stays next; it is automatic from here on.
+        returned = dict(action.arguments)["count"]
+        assert isinstance(returned, int)
+        context["picked"] = 1
+        topped = replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+        return return_specimens(topped, player, returned, source=source)
+    if action.action_id == "scouts_lose_garrison_unit":
+        return _apply_garrison_unit_loss(state, action, frame, picked, source)
+    if action.action_id == SCOUTS_NO_INFLUENCE:
+        item = context_str(context, "item", owner=_EFFECT_FRAME)
+        return RuleResult(
+            state=_moved(state, frame, step=step + 1),
+            events=(_skipped(item, player, source),),
+        )
+    value = str(dict(action.arguments)[action.arguments[0][0]])
+    count = getattr(current, "count", 1)
+    done = picked + 1 >= count or action.action_id in (
+        "scouts_choose_faction",
+        "scouts_recall_agent",
+        "scouts_trash_card",
+        "scouts_trash_intrigue",
+        "scouts_discard_intrigue",
+        "scouts_lose_influence",
+        "scouts_lose_influence_to",
+    )
+    if done:
+        cursor_state = _moved(state, frame, step=step + 1)
+    else:
+        context["picked"] = picked + 1
+        cursor_state = replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+    owner = cursor_state.players[player]
+    pick_source = f"{source}:{picked}"
+    match action.action_id:
+        case "scouts_discard":
+            # A line's discard is its cost: an Unload card's box is paid before
+            # the line's reward (docs/rules/rise-of-ix.md 7); a box holding a
+            # decision holds the line's next step under it (``rules.unload``).
+            discarded = discard_personal_card_from_hand(
+                cursor_state, player, value, source=pick_source, unload_at_once=True
+            )
+            if unload_holds(discarded.events):
+                return RuleResult(
+                    state=push_unload_hold(
+                        discarded.state, player, source=pick_source
+                    ),
+                    events=discarded.events,
+                )
+            return discarded
+        case "scouts_trash_card":
+            # A line's trash (``TrashCard``) is its cost, as the discard above:
+            # an Unload card's box is paid before the line's reward
+            # (docs/rules/rise-of-ix.md 7, "비용 → 효과 줄의 왼쪽(비용)이
+            # Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다"); a box
+            # holding a decision holds the line's next step under it (plan
+            # 17 "P7 점검 목록", stage P7f; only with Rise of Ix, whose cards
+            # alone print Unload).
+            trashed = trash_personal_card(
+                cursor_state, player, value, source=pick_source, unload_at_once=True
+            )
+            if unload_holds(trashed.events):
+                return RuleResult(
+                    state=push_unload_hold(trashed.state, player, source=pick_source),
+                    events=trashed.events,
+                )
+            return trashed
+        case "scouts_trash_intrigue":
+            next_owner = replace(
+                owner,
+                intrigue_cards=tuple(c for c in owner.intrigue_cards if c != value),
+            )
+            # The trashed card joins the shared Intrigue discard (OQ-061,
+            # user ruling 2026-10-04).
+            return RuleResult(
+                state=with_trashed_intrigue(
+                    replace(
+                        cursor_state,
+                        players=replace_player(cursor_state.players, next_owner),
+                    ),
+                    value,
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{pick_source}:intrigue_trashed",
+                        kind="intrigue_card_trashed",
+                        payload=(("card_id", value), ("player", player)),
+                    ),
+                ),
+            )
+        case "scouts_discard_intrigue":
+            # The original game's Intrigue discard cost: the card goes to the
+            # same shared face-up Intrigue discard an Intrigue trash fills
+            # (OQ-061: Intrigue cards have no trash pile), and is announced as
+            # a discard. A Twisted card lands there too and is never
+            # reshuffled (``shufflable_intrigue_discard``, OQ-097).
+            next_owner = replace(
+                owner,
+                intrigue_cards=tuple(c for c in owner.intrigue_cards if c != value),
+            )
+            return RuleResult(
+                state=with_trashed_intrigue(
+                    replace(
+                        cursor_state,
+                        players=replace_player(cursor_state.players, next_owner),
+                    ),
+                    value,
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{pick_source}:intrigue_discarded",
+                        kind="intrigue_card_discarded",
+                        payload=(("card_id", value), ("player", player)),
+                    ),
+                ),
+            )
+        case "scouts_recall_spy":
+            recalled = replace(
+                owner,
+                spies_supply=owner.spies_supply + 1,
+                spies_recalled_turn=owner.spies_recalled_turn + 1,
+                spy_post_ids=tuple(p for p in owner.spy_post_ids if p != value),
+            )
+            return RuleResult(
+                state=replace(
+                    cursor_state,
+                    players=replace_player(cursor_state.players, recalled),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{pick_source}:recalled:{value}",
+                        kind="spy_recalled",
+                        payload=(("player", player), ("post_id", value)),
+                    ),
+                ),
+            )
+        case "scouts_choose_faction":
+            times = current.times if isinstance(current, GainInfluence) else 1
+            return gain_faction_influence(
+                cursor_state, player, Faction(value), times, event_prefix=pick_source
+            )
+        case "scouts_recall_agent" if value == CONFLICT_AGENT:
+            back, recall_event = recall_conflict_agent(
+                owner,
+                player=player,
+                source=pick_source,
+                event_id=f"{pick_source}:agent_recalled",
+            )
+            stack = cursor_state.decision_stack
+            delta = back.combat_strength - owner.combat_strength
+            if delta and reveal_in_progress(cursor_state, player):
+                # Corrinth City's seat, in the seat's Reveal turn (OQ-075):
+                # the Reveal frame's own tally follows the running total
+                # [Main p. 13], as for any unit removed during the Reveal.
+                stack = add_reveal_strength(stack, delta)
+            return RuleResult(
+                state=replace(
+                    cursor_state,
+                    players=replace_player(cursor_state.players, back),
+                    decision_stack=stack,
+                ),
+                events=(recall_event,),
+            )
+        case "scouts_recall_agent":
+            locations = list(owner.agent_locations)
+            locations.remove(value)
+            recalled_agent = replace(
+                owner,
+                agents_available=owner.agents_available + 1,
+                agent_locations=tuple(locations),
+            )
+            return RuleResult(
+                state=replace(
+                    cursor_state,
+                    players=replace_player(cursor_state.players, recalled_agent),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{pick_source}:agent_recalled",
+                        kind="agent_recalled",
+                        payload=(("player", player), ("space_id", value)),
+                    ),
+                ),
+            )
+        case "scouts_lose_influence" | "scouts_lose_influence_to":
+            arguments = dict(action.arguments)
+            recipient = arguments.get("alliance_recipient")
+            return lose_faction_influence(
+                cursor_state,
+                player,
+                Faction(str(arguments["faction"])),
+                1,
+                event_prefix=pick_source,
+                alliance_recipient=recipient if isinstance(recipient, int) else None,
+            )
+    raise RuntimeError(f"unknown Scouts choice: {action.action_id}")
+
+
+def _apply_garrison_unit_loss(
+    state: GameState,
+    action: DomainAction,
+    frame: DecisionFrame,
+    picked: int,
+    source: str,
+) -> RuleResult:
+    """One unit of a "lose garrison troops" cost, the kind the seat picked:
+    a Sardaukar Commander is a troop for card effects [Bloodlines p. 4]
+    (OQ-105). Each pick pays one unit; the step moves on once the cost's
+    count is paid."""
+
+    player, _, option, step, _ = _cursor(frame)
+    current = option_steps(option)[step]
+    if not isinstance(current, LoseGarrisonTroops):  # pragma: no cover - legality
+        raise RuntimeError("a garrison unit loss outside its cost step")
+    if picked + 1 >= current.count:
+        cursor_state = _moved(state, frame, step=step + 1)
+    else:
+        context = dict(frame.context)
+        context["picked"] = picked + 1
+        cursor_state = replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+    pick_source = f"{source}:{picked}"
+    if dict(action.arguments).get("commanders") == 1:
+        return lose_unit(
+            cursor_state, player, "garrison", commander=True, source=pick_source
+        )
+    return _lose_garrison_troops(cursor_state, player, 1, source=pick_source)
+
+
+# --- One seat's turn-order choice ---------------------------------------------------
+
+
+def _choice_options(item: str) -> tuple[EffectSection, ...]:
+    if item in SALES_BY_ID:
+        return SALES_BY_ID[item].options
+    return EVENTS_BY_ID[item].options
+
+
+def _is_passable(item: str) -> bool:
+    """A sale and Rebuild Infrastructure may always be passed; an event only
+    when it offers "or Pass" [Scouts event: <name>] [Scouts sale: <name>]."""
+
+    if item in SALES_BY_ID:
+        return True
+    event = EVENTS_BY_ID[item]
+    return event.passable or event.kind is EventKind.SHARED
+
+
+# The one row of a Scouts choice with no line the seat can take: it confirms
+# that the seat takes nothing (cleanup-2a; OQ-071 addendum).
+SCOUTS_NO_OPTION: Final = "resolve_scouts_choice_without_option"
+# The one row of Political Equilibrium for a seat with every track at 0: it
+# confirms that the seat loses nothing (OQ-131, user decision 2026-10-25).
+SCOUTS_NO_INFLUENCE: Final = "resolve_scouts_loss_without_influence"
+_NO_OPTION_PROMPT: Final = "Nothing in this Arrakeen Scouts item can be taken"
+
+
+def _skipped(item: str, player: int, source: str) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:skipped",
+        kind="scouts_choice_skipped",
+        payload=(("item_id", item), ("player", player)),
+    )
+
+
+def _affordable(state: GameState, player: int, item: str) -> tuple[int, ...]:
+    return tuple(
+        index
+        for index, option in enumerate(_choice_options(item))
+        if line_is_offered(state, player, option)
+    )
+
+
+def offer_scouts_choice(
+    state: GameState,
+    player: int,
+    item: str,
+    *,
+    source: str,
+    volunteer: int = -1,
+) -> RuleResult:
+    """Open one seat's turn-order choice of an event or sale (OQ-071).
+
+    Only lines the seat can pay for, and whose cost buys something, are
+    offered (``line_is_offered``). A seat that must choose and can do one
+    line only still gets the choice, with the other line shown but not
+    selectable (``display.scouts.scouts_choice_lines``). One that can do
+    none takes nothing (OQ-071, user ruling 2026-09-29) [Scouts help], but
+    is asked too, its lines greyed with their reasons and one confirm
+    (``SCOUTS_NO_OPTION``) to take nothing -- "결정 창 없이 자동으로 넘어가는
+    곳도 모두 결정 창을 연다" (user ruling 2026-09-30, applied here by the
+    user's decision of 2026-10-17, cleanup-2a). ``volunteer`` is Rebuild
+    Infrastructure's first seat that agreed to pay (OQ-084).
+    """
+
+    if not _affordable(state, player, item):
+        prompt = _NO_OPTION_PROMPT
+    elif _is_passable(item):
+        prompt = "Choose an Arrakeen Scouts option or pass"
+    else:
+        prompt = "Choose an Arrakeen Scouts option"
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_CHOICE,
+        frame_id=f"{source}:choice",
+        decision=PlayerDecision(owner=player, prompt=prompt),
+        context=(
+            ("item", item),
+            ("player", player),
+            ("source", source),
+            ("volunteer", volunteer),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def offer_only_line(
+    state: GameState,
+    player: int,
+    item: str,
+    index: int,
+    *,
+    source: str,
+    exclude_space: str = "",
+    faction: str = "",
+) -> RuleResult:
+    """Resolve the one line a seat is owed: on its collect, or as its choice.
+
+    A line without a cost waits for its seat's ``SCOUTS_COLLECT`` click and
+    then resolves (OQ-164; before it resolved at once). A line with a
+    white-arrow cost is the seat's to take or leave, and that choice is its
+    click: "You do not have to pay such a cost. If you
+    don't pay the cost, you don't get the effect." [Main p. 20]; it is not
+    offered when the seat cannot pay it or when paying would buy nothing
+    (``line_is_offered``), and the seat then only confirms that it takes
+    nothing, as at a choice with no line (cleanup-2a). Used by a revealed
+    secret pick (OQ-085 (c), ``offer_secret_reward``); a joined
+    subcommittee opens its line directly, its cost already checked by
+    ``joinable_subcommittees``. ``faction`` is the Faction the pick named
+    (``NAMED_FACTION``): the line's Influence goes there.
+    """
+
+    option = named_line(scouts_option(item, index), faction)
+    if not option.costs:
+        return RuleResult(
+            state=push_scouts_effect(
+                state,
+                player,
+                item,
+                index,
+                source=source,
+                exclude_space=exclude_space,
+                faction=faction,
+                collect=True,
+            )
+        )
+    offered = line_is_offered(state, player, option, exclude_space=exclude_space)
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_CHOICE,
+        frame_id=f"{source}:choice",
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                "Choose an Arrakeen Scouts option or pass"
+                if offered
+                else _NO_OPTION_PROMPT
+            ),
+        ),
+        context=(
+            ("exclude_space", exclude_space),
+            *(((NAMED_FACTION, faction),) if faction else ()),
+            ("item", item),
+            ("only_option", index),
+            ("player", player),
+            ("source", source),
+            ("volunteer", -1),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
+def offer_secret_reward(
+    state: GameState,
+    player: int,
+    event_id: str,
+    pick: int,
+    *,
+    source: str,
+    faction: str = "",
+) -> RuleResult:
+    """Resolve a revealed secret pick's line for its seat (OQ-085 (c)), its
+    Influence on the Faction the pick named, if it named one."""
+
+    return offer_only_line(
+        state, player, event_id, pick, source=source, faction=faction
+    )
+
+
+def _line_exclude_space(context: Mapping[str, object]) -> str:
+    """An only-line frame's ``exclude_space``."""
+
+    excluded = context.get("exclude_space", "")
+    return excluded if isinstance(excluded, str) else ""
+
+
+def legal_scouts_choice_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The seat's payable lines, and a pass where the item allows one; with
+    no line to take, only the confirm that the seat takes nothing."""
+
+    frame = owned_top_frame(state, FrameKind.SCOUTS_CHOICE, player)
+    if frame is None:
+        return ()
+    context = dict(frame.context)
+    item = context_str(context, "item", owner=_CHOICE_FRAME)
+    only = context.get("only_option")
+    if type(only) is int:
+        # The one line a seat is owed, with a cost: take it or leave it.
+        excluded = _line_exclude_space(context)
+        passable = True
+        option = named_line(scouts_option(item, only), context.get(NAMED_FACTION))
+        indices: tuple[int, ...] = (
+            (only,)
+            if line_is_offered(state, player, option, exclude_space=excluded)
+            else ()
+        )
+    else:
+        passable = _is_passable(item)
+        indices = _affordable(state, player, item)
+    if not indices:
+        return (DomainAction(action_id=SCOUTS_NO_OPTION, actor=player),)
+    passes = (DomainAction(action_id="scouts_pass", actor=player),) if passable else ()
+    return (
+        *passes,
+        *(
+            DomainAction(
+                action_id="scouts_choose_option",
+                actor=player,
+                arguments=(("option", index),),
+            )
+            for index in indices
+        ),
+    )
+
+
+def apply_scouts_choice_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Pass, take a line (Rebuild Infrastructure: agree to pay), or confirm
+    that there is nothing to take."""
+
+    if action not in legal_scouts_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Arrakeen Scouts option")
+    context = dict(state.decision_stack[-1].context)
+    item = context_str(context, "item", owner=_CHOICE_FRAME)
+    source = context_str(context, "source", owner=_CHOICE_FRAME)
+    popped = state.pop_decision()
+    if action.action_id == SCOUTS_NO_OPTION:
+        return RuleResult(state=popped, events=(_skipped(item, action.actor, source),))
+    if action.action_id == "scouts_pass":
+        return RuleResult(
+            state=popped,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:passed",
+                    kind="scouts_choice_passed",
+                    payload=(("item_id", item), ("player", action.actor)),
+                ),
+            ),
+        )
+    index = dict(action.arguments)["option"]
+    assert isinstance(index, int)
+    event = EVENTS_BY_ID.get(item)
+    if event is not None and event.kind is EventKind.SHARED:
+        volunteer = context_int(context, "volunteer", owner=_CHOICE_FRAME)
+        return _rebuild(popped, action.actor, volunteer, source=source)
+    excluded = _line_exclude_space(context)
+    named = context.get(NAMED_FACTION)
+    return RuleResult(
+        state=push_scouts_effect(
+            popped,
+            action.actor,
+            item,
+            index,
+            source=source,
+            exclude_space=excluded,
+            faction=named if isinstance(named, str) else "",
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:chosen",
+                kind="scouts_option_chosen",
+                payload=(
+                    ("item_id", item),
+                    ("option", index),
+                    ("player", action.actor),
+                ),
+            ),
+        ),
+    )
+
+
+def _rebuild(
+    state: GameState, player: int, volunteer: int, *, source: str
+) -> RuleResult:
+    """Rebuild Infrastructure (OQ-084): the first two seats that agree each
+    pay 1 spice and the Shield Wall returns; one seat alone pays nothing."""
+
+    if volunteer < 0:
+        tasks = tuple(
+            task.replace("|-1", f"|{player}") if task.startswith("rebuild:") else task
+            for task in state.scouts_tasks
+        )
+        return RuleResult(
+            state=replace(state, scouts_tasks=tasks),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:volunteered",
+                    kind="scouts_rebuild_offered",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    players = state.players
+    for payer in (volunteer, player):
+        owner = players[payer]
+        players = replace_player(
+            players,
+            replace(
+                owner,
+                resources=replace(owner.resources, spice=owner.resources.spice - 1),
+            ),
+        )
+    return RuleResult(
+        state=replace(
+            state,
+            players=players,
+            shield_wall_present=True,
+            scouts_tasks=tuple(
+                task for task in state.scouts_tasks if not task.startswith("rebuild:")
+            ),
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:rebuilt",
+                kind="scouts_shield_wall_rebuilt",
+                payload=(("players", (volunteer, player)),),
+            ),
+        ),
+    )
+
+
+# --- Subcommittees --------------------------------------------------------------------
+#
+# A new High Council seat may join one still-empty subcommittee any time in
+# the turn it was taken (OQ-076 alternative C, user ruling 2026-09-30, a
+# project convention widening the app's "when you take a council seat"):
+# "You may carry out all these effects in any order." [Main p. 9]. Two
+# levels: the turn's own frame (the Agent-turn effect frame while
+# ``BOARD_ICON_SUBCOMMITTEE`` is pending, or the Reveal frame while
+# Corrinth City's offer is open) offers ``choose_subcommittee`` and
+# ``decline_subcommittee``; choosing opens the ``scouts_subcommittee`` frame
+# listing ``join_subcommittee`` per joinable subcommittee and the decline.
+
+
+def joinable_subcommittees(
+    state: GameState, player: int, *, exclude_space: str = ""
+) -> tuple[str, ...]:
+    """Unclaimed subcommittees of the display that ``player`` may join now.
+
+    Taking a council seat lets the seat join one subcommittee nobody has
+    chosen yet, and joining one with a cost means paying that cost
+    (docs/rules/arrakeen-scouts.md 4; the app's help and subcommittee
+    instructions, OQ-075, OQ-076). A white-arrow line whose effect cannot
+    happen cannot be paid for (user principle 2026-09-29, OQ-071), so the
+    line must be offered (``line_is_offered``): Contingencies with no other
+    Agent to recall is not joinable. ``exclude_space`` is the space of the
+    Agent that took the seat (``CONFLICT_AGENT`` when Into the Fray moved it
+    into the Conflict this turn; "" for Corrinth City's Reveal-turn seat,
+    OQ-075).
+    """
+
+    return tuple(
+        subcommittee_id
+        for subcommittee_id in open_subcommittees(state, player)
+        if line_is_offered(
+            state,
+            player,
+            SUBCOMMITTEES_BY_ID[subcommittee_id].option,
+            exclude_space=exclude_space,
+        )
+    )
+
+
+def pending_subcommittee_exclude(state: GameState, player: int) -> str | None:
+    """The ``exclude_space`` of ``player``'s open subcommittee choice, or
+    None while the seat's own turn frame offers none.
+
+    At the High Council board space it is worked out now, not when the seat
+    was taken: the seat-taking Agent's space, or ``CONFLICT_AGENT`` once Into
+    the Fray has moved it into the Conflict ("not the Agent you sent during
+    this turn" [Main p. 20], OQ-068, OQ-075). Corrinth City's seat has no
+    Agent of its own ("", OQ-075).
+    """
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        _, context = current_agent_effect_context(state)
+        if not board_icon_is_pending(context, BOARD_ICON_SUBCOMMITTEE):
+            return None
+        space_id = context_str(context, "space_id", owner=_OFFER_FRAME)
+        owner = state.players[player]
+        return (
+            CONFLICT_AGENT
+            if turn_agent_in_conflict(owner, context, space_id)
+            else space_id
+        )
+    if frame.kind == FrameKind.REVEAL:
+        entry = reveal_subcommittee_offer(state, player)
+        return None if entry is None else entry[2]
+    return None
+
+
+def legal_subcommittee_choice_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The turn frame's subcommittee choice: choose (when one can be joined
+    now) or, in a Reveal, decline; the seat may also leave it for later in
+    the turn.
+
+    Joining is optional (OQ-076). In an Agent turn the visit's offer needs
+    no refusal: left unused it lapses when the turn ends (OQ-095 (2), user
+    ruling 2026-10-14).
+    """
+
+    excluded = pending_subcommittee_exclude(state, player)
+    if excluded is None:
+        return ()
+    choose = (
+        (DomainAction(action_id="choose_subcommittee", actor=player),)
+        if joinable_subcommittees(state, player, exclude_space=excluded)
+        else ()
+    )
+    if state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS:
+        return choose
+    return (*choose, DomainAction(action_id="decline_subcommittee", actor=player))
+
+
+def legal_subcommittee_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """Join one joinable subcommittee, or decline (the chance is then gone)."""
+
+    frame = owned_top_frame(state, FrameKind.SCOUTS_SUBCOMMITTEE, player)
+    if frame is None:
+        return ()
+    excluded = context_str(dict(frame.context), "exclude_space", owner=_OFFER_FRAME)
+    return (
+        DomainAction(action_id="decline_subcommittee", actor=player),
+        *(
+            DomainAction(
+                action_id="join_subcommittee",
+                actor=player,
+                arguments=(("subcommittee_id", subcommittee_id),),
+            )
+            for subcommittee_id in joinable_subcommittees(
+                state, player, exclude_space=excluded
+            )
+        ),
+    )
+
+
+def _offer_source(state: GameState, player: int) -> str:
+    """The event source of the seat's open choice (its turn frame on top)."""
+
+    frame = state.decision_stack[-1]
+    if frame.kind == FrameKind.REVEAL:
+        entry = reveal_subcommittee_offer(state, player)
+        if entry is None:
+            raise RuntimeError("the Reveal frame holds no subcommittee offer")
+        return entry[1]
+    _, context = current_agent_effect_context(state)
+    space_id = context_str(context, "space_id", owner=_OFFER_FRAME)
+    return f"round:{state.round_number}:player:{player}:board:{space_id}:high_council"
+
+
+def _close_offer(state: GameState, player: int) -> GameState:
+    """Retire the seat's choice on its turn frame, now back on top.
+
+    The Agent-turn effect frame finishes the icon and advances (the turn
+    stays open until its owner ends it, OQ-095); the Reveal frame drops the
+    offer.
+    """
+
+    frame = state.decision_stack[-1]
+    if frame.kind == FrameKind.REVEAL:
+        return drop_reveal_subcommittee_offer(state, player)
+    _, context = current_agent_effect_context(state)
+    finish_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
+    return advance_after_effect(state, context)
+
+
+def _declined(source: str, player: int) -> GameEvent:
+    return GameEvent(
+        event_id=f"{source}:subcommittee_declined",
+        kind="scouts_subcommittee_declined",
+        payload=(("player", player),),
+    )
+
+
+def apply_subcommittee_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Choose, join (then the line) or decline the new seat's subcommittee.
+
+    From the turn frame ``choose_subcommittee`` opens the list and
+    ``decline_subcommittee`` gives the chance up; in the list
+    ``join_subcommittee`` records the member, retires the choice on the turn
+    frame and opens the line (its cost is paid, OQ-075), and
+    ``decline_subcommittee`` gives the chance up too.
+    """
+
+    player = action.actor
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if top is not None and top.kind == FrameKind.SCOUTS_SUBCOMMITTEE:
+        if action not in legal_subcommittee_actions(state, player):
+            raise ValueError("action is not a legal subcommittee choice")
+        context = dict(top.context)
+        source = context_str(context, "source", owner=_OFFER_FRAME)
+        excluded = context_str(context, "exclude_space", owner=_OFFER_FRAME)
+        closed = _close_offer(state.pop_decision(), player)
+        if action.action_id == "decline_subcommittee":
+            return RuleResult(state=closed, events=(_declined(source, player),))
+        subcommittee_id = str(dict(action.arguments)["subcommittee_id"])
+        joined = replace(
+            closed,
+            scouts_subcommittee_members=(
+                *closed.scouts_subcommittee_members,
+                (subcommittee_id, player),
+            ),
+        )
+        opened = push_scouts_effect(
+            joined,
+            player,
+            subcommittee_id,
+            0,
+            source=f"{source}:{subcommittee_id}",
+            exclude_space=excluded,
+        )
+        return RuleResult(
+            state=opened,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:subcommittee_joined",
+                    kind="scouts_subcommittee_joined",
+                    payload=(
+                        ("player", player),
+                        ("subcommittee_id", subcommittee_id),
+                    ),
+                ),
+            ),
+        )
+    if action not in legal_subcommittee_choice_actions(state, player):
+        raise ValueError("action is not a legal subcommittee choice")
+    excluded_now = pending_subcommittee_exclude(state, player)
+    assert excluded_now is not None
+    source = _offer_source(state, player)
+    if action.action_id == "decline_subcommittee":
+        return RuleResult(
+            state=_close_offer(state, player), events=(_declined(source, player),)
+        )
+    frame = DecisionFrame(
+        kind=FrameKind.SCOUTS_SUBCOMMITTEE,
+        frame_id=f"{source}:subcommittee",
+        decision=PlayerDecision(owner=player, prompt="Join a subcommittee or decline"),
+        context=(
+            ("exclude_space", excluded_now),
+            ("player", player),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))

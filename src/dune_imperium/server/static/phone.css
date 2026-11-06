@@ -1,0 +1,265 @@
+/* The phone layout (docs/mobile-ui-plan.md, user decision 2026-11-06).
+
+   Below 600px wide the three-column table, which never goes under its
+   1012px floor (the 2026-09-27 narrow-window convention, narrow.py), would
+   leave the decisions 640px off the screen. Here the table is one column
+   instead: one view at a time over the decision panel, and a tab bar
+   (phone.js) to switch views. Everything below the first rule sits inside
+   the one media query, so a window 600px or wider is exactly as before.
+   This sheet is linked last and repeats the selectors of the rules it
+   overrides, so the cascade decides by order. */
+
+/* The tab bar, the header's menu button and the board's zoom button exist
+   only on a phone. */
+#phone-tabs,
+#phone-menu,
+#phone-board-zoom { display: none; }
+
+@media (max-width: 599px) {
+  /* ---------- header: the round and phase, and a menu ---------- */
+
+  body.in-game header { gap: 0.4rem; padding: 0 0.5rem; }
+  body.in-game header h1 { display: none; }
+  body.in-game #header-status { flex: 1 1 0; min-width: 0; }
+  body.in-game #phone-menu {
+    display: inline-flex;
+    order: 1;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 36px;
+    padding: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+  body.in-game header > :is(#open-help, #language-toggle, #open-lobby, #ai-pace, #save-game, #leave-game) {
+    display: none;
+    order: 2;
+  }
+  /* Open, the menu's buttons fill the rows under the status line, over the
+     table; main keeps its place below where the header was. */
+  body.in-game header.menu-open {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 70;
+    height: auto;
+    min-height: var(--header-h);
+    flex-wrap: wrap;
+    align-content: flex-start;
+    row-gap: 0.4rem;
+    padding: 4px 0.5rem 0.6rem;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
+  }
+  body.in-game header.menu-open::after {
+    content: "";
+    order: 1;
+    flex: 0 0 100%;
+  }
+  body.in-game header.menu-open > :is(#open-help, #language-toggle, #open-lobby, #ai-pace, #save-game, #leave-game):not([hidden]) {
+    display: block;
+    flex: 1 1 calc(50% - 0.4rem);
+    min-height: 44px;
+  }
+  body.in-game header.menu-open #phone-menu {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  body.in-game:has(header.menu-open) main { margin-top: var(--header-h); }
+
+  /* ---------- the table: a view, the decision panel, the tabs ---------- */
+
+  /* The page never scrolls: the table is the screen's height, the visible
+     one where the browser has one (dvh, without the address bar). */
+  body.in-game main {
+    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
+    overflow: hidden;
+  }
+  #game-screen { --table-min: 0px; }
+  #table {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas: "view" "sheet" "tabs";
+    gap: 0.35rem;
+    padding: 0.35rem;
+  }
+  .col-splitter { display: none; }
+  /* The side column's two parts go to two places: the decisions under the
+     view, the log into the view. */
+  #side { display: contents; }
+  #seats,
+  #center,
+  #side-log { grid-area: view; min-height: 0; min-width: 0; }
+  #center,
+  #center:has(#private-zone[hidden]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "board";
+  }
+  #market,
+  #private-zone { grid-area: board; }
+
+  /* One view at a time (phone.js keeps data-phone-view). */
+  #game-screen:not([data-phone-view="board"]) #board,
+  #game-screen:not([data-phone-view="board"]) #scouts-stage,
+  #game-screen:not([data-phone-view="hand"]) #private-zone,
+  #game-screen:not([data-phone-view="market"]) #market,
+  #game-screen:not([data-phone-view="seats"]) #seats,
+  #game-screen:not([data-phone-view="log"]) #side-log,
+  #game-screen:is([data-phone-view="seats"], [data-phone-view="log"]) #center {
+    display: none;
+  }
+  /* A seat with no hand to show (a spectator, a replay) has no hand view:
+     its tab goes, and a hand view left open shows the board. */
+  #game-screen:has(#private-zone[hidden]) #phone-tabs [data-view="hand"] { display: none; }
+  #game-screen[data-phone-view="hand"]:has(#private-zone[hidden]) #board { display: flex; }
+
+  /* The decision panel: under the view, at most this much of the screen,
+     scrolling as one piece. */
+  #side-main {
+    grid-area: sheet;
+    max-height: 42vh;
+    max-height: 42dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #side-main > .panel:last-child { margin-bottom: 0; }
+  #decision-banner { max-height: none; overflow: visible; }
+  #actions { overflow: visible; }
+
+  #phone-tabs {
+    grid-area: tabs;
+    display: flex;
+    gap: 0.25rem;
+  }
+  #phone-tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.2rem 0.1rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #phone-tabs button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Fingers, not a mouse: every button of the decision panel at least
+     44px tall (rows, ⓘ, the ▶ rows, the pick steps, steppers), ⓘ square. */
+  #side-main button { min-height: 44px; }
+  #side-main select { min-height: 40px; }
+  #side-main .action-info { min-width: 44px; }
+  #side-main .action-list-toggle { min-width: 44px; }
+
+  /* A tab whose view holds something the decision can take (phone.js
+     markPhoneTabs). */
+  #phone-tabs button { position: relative; }
+  #phone-tabs button.cue::after {
+    content: "";
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--glow);
+    box-shadow: 0 0 6px var(--glow);
+  }
+
+  /* The picked card's spaces as buttons (phone.js phoneSpaceButtons). */
+  .phone-space-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.2rem 0 0.4rem;
+  }
+  .phone-space-list button {
+    flex: 1 1 calc(50% - 0.35rem);
+    min-height: 44px;
+    border-color: var(--glow);
+  }
+
+  /* ---------- the views ---------- */
+
+  /* The board at twice the screen's width, panned with a finger. The button
+     sits at the view's foot, mostly below a square board. */
+  #game-screen[data-phone-view="board"] #phone-board-zoom {
+    display: block;
+    grid-area: board;
+    justify-self: end;
+    align-self: end;
+    z-index: 6;
+    min-width: 52px;
+    min-height: 40px;
+    margin: 4px;
+    opacity: 0.92;
+  }
+  #phone-board-zoom[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #game-screen.board-zoomed #board { justify-content: flex-start; }
+  #game-screen.board-zoomed #board > :is(.board-stage, .board-table) {
+    width: 200%;
+    max-width: none;
+    max-height: none;
+  }
+
+  /* The shared cards: one column of strips, each wrapping its cards rather
+     than scrolling them sideways inside a list that scrolls down. */
+  #market {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    overflow-y: auto;
+  }
+  #market .strip-cards { flex-wrap: wrap; overflow: visible; }
+  #market .bene-tleilax { width: 100%; }
+
+  /* The hand: its cards wrap into rows, the Intrigue cards under them. */
+  #private-zone {
+    border-top: none;
+    padding: 0.3rem;
+    overflow-y: auto;
+  }
+  .hand-zones {
+    flex-direction: column;
+    gap: 0.6rem;
+    overflow-x: visible;
+    min-height: 0;
+  }
+  #private-zone .strip-cards { flex-wrap: wrap; overflow: visible; }
+  .intrigue-cards {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 0.4rem;
+  }
+
+  /* The log is the whole view; there is no wider size to switch to. */
+  .log-size-toggle { display: none; }
+
+  /* ---------- before the table: a room link's screens ---------- */
+
+  /* The name to type and the places to take, for a finger; 16px text, the
+     size a phone's browser does not zoom into when the field is focused. */
+  #lobby-screen input,
+  #landing-screen input {
+    min-height: 44px;
+    width: 100%;
+    margin-left: 0;
+    font-size: 16px;
+  }
+  #lobby-screen button,
+  #landing-screen button { min-height: 44px; }
+}

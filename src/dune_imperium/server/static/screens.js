@@ -1,0 +1,1202 @@
+"use strict";
+
+/* ---------- setup screen ---------- */
+
+/* `followDefaults`: a base-game change builds them again, and a seat nobody
+   picked takes the new game's default. */
+function buildSeatSelects({ followDefaults = false } = {}) {
+  const wrap = el("seat-selects");
+  /* A language switch builds them again: keep what was chosen, as long as
+     the chosen base game's table takes it. */
+  const allowed = allowedSeatKinds();
+  const takes = (kind) => Boolean(kind) && (!allowed || allowed.has(kind));
+  const selects = [...wrap.querySelectorAll("select")];
+  const chosen = selects.map((select) => select.value);
+  const picked = selects.map((select) => select.dataset.chosen);
+  wrap.textContent = "";
+  for (let seat = 0; seat < 4; seat += 1) {
+    const label = document.createElement("label");
+    label.style.setProperty("--seat-color", SEAT_COLORS[seat]);
+    const name = document.createElement("span");
+    name.textContent = t("common.seat", { seat });
+    label.appendChild(name);
+    const select = document.createElement("select");
+    select.dataset.seat = String(seat);
+    for (const [value, text] of SEAT_KINDS) {
+      /* The search AI needs the server's network (--search-checkpoint). */
+      if (value === "search" && !(state.server && state.server.search_ai)) continue;
+      if (!takes(value)) continue;
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      select.appendChild(option);
+    }
+    const kept = picked[seat] || !followDefaults ? chosen[seat] : null;
+    select.value = takes(kept) ? kept : defaultSeatKind(seat);
+    if (picked[seat] && takes(kept)) select.dataset.chosen = picked[seat];
+    select.addEventListener("change", () => {
+      select.dataset.chosen = "1";
+    });
+    label.appendChild(select);
+    wrap.appendChild(label);
+  }
+  buildPaceSelect();
+  updateSetupSummary();
+}
+
+/* The seat kinds a table of the chosen base game takes, from the server's
+   one table (GET /whoami seat_kinds, server/seat_kinds.py), or null for
+   every kind: the original game seats no search or rollout AI (the app AI
+   joined it with its port, stage P6). */
+function allowedSeatKinds() {
+  const table = state.server && state.server.seat_kinds;
+  const kinds = table ? table[el("opt-base-game").value] : null;
+  return kinds ? new Set(kinds) : null;
+}
+
+/* Remote games are four friends: an admin who forgets to change three
+   dropdowns must not seat AIs where a friend expects to sit. The open
+   (local) server seats one human against three app AIs (Hard), the port of
+   the Steam app's computer opponent, or three heuristic AIs where the
+   chosen base game's table does not take the app AI. */
+function defaultSeatKind(seat) {
+  if (isRemote() || seat === 0) return "human";
+  const allowed = allowedSeatKinds();
+  return allowed && !allowed.has("app_ai") ? "heuristic" : "app_ai";
+}
+
+/* The options the original game cannot take (rules/setup.py's closed
+   option -- the CHOAM module never, by the user's decision -- and the
+   original cards, which are its own): the base-game select clears and
+   locks them, and gives the choices back on a return to Uprising.
+   Immortality and its Go to 11 are open on both since stage P7b, Bloodlines
+   and its Tech Module since P7c, Arrakeen Scouts since P8 (the app's
+   original-game schedule, docs/rules/arrakeen-scouts.md 9a). */
+const UPRISING_ONLY_OPTIONS = ["opt-choam", "opt-imperium-cards"];
+
+
+/* Epic Game Mode is the Rise of Ix rulebook's [Rise of Ix p. 10]: the
+   original game takes it with Rise of Ix only (rules/setup.py; Uprising
+   plays it alone, OQ-092). Without Rise of Ix the box locks, cleared, and
+   gives its choice back once it opens again. */
+function syncEpicOption() {
+  const box = el("opt-epic-game");
+  const open = el("opt-base-game").value !== "imperium" || allOfIx();
+  if (!open && !box.dataset.locked) {
+    box.dataset.locked = "1";
+    box.dataset.wasChecked = box.checked ? "1" : "";
+    box.checked = false;
+    box.disabled = true;
+  } else if (open && box.dataset.locked) {
+    delete box.dataset.locked;
+    box.checked = box.dataset.wasChecked === "1";
+    box.disabled = false;
+  }
+}
+
+/* How much of Rise of Ix a game with Bloodlines' Tech Module uses
+   (docs/base-game-and-ix-plan.md 20.5 P8-1, user ruling 2026-11-01): all of
+   it, its Leaders and Tech tiles (the companion app's mix), or its Tech
+   tiles alone [Bloodlines p. 7]. The choice shows only with both boxes
+   checked, opens on "all", and forgets itself when either box clears; with
+   Arrakeen Scouts the Tech tiles alone are not offered and that pick goes
+   back to "all". */
+function ixPart() {
+  const ix = el("opt-rise-of-ix").checked;
+  if (!ix) return "none";
+  if (!el("opt-tech").checked) return "all";
+  const picked = document.querySelector('input[name="opt-ix-parts"]:checked');
+  return picked ? picked.value : "all";
+}
+
+function allOfIx() {
+  return ixPart() === "all";
+}
+
+function syncIxPartsOption() {
+  const shown = el("opt-rise-of-ix").checked && el("opt-tech").checked;
+  const group = el("opt-ix-parts");
+  group.hidden = !shown;
+  const scouts = el("opt-scouts").checked;
+  for (const radio of group.querySelectorAll('input[name="opt-ix-parts"]')) {
+    radio.disabled = !shown || (radio.value === "tech" && scouts);
+  }
+  if (!shown || (scouts && el("opt-ix-parts-tech").checked)) {
+    el("opt-ix-parts-all").checked = true;
+  }
+  el("opt-uprising-ix-note").hidden =
+    el("opt-base-game").value === "imperium" || !allOfIx();
+  syncEpicOption();
+}
+
+/* The boxes the chosen base game locks: cleared and disabled while locked,
+   each given back its own choice once it opens again. Uprising with Rise of
+   Ix takes every option since stage P7f-2, so that box only shows its note. */
+function syncOptionLocks() {
+  const original = el("opt-base-game").value === "imperium";
+  const ix = el("opt-rise-of-ix").checked;
+  const locked = new Set(original ? UPRISING_ONLY_OPTIONS : []);
+  for (const id of UPRISING_ONLY_OPTIONS) {
+    const box = el(id);
+    if (locked.has(id) && !box.dataset.locked) {
+      box.dataset.locked = "1";
+      box.dataset.wasChecked = box.checked ? "1" : "";
+      box.checked = false;
+      box.disabled = true;
+    } else if (!locked.has(id) && box.dataset.locked) {
+      delete box.dataset.locked;
+      box.checked = box.dataset.wasChecked === "1";
+      box.disabled = false;
+    }
+  }
+  el("opt-uprising-ix-note").hidden = original || !ix;
+  syncTechOption();
+  syncGoTo11Option();
+  syncIxPartsOption();
+}
+
+function syncBaseGameOption() {
+  const original = el("opt-base-game").value === "imperium";
+  el("opt-base-game-note").hidden = !original;
+  /* Rise of Ix sits on either board (Uprising's since stage P7f). */
+  /* The promo box names the chosen base game's own promo cards. */
+  el("opt-promo-uprising").hidden = original;
+  el("opt-promo-imperium").hidden = !original;
+  syncOptionLocks();
+  /* The seats offer what the base game's table takes; a seat nobody picked,
+     or whose pick that table does not take, follows the game's default. */
+  buildSeatSelects({ followDefaults: true });
+}
+
+/* The AI paces a game can run at (server/pacing.py AI_PACES), in the
+   page's language; `header` labels them for the table's header select. */
+const AI_PACE_LABELS = {
+  normal: "screens.ai_pace_normal",
+  fast: "screens.ai_pace_fast",
+  instant: "screens.ai_pace_instant",
+};
+const AI_PACES = Object.keys(AI_PACE_LABELS);
+
+function fillPaceOptions(select, value, header) {
+  select.textContent = "";
+  for (const pace of AI_PACES) {
+    const option = document.createElement("option");
+    option.value = pace;
+    const name = t(AI_PACE_LABELS[pace]);
+    option.textContent = header ? t("screens.ai_pace_header", { pace: name }) : name;
+    select.appendChild(option);
+  }
+  select.value = AI_PACES.includes(value) ? value : "normal";
+}
+
+/* The setup screen's pace: kept across a language switch, else the
+   server's default (GET /whoami, the play server's --ai-pace). */
+function buildPaceSelect() {
+  const select = el("opt-ai-pace");
+  const kept = select.value;
+  fillPaceOptions(select, kept || (state.server && state.server.ai_pace), false);
+}
+
+/* The table's header select: the running game's pace, for whoever may set
+   it (the host of a remote game), when the game has an AI seat to pace
+   and a human seat to watch. */
+function renderPaceControl() {
+  const select = el("ai-pace");
+  const summary = state.summary;
+  const kinds = (summary && summary.seats) || [];
+  /* A render lands whatever screen shows (the lobby of a running game). */
+  const shown = Boolean(summary) && !el("game-screen").hidden && !summary.finished
+    && !state.review && isAdmin()
+    && kinds.includes("human") && kinds.some((kind) => kind !== "human");
+  select.hidden = !shown;
+  if (!shown) return;
+  if (select.dataset.language !== TERM_LANGUAGE || !select.options.length) {
+    fillPaceOptions(select, summary.ai_pace, true);
+    select.dataset.language = TERM_LANGUAGE;
+  }
+  if (document.activeElement !== select) select.value = summary.ai_pace;
+}
+
+function updateSetupSummary() {
+  const seats = [...el("seat-selects").querySelectorAll("select")];
+  el("opt-checkpoint-row").hidden = !seats.some((select) => select.value === "checkpoint");
+  el("opt-search-note").hidden = !seats.some((select) => select.value === "search");
+  const human = seats.filter((select) => select.value === "human").length;
+  /* The Rise of Ix part is a choice inside the Rise of Ix box, not an option
+     of its own. */
+  const options = el("rule-options").querySelectorAll(
+    "input[type=checkbox]:checked:not(:disabled)"
+  ).length;
+  el("setup-summary").textContent = t("screens.setup_summary", {
+    human, ai: seats.length - human, options,
+  });
+}
+
+async function loadGameList() {
+  const games = await api("/games");
+  el("game-list-wrap").hidden = games.length === 0;
+  const list = el("game-list");
+  list.textContent = "";
+  for (const summary of games) {
+    const item = document.createElement("li");
+    const label = summary.finished
+      ? t("common.finished")
+      : t("screens.round_number", { round: summary.round_number });
+    if (summary.base_game === "imperium") item.appendChild(baseGameBadge());
+    item.append(
+      `${seedLabel(summary)}${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
+    );
+    const button = document.createElement("button");
+    button.textContent = t("screens.continue_button");
+    button.addEventListener("click", () => openGame(summary.game_id));
+    item.appendChild(button);
+    list.appendChild(item);
+  }
+}
+
+/* The delete button arms on a first click (text -> "정말 삭제?") instead of
+   deleting at once, so a misclick next to the identical Load button cannot
+   throw a save away by itself; a second click on the same armed button
+   within SAVE_DELETE_ARM_MS deletes for real. Anything else -- the timeout,
+   a click on a different target, or the list being redrawn -- reverts it.
+   Only one button is ever armed at a time. A second click sooner than
+   SAVE_DELETE_GUARD_MS after arming is the same double-click gesture, not
+   a decision, so it leaves the button armed. */
+const SAVE_DELETE_ARM_MS = 4000;
+const SAVE_DELETE_GUARD_MS = 400;
+let armedSaveDelete = null; // { button, timer, at } while a delete button is armed
+
+function disarmSaveDelete() {
+  if (!armedSaveDelete) return;
+  clearTimeout(armedSaveDelete.timer);
+  armedSaveDelete.button.classList.remove("armed");
+  armedSaveDelete.button.textContent = t("screens.delete_button");
+  armedSaveDelete = null;
+}
+
+document.addEventListener("click", (event) => {
+  if (armedSaveDelete && event.target !== armedSaveDelete.button) disarmSaveDelete();
+});
+
+async function loadSaveList() {
+  const saves = await api("/saves");
+  disarmSaveDelete();
+  el("save-list-wrap").hidden = saves.length === 0;
+  const list = el("save-list");
+  list.textContent = "";
+  for (const entry of saves) {
+    const item = document.createElement("li");
+    if (entry.error) {
+      item.className = "muted";
+      item.append(`${entry.save_id} · ${entry.error}`);
+      list.appendChild(item);
+      continue;
+    }
+    if (entry.autosave) item.appendChild(autosaveBadge());
+    if (entry.ruleset && entry.ruleset.base_game === "imperium") {
+      item.appendChild(baseGameBadge());
+    }
+    item.append(
+      `${saveTitle(entry)} · ${entry.seats.map(seatKindLabel).join(", ")} · ${savedWhen(entry)} `,
+    );
+    const load = document.createElement("button");
+    load.textContent = t("screens.load_button");
+    load.addEventListener("click", async () => {
+      try {
+        el("setup-error").hidden = true;
+        const summary = await api(`/saves/${entry.save_id}/load`, {
+          method: "POST",
+        });
+        await openGame(summary.game_id);
+      } catch (error) {
+        el("setup-error").textContent = t("screens.load_failed", { message: error.message });
+        el("setup-error").hidden = false;
+      }
+    });
+    const remove = document.createElement("button");
+    remove.className = "save-delete";
+    remove.textContent = t("screens.delete_button");
+    remove.addEventListener("click", async () => {
+      if (armedSaveDelete && armedSaveDelete.button === remove) {
+        if (performance.now() - armedSaveDelete.at < SAVE_DELETE_GUARD_MS) return;
+        clearTimeout(armedSaveDelete.timer);
+        armedSaveDelete = null;
+        await api(`/saves/${entry.save_id}`, { method: "DELETE" }).catch(() => {});
+        loadSaveList().catch(() => {});
+        return;
+      }
+      disarmSaveDelete();
+      remove.classList.add("armed");
+      remove.textContent = t("screens.delete_confirm_button");
+      const timer = setTimeout(() => {
+        if (armedSaveDelete && armedSaveDelete.button === remove) disarmSaveDelete();
+      }, SAVE_DELETE_ARM_MS);
+      armedSaveDelete = { button: remove, timer, at: performance.now() };
+    });
+    item.append(load, " ", remove);
+    list.appendChild(item);
+  }
+}
+
+function saveTitle(entry) {
+  const status = entry.finished
+    ? t("common.finished")
+    : t("screens.round_number", { round: entry.round_number });
+  /* An autosave's name only repeats what its badge and the round say. */
+  if (entry.autosave) return status;
+  const title =
+    entry.name ||
+    (entry.game_seed === null
+      ? t("screens.unnamed_save")
+      : t("common.seed", { seed: entry.game_seed }));
+  return `${title} · ${status}`;
+}
+
+/* Saves are stamped in UTC; a host looking for "the one from ten minutes
+   ago" after a crash reads local time. */
+function savedWhen(entry) {
+  const when = new Date(entry.saved_at);
+  return Number.isNaN(when.getTime())
+    ? String(entry.saved_at)
+    : when.toLocaleString(TERM_LANGUAGE);
+}
+
+/* A game or save of the original Dune: Imperium; Uprising, the default,
+   carries none. */
+function baseGameBadge() {
+  const badge = document.createElement("span");
+  badge.className = "badge base-game";
+  badge.textContent = t("screens.base_game_imperium_badge");
+  return badge;
+}
+
+function autosaveBadge() {
+  const badge = document.createElement("span");
+  badge.className = "badge autosave";
+  badge.textContent = t("screens.autosave_badge");
+  return badge;
+}
+
+/* The Tech Module is packaged with Bloodlines and only plays on top of it
+   (RulesetConfig rejects it alone), so its box waits for the Bloodlines box
+   and is cleared when Bloodlines is. */
+function syncTechOption() {
+  if (el("opt-bloodlines").dataset.locked || el("opt-tech").dataset.locked) return;
+  const bloodlines = el("opt-bloodlines").checked;
+  el("opt-tech").disabled = !bloodlines;
+  if (!bloodlines) el("opt-tech").checked = false;
+  syncIxPartsOption();
+}
+
+/* Go to 11 is offered only with Immortality (OQ-091; RulesetConfig rejects
+   it alone), so its box follows the Immortality box the way Tech follows
+   Bloodlines. */
+function syncGoTo11Option() {
+  if (el("opt-immortality").dataset.locked) return;
+  const immortality = el("opt-immortality").checked;
+  el("opt-go-to-11").disabled = !immortality;
+  if (!immortality) el("opt-go-to-11").checked = false;
+}
+
+/* A uniform integer in [0, n), from the browser's cryptographic source
+   (available on plain http too); words past the last whole multiple of n
+   are drawn again so that no value is favoured. */
+function randomBelow(n) {
+  const limit = Math.floor(0x100000000 / n) * n;
+  const word = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(word);
+  } while (word[0] >= limit);
+  return word[0] % n;
+}
+
+/* The configured seats in a uniformly random order (Fisher-Yates). The
+   rules do not seat players -- the First Player comes from the Objective
+   deal [Main p. 5] whatever the order -- so this is a table convention
+   (server/seating.py, user request 2026-10-10): who sits where, and so
+   who plays after whom and in which colour. The server's --seating alone
+   decides it; the setup screen has no box for it (user decision
+   2026-11-01). The server creates the game from the seats as posted; its
+   saves keep them in that order. */
+function shuffledSeats(seats) {
+  const order = [...seats];
+  for (let last = order.length - 1; last > 0; last -= 1) {
+    const pick = randomBelow(last + 1);
+    [order[last], order[pick]] = [order[pick], order[last]];
+  }
+  return order;
+}
+
+async function createGame(event) {
+  event.preventDefault();
+  const checkpoint = el("opt-checkpoint").value.trim();
+  const configured = [...el("seat-selects").querySelectorAll("select")].map(
+    (select) =>
+      select.value === "checkpoint" ? `checkpoint:${checkpoint}` : select.value
+  );
+  const shuffle = state.server.seating === "random";
+  const seats = shuffle ? shuffledSeats(configured) : configured;
+  const payload = {
+    seats,
+    base_game: el("opt-base-game").value,
+    /* A remote room with people in it waits for its start, which draws
+       them to the human seats (user decisions 2026-10-25, 2026-11-01): the
+       shuffle above places the AI seats, the start places the people
+       (sessions.py start_game). */
+    seats_at_start: shuffle && isRemote() && seats.includes("human"),
+    choam_module: el("opt-choam").checked,
+    leader_draft: el("opt-leader-draft").checked,
+    promo_cards: el("opt-promo").checked,
+    bloodlines: el("opt-bloodlines").checked,
+    tech_module: el("opt-tech").checked,
+    immortality: el("opt-immortality").checked,
+    arrakeen_scouts: el("opt-scouts").checked,
+    // OQ-132 project convention (user decision 2026-10-25): Player 1 takes
+    // the First Player Objective. The box opens checked; the engine and the
+    // CLIs keep the printed random deal [Main p. 5].
+    first_player_seat_zero: el("opt-first-player-seat-zero").checked,
+    go_to_11: el("opt-go-to-11").checked,
+    // Epic Game Mode depends on no other box and opens checked (OQ-092 user
+    // decision); the engine and the CLIs keep it off.
+    epic_game: el("opt-epic-game").checked,
+    rise_of_ix: allOfIx(),
+    // Part of Rise of Ix beside the Tech Module (syncIxPartsOption).
+    ix_tech_tiles: ixPart() === "tech" || ixPart() === "leaders_tech",
+    ix_leaders: ixPart() === "leaders_tech",
+    // Uprising with the original game's cards and Leaders (stage P7e); it
+    // opens unchecked, and the original game locks it (the cards are its
+    // own).
+    imperium_cards: el("opt-imperium-cards").checked,
+    ai_pace: el("opt-ai-pace").value,
+  };
+  const seed = el("opt-seed").value;
+  if (seed !== "") payload.game_seed = Number(seed);
+  try {
+    el("setup-error").hidden = true;
+    const summary = await api("/games", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await openGame(summary.game_id);
+  } catch (error) {
+    el("setup-error").textContent = t("screens.create_game_failed", { message: error.message });
+    el("setup-error").hidden = false;
+  }
+}
+
+/* ---------- screens and entry (M14 slice 4) ---------- */
+
+/* The tab's own title, in the chosen language (the page's <title> and the
+   header's heading carry the same key): "듄: 임페리움" on every page and in
+   a game of either base game (user 2026-11-06; until then "듄 임페리움:
+   봉기", the original game's table named after the original). */
+function baseTitle() {
+  return t("html.page_title");
+}
+const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
+
+function isRemote() {
+  return Boolean(state.server && state.server.access === "remote");
+}
+
+/* On an open server every browser is the host. */
+function isAdmin() {
+  return Boolean(state.server && state.server.admin);
+}
+
+function showScreen(name) {
+  if (name !== "game-screen") {
+    clearPlayEffects();
+    clearPhaseBanner();
+    closePileViewer();
+  }
+  for (const id of SCREENS) el(id).hidden = id !== name;
+  const atTable = name === "game-screen";
+  document.body.classList.toggle("in-game", atTable);
+  el("leave-game").hidden = !(atTable || name === "lobby-screen");
+  el("save-game").hidden = !(atTable && isAdmin());
+  if (!atTable) el("ai-pace").hidden = true;
+  el("open-lobby").hidden = !(atTable && isRemote());
+}
+
+function storageGet(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    /* a private window: the convenience is simply not remembered */
+  }
+}
+
+function storageRemove(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    /* nothing was remembered in the first place */
+  }
+}
+
+function hashParams() {
+  return new URLSearchParams(window.location.hash.replace(/^#/, ""));
+}
+
+/* A game ID goes into request paths, and both the hash and localStorage are
+   whatever somebody put there. */
+function roomId(value) {
+  return value && /^[\w-]{1,64}$/.test(value) ? value : null;
+}
+
+function roomFromHash() {
+  return roomId(hashParams().get("game"));
+}
+
+/* The room link is `#game=<id>`: a reload, or the link pasted to a friend,
+   comes back to this game. The ID is the ticket into the room, not a seat;
+   seats live in HttpOnly cookies and never reach the address bar. */
+function setRoomHash(gameId) {
+  const target = gameId
+    ? `#game=${gameId}`
+    : window.location.pathname + window.location.search;
+  window.history.replaceState(null, "", target);
+}
+
+function seedLabel(summary) {
+  return summary.game_seed === null ? "" : `${t("common.seed", { seed: summary.game_seed })} · `;
+}
+
+function humanSeatsOf(summary) {
+  return summary.seats
+    .map((kind, seat) => (kind === "human" ? seat : null))
+    .filter((seat) => seat !== null);
+}
+
+function humanSeats() {
+  return humanSeatsOf(state.summary);
+}
+
+/* The seats this browser plays: every human seat on an open server, the
+   seats it claimed on a remote one. */
+function mySeats() {
+  return state.me ? state.me.seats : [];
+}
+
+function activeSeat() {
+  return state.review ? state.review.seat : state.viewSeat;
+}
+
+function playerInfo(seat) {
+  const players = state.summary && state.summary.players;
+  return (players && players[seat]) || { seat, kind: "human", name: null };
+}
+
+/* What to call a seat's player. Names come from other people: they are only
+   ever written through textContent, never as markup. */
+function playerName(seat) {
+  const info = playerInfo(seat);
+  if (info.kind !== "human") return seatKindLabel(info.kind);
+  if (info.name) return info.name;
+  return isRemote() && !info.claimed ? t("screens.empty_seat") : t("screens.person");
+}
+
+function playerLabel(seat) {
+  return t("screens.player_label", { seat, name: playerName(seat) });
+}
+
+function presenceDot(info) {
+  const dot = document.createElement("span");
+  dot.className = "presence " + (info.online ? "on" : "off");
+  dot.title = info.online ? t("screens.online") : t("screens.offline");
+  return dot;
+}
+
+function resetGameState() {
+  resetPlayEffects();
+  resetStatFloats();
+  resetPhaseBanner();
+  resetClocks();
+  state.gameId = null;
+  state.summary = null;
+  state.view = null;
+  state.actions = null;
+  state.log = null;
+  state.me = null;
+  state.viewSeat = null;
+  stopPlayback();
+  state.review = null;
+  state.pick = null;
+  state.counts = {};
+  state.held = null;
+  myTurnBefore = null;
+  announcedTurn = undefined;
+  document.title = baseTitle();
+  /* The header named the game's round and ruleset; the setup screen kept
+     showing it, in whichever language it was drawn. textContent clears the
+     child spans but not an attribute set directly on the element, so the
+     title (render.js's renderHeaderStatus) needs clearing here too. */
+  el("header-status").textContent = "";
+  el("header-status").title = "";
+  el("review-bar").hidden = true;
+}
+
+/* The setup screen for the host (everyone, on an open server); a plain
+   landing page for a visitor who came without a room link. */
+async function showHome(message) {
+  setRoomHash(null);
+  const target = isAdmin() ? "setup" : "landing";
+  showScreen(`${target}-screen`);
+  const error = el(`${target}-error`);
+  error.textContent = message || "";
+  error.hidden = !message;
+  /* A guest has no game list; the last room this browser was in is the way
+     back after closing the tab or leaving (a convenience only: what lets
+     it sit down again is the seat cookie). */
+  el("landing-resume").hidden = isAdmin() || !roomId(storageGet("dune.lastGame"));
+  if (isAdmin()) {
+    await Promise.all([
+      loadGameList().catch(() => {}),
+      loadSaveList().catch(() => {}),
+    ]);
+  }
+}
+
+/* Entering a game starts with who this browser is at that table: the seats
+   it holds decide between the table and the seat picker. */
+let openTicket = 0;
+
+async function openGame(gameId) {
+  openTicket += 1;
+  const ticket = openTicket;
+  closeDoorbell();
+  setSpotlight(null);
+  resetGameState();
+  let entry;
+  try {
+    entry = await api(`/games/${gameId}/snapshot`);
+  } catch (error) {
+    if (ticket !== openTicket) return;
+    if (error.status === 404 && storageGet("dune.lastGame") === gameId) {
+      storageRemove("dune.lastGame");
+    }
+    await showHome(
+      error.status === 404
+        ? t("screens.game_not_found")
+        : t("screens.game_fetch_failed", { message: error.message })
+    );
+    return;
+  }
+  /* A later openGame (a second link pasted meanwhile) owns the page now. */
+  if (ticket !== openTicket) return;
+  state.gameId = gameId;
+  state.summary = entry.summary;
+  anchorClock(entry);
+  state.me = entry.you;
+  setRoomHash(gameId);
+  storageSet("dune.lastGame", gameId);
+  openDoorbell();
+  if (entry.summary.awaiting_start) {
+    /* A room drawing its seats at the start shows the room, not the game,
+       until someone starts it (adoptSnapshot enters the table then). */
+    showLobby();
+  } else if (mySeats().length || !humanSeatsOf(entry.summary).length) {
+    enterTable(entry.summary);
+  } else {
+    showLobby();
+  }
+}
+
+function enterTable(summary, seat) {
+  stopPlayback();
+  state.review = null;
+  el("review-bar").hidden = true;
+  hideGameError();
+  showScreen("game-screen");
+  const options = seat === undefined ? undefined : { seat };
+  const gameId = state.gameId;
+  refresh(summary, options)
+    .then(() => {
+      if (state.gameId !== gameId || state.review) return;
+      if (spectatorOnly() && state.summary.finished) watchGame();
+    })
+    .catch(showRefreshError);
+}
+
+/* A refresh failing in the background (the doorbell asked for one and the
+   request was lost, not something the player did) must not sit on screen
+   once the page has caught up: the message is marked "refresh" so
+   adoptSnapshot can clear it, on its own, the moment a later snapshot
+   lands. */
+function showRefreshError(error) {
+  const box = el("game-error");
+  box.textContent = t("screens.game_state_failed", { message: error.message });
+  box.dataset.source = "refresh";
+  box.hidden = false;
+}
+
+function leaveGame(message) {
+  openTicket += 1;
+  closeDoorbell();
+  setSpotlight(null);
+  resetGameState();
+  showHome(message).catch(() => {});
+}
+
+/* ---------- seat picker (remote servers) ---------- */
+
+function showLobby(message) {
+  showScreen("lobby-screen");
+  const note = el("lobby-note");
+  note.textContent = message || "";
+  note.hidden = !message;
+  el("lobby-error").hidden = true;
+  const name = el("lobby-name");
+  if (!name.value) name.value = storageGet("dune.playerName") || "";
+  renderLobby();
+}
+
+function lobbyError(text) {
+  el("lobby-error").textContent = text;
+  el("lobby-error").hidden = false;
+}
+
+function renderLobby() {
+  const summary = state.summary;
+  if (!summary) return;
+  el("lobby-title").textContent = t(
+    summary.awaiting_start ? "screens.waiting_room_title" : "html.lobby_title"
+  );
+  if (summary.awaiting_start) {
+    renderWaitingRoom(summary);
+    return;
+  }
+  const mine = mySeats();
+  el("lobby-status").textContent =
+    t("screens.lobby_status", {
+      round: summary.round_number,
+      phase: PHASE_LABELS[summary.phase] || summary.phase,
+    }) + (summary.finished ? " · " + t("common.finished") : "");
+  const list = el("lobby-seats");
+  list.textContent = "";
+  let free = 0;
+  for (const info of summary.players) {
+    const item = document.createElement("li");
+    item.className = "lobby-seat";
+    item.dataset.seat = String(info.seat);
+    item.appendChild(seatToken(info.seat, "seat-mark"));
+    const label = document.createElement("span");
+    label.className = "lobby-seat-label";
+    label.textContent = playerName(info.seat);
+    item.appendChild(label);
+    if (info.kind === "human") {
+      if (info.claimed) item.appendChild(presenceDot(info));
+      if (mine.includes(info.seat)) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = t("screens.my_seat");
+        item.appendChild(badge);
+        item.appendChild(lobbyButton(t("screens.leave_seat"), () => releaseSeat(info.seat)));
+      } else if (!info.claimed) {
+        free += 1;
+        item.appendChild(lobbyButton(t("screens.sit_button"), () => claimSeat(info.seat)));
+      } else if (isAdmin()) {
+        item.appendChild(lobbyButton(t("common.release_seat"), () => releaseSeat(info.seat)));
+      }
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "badge ai";
+      badge.textContent = seatKindLabel(info.kind);
+      item.appendChild(badge);
+    }
+    list.appendChild(item);
+  }
+  if (!mine.length && !free) {
+    lobbyError(t("screens.no_free_seats"));
+  }
+  el("lobby-enter").hidden = !mine.length;
+  /* The seat picker above already lists the seats, with the host's release
+     buttons. */
+  renderHostBlock(el("lobby-host"), { seats: false });
+}
+
+/* A room that draws its seats at the start (user decision 2026-10-25): the
+   people who joined, without seats or colours (those are drawn when the
+   game starts), the AI seats where the setup put them, one "join" for
+   whoever has not, and "game start" once every human place is taken, for
+   any player in the room or the host (sessions.py start_game). */
+function renderWaitingRoom(summary) {
+  const mine = mySeats();
+  const humans = summary.players.filter((info) => info.kind === "human");
+  const joined = humans.filter((info) => info.claimed).length;
+  el("lobby-status").textContent = t("screens.waiting_room_status", {
+    joined,
+    total: humans.length,
+  });
+  const list = el("lobby-seats");
+  list.textContent = "";
+  for (const info of summary.players) {
+    const item = document.createElement("li");
+    item.className = "lobby-seat";
+    if (info.kind === "human") {
+      item.classList.add("waiting-place");
+      const label = document.createElement("span");
+      label.className = "lobby-seat-label";
+      label.textContent = info.claimed
+        ? info.name || t("screens.person")
+        : t("screens.empty_seat");
+      item.appendChild(label);
+      if (info.claimed) item.appendChild(presenceDot(info));
+      if (mine.includes(info.seat)) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = t("screens.waiting_room_me");
+        item.appendChild(badge);
+        item.appendChild(lobbyButton(t("screens.leave_seat"), () => releaseSeat(info.seat)));
+      } else if (info.claimed && isAdmin()) {
+        item.appendChild(lobbyButton(t("common.release_seat"), () => releaseSeat(info.seat)));
+      }
+    } else {
+      item.dataset.seat = String(info.seat);
+      item.appendChild(seatToken(info.seat, "seat-mark"));
+      const label = document.createElement("span");
+      label.className = "lobby-seat-label";
+      label.textContent = playerName(info.seat);
+      item.appendChild(label);
+      const badge = document.createElement("span");
+      badge.className = "badge ai";
+      badge.textContent = seatKindLabel(info.kind);
+      item.appendChild(badge);
+    }
+    list.appendChild(item);
+  }
+  const free = humans.find((info) => !info.claimed);
+  const row = document.createElement("li");
+  row.className = "waiting-room-actions";
+  if (!mine.length && free) {
+    row.appendChild(lobbyButton(t("screens.sit_button"), () => claimSeat(free.seat)));
+  }
+  if (!free && (mine.length || isAdmin())) {
+    const start = lobbyButton(t("screens.start_game_button"), startGame);
+    start.id = "lobby-start";
+    row.appendChild(start);
+  }
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent = t(
+    free ? "screens.waiting_room_note" : "screens.waiting_room_ready_note"
+  );
+  row.appendChild(note);
+  list.appendChild(row);
+  if (!mine.length && !free && !isAdmin()) lobbyError(t("screens.no_free_seats"));
+  el("lobby-enter").hidden = true;
+  renderHostBlock(el("lobby-host"), { seats: false });
+}
+
+/* Start a waiting room: the server draws the seats and the game moves on;
+   the snapshot after it says which seat this browser now plays
+   (adoptSnapshot then enters the table). */
+async function startGame() {
+  if (state.busy) return;
+  const ticket = openTicket;
+  let summary;
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/start`, { method: "POST" });
+  } finally {
+    state.busy = false;
+  }
+  if (ticket !== openTicket) return;
+  await refresh(summary, { seat: null });
+}
+
+function lobbyButton(text, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = text;
+  button.addEventListener("click", () => {
+    el("lobby-error").hidden = true;
+    onClick().catch((error) => lobbyError(t("screens.request_failed", { message: error.message })));
+  });
+  return button;
+}
+
+async function claimSeat(seat, retries = 0) {
+  if (state.busy) return;
+  const name = el("lobby-name").value.trim();
+  if (!name) {
+    lobbyError(t("screens.name_required"));
+    el("lobby-name").focus();
+    return;
+  }
+  let summary;
+  /* Leaving (or a deleted game) while the claim is on its way must not be
+     answered by putting the table back on screen. */
+  const ticket = openTicket;
+  /* Busy as for any other POST of this page: its own doorbell is not
+     answered with a request, the refresh that follows covers it. */
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/seats/${seat}/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch (error) {
+    state.busy = false;
+    if (ticket !== openTicket) return;
+    await refresh();
+    /* Two people pressing "join" at once in a waiting room: its places are
+       anonymous, so the one who lost the race takes the next free one. */
+    if (error.status === 409 && state.summary && state.summary.awaiting_start) {
+      const next = state.summary.players.find(
+        (info) => info.kind === "human" && !info.claimed && info.seat !== seat
+      );
+      if (next && retries < 3) {
+        await claimSeat(next.seat, retries + 1);
+        return;
+      }
+    }
+    lobbyError(
+      error.status === 409
+        ? t("screens.seat_taken")
+        : t("screens.sit_failed", { message: error.message })
+    );
+    return;
+  }
+  state.busy = false;
+  storageSet("dune.playerName", name);
+  if (ticket !== openTicket) return;
+  /* A stream registers presence with the cookies it was opened with, so the
+     seat only shows as online once the stream is opened again. */
+  openDoorbell();
+  if (summary.awaiting_start) {
+    /* A place in a waiting room, not a seat yet: stay in the room, and ask
+       who this browser is now without asking for a seat. */
+    await refresh(summary, { seat: null });
+    return;
+  }
+  /* state.me does not know the new seat yet; only a snapshot may say so
+     (see refresh), and this one asks for the seat by name. */
+  enterTable(summary, seat);
+}
+
+async function releaseSeat(seat) {
+  if (state.busy) return;
+  let summary;
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/seats/${seat}/release`, {
+      method: "POST",
+    });
+  } finally {
+    state.busy = false;
+  }
+  /* Giving up the seat on screen: ask without a seat, not for one the
+     server has just stopped answering for. Losing the last seat lands in
+     the seat picker (adoptSnapshot). */
+  const options = seat === state.viewSeat ? { seat: null } : undefined;
+  await refresh(summary, options);
+}
+
+/* This browser held seats and now holds none: it gave its seat up, or the
+   host released it. The stream stays as it is; a released token stopped
+   counting as present the moment it was released. */
+function seatLost() {
+  state.view = null;
+  state.actions = null;
+  state.log = null;
+  state.viewSeat = null;
+  showLobby(t("screens.seat_left"));
+}
+
+/* ---------- host block: the room link and the seats ---------- */
+
+function roomLink() {
+  const base =
+    state.server.public_url ||
+    storageGet("dune.publicUrl") ||
+    window.location.origin;
+  return `${base.replace(/\/+$/, "")}/#game=${state.gameId}`;
+}
+
+function copyText(input) {
+  input.select();
+  /* The clipboard API needs a secure context; a Tailscale address served
+     over plain HTTP is not one, so the selection stays as the fallback. */
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(input.value).catch(() => {});
+  } else {
+    try {
+      document.execCommand("copy");
+    } catch (error) {
+      /* the link stays selected for a manual copy */
+    }
+  }
+}
+
+function renderHostBlock(container, options) {
+  const show = isRemote() && isAdmin() && Boolean(state.gameId);
+  container.hidden = !show;
+  if (!show) {
+    container.textContent = "";
+    return;
+  }
+  /* Never rebuild under the host's cursor while an address is being typed.
+     Only that: a button keeps the focus after its click, and the click is
+     exactly what the block has to show the result of. */
+  const active = document.activeElement;
+  if (
+    active &&
+    active.tagName === "INPUT" &&
+    !active.readOnly &&
+    container.contains(active)
+  ) {
+    return;
+  }
+  container.textContent = "";
+
+  const heading = document.createElement("h3");
+  heading.textContent = t("screens.room_link_heading");
+  container.appendChild(heading);
+  const row = document.createElement("div");
+  row.className = "room-link";
+  const link = document.createElement("input");
+  link.type = "text";
+  link.readOnly = true;
+  link.className = "room-link-value";
+  link.value = roomLink();
+  link.addEventListener("focus", () => link.select());
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = t("screens.copy_button");
+  copy.addEventListener("click", () => copyText(link));
+  row.append(link, copy);
+  container.appendChild(row);
+
+  if (!state.server.public_url) {
+    const label = document.createElement("label");
+    label.className = "room-base";
+    label.append(`${t("screens.server_address_label")} `);
+    const base = document.createElement("input");
+    base.type = "text";
+    base.value = storageGet("dune.publicUrl") || window.location.origin;
+    base.addEventListener("change", () => {
+      storageSet("dune.publicUrl", base.value.trim());
+      link.value = roomLink();
+    });
+    label.appendChild(base);
+    container.appendChild(label);
+  }
+
+  if (options && options.seats === false) return;
+  const list = document.createElement("ul");
+  list.className = "host-seats";
+  for (const info of state.summary.players) {
+    if (info.kind !== "human") continue;
+    const item = document.createElement("li");
+    item.appendChild(seatToken(info.seat, "seat-mark"));
+    const label = document.createElement("span");
+    label.textContent = playerName(info.seat);
+    item.appendChild(label);
+    if (info.claimed) {
+      item.appendChild(presenceDot(info));
+      const release = document.createElement("button");
+      release.type = "button";
+      release.textContent = t("common.release_seat");
+      release.addEventListener("click", () => {
+        releaseSeat(info.seat).catch((error) =>
+          note(t("screens.release_seat_failed", { message: error.message }))
+        );
+      });
+      item.appendChild(release);
+    }
+    list.appendChild(item);
+  }
+  container.appendChild(list);
+  container.appendChild(hostSavesBlock());
+}
+
+/* What is on the host's disk for this game. The listing reads every save
+   file, so it is asked for when the host looks (the panel opens, a save
+   was made, the refresh button), never on a timer or a doorbell. */
+let hostSaves = { gameId: null, entries: null, error: null };
+
+async function loadHostSaves() {
+  const gameId = state.gameId;
+  if (!gameId || !(isRemote() && isAdmin())) return;
+  try {
+    const saves = await api("/saves");
+    hostSaves = {
+      gameId,
+      entries: saves.filter((entry) => entry.source_game_id === gameId),
+      error: null,
+    };
+  } catch (error) {
+    hostSaves = { gameId, entries: null, error: error.message };
+  }
+  if (state.gameId === gameId && !el("game-screen").hidden) {
+    renderHostBlock(el("host-panel-body"));
+  }
+}
+
+function hostSavesBlock() {
+  const block = document.createElement("div");
+  block.className = "host-saves";
+  const heading = document.createElement("h3");
+  heading.textContent = state.server.autosave
+    ? t("screens.saves_heading_auto")
+    : t("screens.saves_heading_manual");
+  block.appendChild(heading);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = t("screens.save_recovery_hint");
+  block.appendChild(hint);
+  const known = hostSaves.gameId === state.gameId ? hostSaves : null;
+  const list = document.createElement("ul");
+  list.className = "host-save-list";
+  if (known && known.error) {
+    const item = document.createElement("li");
+    item.className = "error";
+    item.textContent = t("screens.save_list_error", { error: known.error });
+    list.appendChild(item);
+  } else if (known && known.entries) {
+    if (!known.entries.length) {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = t("screens.no_saves_yet");
+      list.appendChild(item);
+    }
+    for (const entry of known.entries) {
+      const item = document.createElement("li");
+      if (entry.autosave) item.appendChild(autosaveBadge());
+      item.append(`${saveTitle(entry)} · ${savedWhen(entry)}`);
+      list.appendChild(item);
+    }
+  }
+  block.appendChild(list);
+  const row = document.createElement("div");
+  row.className = "host-save-actions";
+  const refreshButton = document.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.textContent = known
+    ? t("screens.refresh_list_button")
+    : t("screens.view_save_list_button");
+  refreshButton.addEventListener("click", () => {
+    loadHostSaves().catch(() => {});
+  });
+  const saveNow = document.createElement("button");
+  saveNow.type = "button";
+  saveNow.textContent = t("screens.save_now_button");
+  saveNow.addEventListener("click", () => {
+    saveGame().catch(() => {});
+  });
+  row.append(refreshButton, saveNow);
+  block.appendChild(row);
+  return block;
+}

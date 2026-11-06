@@ -1,0 +1,2450 @@
+"""Tests for implemented Leader abilities and Signet Ring resolution."""
+
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from tests.support.reward_windows import settle_reward_window
+
+from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.core.abilities import Ability, AbilityTiming
+from dune_imperium.content.core.cards import ContractDefinition
+from dune_imperium.content.core.effects import (
+    AcquiredCard,
+    EffectSection,
+    RecruitTroops,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.core.schema import CardDefinition
+from dune_imperium.content.registry.contracts import CONTRACTS_BY_ID
+from dune_imperium.content.uprising.board import OBSERVATION_POSTS
+from dune_imperium.content.uprising.contracts import CONTRACT_SOURCES
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
+    legal_agent_card_icon_actions,
+    resolve_agent_card_effect,
+    resolve_agent_card_icon,
+)
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import (
+    apply_desert_tactics_action,
+    legal_board_effect_actions,
+    legal_desert_tactics_actions,
+    resolve_board_effect,
+)
+from dune_imperium.rules.effect_steps import first_step
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.influence import (
+    gain_faction_influence,
+    lose_faction_influence,
+)
+from dune_imperium.rules.leader_abilities import (
+    apply_feyd_track_action,
+    apply_leader_board_repeat,
+    apply_leader_card_trash,
+    apply_leader_placement_ability,
+    apply_leader_reveal_action,
+    apply_leader_signet_acquire,
+    apply_leader_signet_payment,
+    apply_leader_spy_action,
+    apply_shaddam_signet_choice,
+    grant_leader_reveal_passives,
+    legal_feyd_track_actions,
+    legal_leader_board_repeat_actions,
+    legal_leader_placement_ability_actions,
+    legal_leader_reveal_actions,
+    legal_leader_signet_actions,
+    signet_influence_withheld,
+)
+from dune_imperium.rules.owed_draws import apply_owed_draw, legal_owed_draw_actions
+from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.setup import create_initial_state
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+
+
+def _signet_instance(player: int = 0) -> str:
+    return f"player:{player}:starter:signet_ring:0"
+
+
+def _turn_state(owner: PlayerState, **overrides: object) -> GameState:
+    values: dict[str, object] = {
+        "config": RulesetConfig(),
+        "seed": 1,
+        "phase": GamePhase.PLAYER_TURNS,
+        "round_number": 1,
+        "players": (owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        "decision_stack": (
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    }
+    values.update(overrides)
+    return GameState(**values)  # type: ignore[arg-type]
+
+
+def _signet_action_to(state: GameState, space_id: str) -> DomainAction:
+    return _signet_action_to_card_id(state, space_id, _signet_instance())
+
+
+def _signet_action_to_card_id(
+    state: GameState,
+    space_id: str,
+    card_id: str,
+) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments)["card_id"] == card_id
+    )
+
+
+def test_warmaster_signet_recruits_one_deployable_troop() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Warmaster recruits one troop [Gurney Halleck card]; a troop recruited on
+    # a Combat-space turn may still deploy [FAQ p. 4], so it joins the frame's
+    # recruit count alongside the board recruits.
+    assert resolved.troops_garrison == owner.troops_garrison + 1
+    assert resolved.troops_supply == owner.troops_supply - 1
+    assert context["troops_recruited"] == 1
+    assert context["pending_agent_effect"] is False
+    # The box's own event, last, names the card and the seat (cleanup-2c-4).
+    assert [event.kind for event in result.events] == ["leader_signet_resolved"]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:resolved"
+    assert dict(result.events[-1].payload) == {
+        "card_id": _signet_instance(),
+        "player": 0,
+    }
+
+
+def test_warmaster_signet_recruits_nothing_from_an_empty_supply() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=(_signet_instance(),),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert result.state.players[0].troops_garrison == 12
+    # The shortfall has its own event; the box's event is last.
+    assert [event.kind for event in result.events] == [
+        "troops_recruit_short",
+        "leader_signet_resolved",
+    ]
+
+
+def _fill_coffers_icon(key: str) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", key),)
+    )
+
+
+def _offered_icons(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["effect"])
+        for action in legal_agent_card_icon_actions(state, 0)
+    }
+
+
+def test_fill_coffers_signet_gains_solari_only_without_an_alliance() -> None:
+    # "FILL COFFERS — [1 Solari] —AND— If you have an Alliance: [1 spice]"
+    # [Lady Amber Metulli card]: two icons of the Signet Ring's box
+    # (OQ-027), the spice judged when it resolves (OQ-028).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert dict(placed.decision_stack[-1].context)["pending_agent_icons"] == (
+        "solari,spice"
+    )
+    assert _offered_icons(placed) == {"solari"}
+
+    result = resolve_agent_card_icon(placed, _fill_coffers_icon("solari"))
+    resources = result.state.players[0].resources
+
+    assert resources.solari == 1
+    assert resources.spice == 0
+    # Without an Alliance by the turn's end the spice lapses (OQ-057 (1)).
+    working = result.state
+    engine = UprisingRulesEngine()
+    finish = DomainAction("finish_agent_turn", 0)
+    while finish not in (legal := engine.whole_actions(working, 0)):
+        working = apply_whole(engine, 
+            working, next(a for a in legal if not a.action_id.startswith("deploy"))
+        ).state
+    closed = apply_whole(engine, working, finish)
+    assert closed.state.players[0].resources.spice == 0
+    assert [
+        dict(event.payload)["effect"]
+        for event in closed.events
+        if event.kind == "leader_signet_unavailable"
+    ] == ["spice"]
+
+
+def test_fill_coffers_signet_adds_spice_while_holding_an_alliance() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=(_signet_instance(),),
+        alliance_faction_ids=("fremen",),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert _offered_icons(placed) == {"solari", "spice"}
+
+    spiced = resolve_agent_card_icon(placed, _fill_coffers_icon("spice")).state
+    result = resolve_agent_card_icon(spiced, _fill_coffers_icon("solari"))
+    resources = result.state.players[0].resources
+
+    # Fill Coffers: one Solari, and one Spice with an Alliance [Lady Amber
+    # Metulli card].
+    assert resources.solari == 1
+    assert resources.spice == 1
+
+
+def test_fill_coffers_spice_waits_for_an_alliance_formed_later_in_the_turn() -> (
+    None
+):
+    # The Signet before the Alliance: the Solari now, and the spice once
+    # Shipping's Fremen Influence takes the Alliance in the same turn; it is
+    # mandatory then (OQ-057 (1)).
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=(_signet_instance(),),
+        resources=Resources(spice=3),
+        influence=Influence(spacing_guild=2, fremen=3),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "shipping")).state
+    solari = resolve_agent_card_icon(placed, _fill_coffers_icon("solari")).state
+    assert solari.players[0].resources.solari == 1
+    assert _offered_icons(solari) == set()
+    assert agent_card_effect_is_unavailable(solari)
+
+    engine = UprisingRulesEngine()
+    allied = apply_whole(engine, 
+        solari,
+        DomainAction(
+            "choose_shipping_influence", 0, (("faction", Faction.FREMEN.value),)
+        ),
+    ).state
+    assert allied.players[0].alliance_faction_ids == ("fremen",)
+    assert _offered_icons(allied) == {"spice"}
+    assert DomainAction("finish_agent_turn", 0) not in engine.whole_actions(allied, 0)
+    spice_before = allied.players[0].resources.spice
+
+    result = resolve_agent_card_icon(allied, _fill_coffers_icon("spice"))
+
+    assert result.state.players[0].resources.spice == spice_before + 1
+    assert dict(result.state.decision_stack[-1].context)[
+        "pending_agent_effect"
+    ] is False
+
+
+def test_signet_ring_stays_withheld_for_an_unimplemented_leader() -> None:
+    # All nine printed Leaders are implemented; the per-Leader gate still
+    # withholds Signet Ring placements for a seat without an implemented
+    # Leader identity.
+    engine = UprisingRulesEngine()
+    implemented = _turn_state(
+        PlayerState(
+            player_id=0,
+            leader_id="gurney_halleck",
+            hand=(_signet_instance(),),
+        )
+    )
+    unimplemented = _turn_state(
+        PlayerState(
+            player_id=0,
+            hand=(_signet_instance(),),
+        )
+    )
+
+    assert any(
+        dict(action.arguments).get("card_id") == _signet_instance()
+        for action in engine.whole_actions(implemented, 0)
+    )
+    assert not any(
+        dict(action.arguments).get("card_id") == _signet_instance()
+        for action in engine.whole_actions(unimplemented, 0)
+    )
+
+
+def test_unimplemented_leader_signet_resolution_is_rejected() -> None:
+    owner = PlayerState(
+        player_id=0,
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    with pytest.raises(RuntimeError, match="not implemented"):
+        resolve_agent_card_effect(placed)
+
+
+def _reveal_state(owner: PlayerState) -> GameState:
+    return begin_reveal_turn(
+        _turn_state(owner),
+        DomainAction(action_id="reveal_turn", actor=0),
+    ).state
+
+
+def test_desert_scouts_retreats_one_troop_during_the_reveal_turn() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    revealed = _reveal_state(owner)
+    context = dict(revealed.decision_stack[-1].context)
+    assert context["strength"] == 2 * 2 + 1
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    assert action.action_id == "retreat_leader_troop"
+    result = apply_leader_reveal_action(revealed, action)
+    resolved = result.state.players[0]
+    next_context = dict(result.state.decision_stack[-1].context)
+
+    # Desert Scouts retreats one troop to the garrison [Lady Amber Metulli
+    # card] [Main p. 20]; with a unit still in the Conflict only that troop's
+    # two strength leaves the total.
+    assert resolved.troops_conflict == 1
+    assert resolved.troops_garrison == 4
+    assert resolved.combat_strength == 3
+    assert next_context["strength"] == 3
+    assert next_context["leader_reveal_ability_used"] is True
+    assert legal_leader_reveal_actions(result.state, 0) == ()
+
+
+def test_desert_scouts_retreating_the_last_unit_zeroes_the_strength() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+    )
+    revealed = _reveal_state(owner)
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    result = apply_leader_reveal_action(revealed, action)
+
+    assert result.state.players[0].troops_conflict == 0
+    assert result.state.players[0].combat_strength == 0
+    assert dict(result.state.decision_stack[-1].context)["strength"] == 0
+
+
+def test_desert_scouts_is_not_offered_without_conflict_troops() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_amber_metulli",
+        hand=("player:0:starter:dagger:0",),
+    )
+    revealed = _reveal_state(owner)
+
+    assert legal_leader_reveal_actions(revealed, 0) == ()
+
+
+def test_desert_scouts_is_not_offered_to_other_leaders() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    revealed = _reveal_state(owner)
+
+    assert legal_leader_reveal_actions(revealed, 0) == ()
+
+
+def test_always_smiling_grants_persuasion_at_six_strength() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=("player:0:starter:dagger:0", "player:0:starter:dagger:1"),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    revealed = _reveal_state(owner)
+    assert dict(revealed.decision_stack[-1].context)["strength"] == 6
+
+    result = grant_leader_reveal_passives(RuleResult(state=revealed))
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Always Smiling: six or more strength during the Reveal turn grants one
+    # Persuasion in the four-player game [Gurney Halleck card].
+    assert context["persuasion"] == 1
+    assert context["leader_persuasion_granted"] is True
+    assert result.events[-1].kind == "reveal_persuasion_gained"
+
+
+def test_always_smiling_stays_quiet_below_six_strength() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    revealed = _reveal_state(owner)
+    assert dict(revealed.decision_stack[-1].context)["strength"] == 5
+
+    result = grant_leader_reveal_passives(RuleResult(state=revealed))
+
+    assert result.state is revealed
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_always_smiling_does_not_grant_twice() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=("player:0:starter:dagger:0", "player:0:starter:dagger:1"),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    revealed = _reveal_state(owner)
+
+    first = grant_leader_reveal_passives(RuleResult(state=revealed))
+    second = grant_leader_reveal_passives(RuleResult(state=first.state))
+
+    assert second.state is first.state
+    assert dict(second.state.decision_stack[-1].context)["persuasion"] == 1
+
+
+def test_always_smiling_is_wired_through_the_engine_reveal() -> None:
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        leader_id="gurney_halleck",
+        hand=("player:0:starter:dagger:0", "player:0:starter:dagger:1"),
+        troops_supply=7,
+        troops_garrison=3,
+        troops_conflict=2,
+    )
+    state = _turn_state(owner)
+
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
+    context = dict(transition.state.decision_stack[-1].context)
+
+    assert context["persuasion"] == 1
+    assert context["leader_persuasion_granted"] is True
+
+
+def _feyd_effect_state(
+    *,
+    track_space: str = "start",
+    solari: int = 0,
+    spies_supply: int = 3,
+    spy_post_ids: tuple[str, ...] = (),
+    extra_hand: tuple[str, ...] = (),
+) -> GameState:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=(_signet_instance(), *extra_hand),
+        resources=Resources(solari=solari),
+        feyd_track_space=track_space,
+        spies_supply=spies_supply,
+        spy_post_ids=spy_post_ids,
+    )
+    state = _turn_state(owner)
+    return apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+
+def test_personal_training_offers_the_start_fork() -> None:
+    placed = _feyd_effect_state()
+
+    actions = legal_feyd_track_actions(placed, 0)
+
+    assert {dict(action.arguments)["space_id"] for action in actions} == {
+        "paid_trash",
+        "first_spy",
+    }
+    assert all(action.action_id == "advance_feyd_track" for action in actions)
+
+
+def test_personal_training_spy_space_places_a_spy() -> None:
+    placed = _feyd_effect_state()
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance)
+    assert advanced.state.players[0].feyd_track_space == "first_spy"
+    assert advanced.events[0].kind == "feyd_token_advanced"
+
+    stage_actions = legal_feyd_track_actions(advanced.state, 0)
+    assert all(action.action_id == "place_leader_spy" for action in stage_actions)
+    placement = stage_actions[0]
+    result = apply_feyd_track_action(advanced.state, placement)
+
+    assert result.state.players[0].spies_supply == 2
+    assert len(result.state.players[0].spy_post_ids) == 1
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "feyd_track_stage" not in context
+
+
+def test_personal_training_paid_trash_pays_one_solari() -> None:
+    dagger = "player:0:starter:dagger:0"
+    placed = _feyd_effect_state(solari=1, extra_hand=(dagger,))
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "paid_trash"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    stage_actions = legal_feyd_track_actions(advanced, 0)
+    assert stage_actions[0].action_id == "decline_leader_card_trash"
+    trash = next(
+        action
+        for action in stage_actions
+        if dict(action.arguments).get("card_id") == dagger
+    )
+    result = apply_feyd_track_action(advanced, trash)
+
+    assert result.state.players[0].resources.solari == 0
+    assert dagger in result.state.players[0].trashed
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_personal_training_paid_trash_without_solari_only_declines() -> None:
+    placed = _feyd_effect_state(solari=0)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "paid_trash"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    actions = legal_feyd_track_actions(advanced, 0)
+
+    # The one-Solari arrow cost cannot be paid, so only the decline remains
+    # [Main pp. 9, 20].
+    assert [action.action_id for action in actions] == ["decline_leader_card_trash"]
+    result = apply_feyd_track_action(advanced, actions[0])
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_personal_training_double_spice_space_is_automatic() -> None:
+    placed = _feyd_effect_state(track_space="second_spy")
+
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "double_spice"
+    )
+    result = apply_feyd_track_action(placed, advance)
+
+    assert result.state.players[0].resources.spice == 2
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert result.events[-1].kind == "leader_signet_resolved"
+
+
+def test_personal_training_final_space_recruits_and_places_a_spy() -> None:
+    placed = _feyd_effect_state(track_space="late_trash")
+
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "final"
+    )
+    advanced = apply_feyd_track_action(placed, advance)
+    assert advanced.state.players[0].troops_garrison == 4
+    assert dict(advanced.state.decision_stack[-1].context)["troops_recruited"] == 1
+
+    stage_actions = legal_feyd_track_actions(advanced.state, 0)
+    result = apply_feyd_track_action(advanced.state, stage_actions[0])
+
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].feyd_track_space == "final"
+
+
+def test_personal_training_at_the_final_space_gives_no_reward() -> None:
+    placed = _feyd_effect_state(track_space="final")
+
+    # The token remains on the rightmost space [Main p. 17]; with no new
+    # space to move to, Personal Training earns nothing.
+    assert legal_feyd_track_actions(placed, 0) == ()
+    result = resolve_agent_card_effect(placed)
+
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_personal_training_spy_stage_recalls_first_without_supply() -> None:
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed = _feyd_effect_state(spies_supply=0, spy_post_ids=posts)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    # The stage prints a plain Spy [Feyd-Rautha Harkonnen card]: "If you
+    # have no Spies in your supply, you may first recall one of your Spies
+    # for no effect" [Main pp. 11, 20] -- a choice (OQ-057 (14)), so the
+    # decline stands beside the recalls. This test used to pin recalls only.
+    actions = legal_feyd_track_actions(advanced, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_leader_spy_placement",
+        *("recall_spy_for_leader_placement",) * 3,
+    ]
+    recall_actions = actions[1:]
+    recalled = apply_feyd_track_action(advanced, recall_actions[0]).state
+    assert dict(recalled.decision_stack[-1].context)["feyd_spy_recalled"] is True
+
+    placements = legal_feyd_track_actions(recalled, 0)
+    assert all(action.action_id == "place_leader_spy" for action in placements)
+    result = apply_feyd_track_action(recalled, placements[0])
+
+    assert result.state.players[0].spies_supply == 0
+    assert len(result.state.players[0].spy_post_ids) == 3
+
+
+def test_spy_stage_recalls_again_when_the_recalled_spy_was_spent() -> None:
+    # The supply is judged when the placement resolves [Main pp. 11, 20]: a
+    # freely ordered effect of the same turn may spend the Spy that the
+    # recall freed (a Distraction trigger did, in a 2026-09-06 tournament
+    # game), and then a placement cannot be offered — the recall is offered
+    # again instead of an action that raises on apply.
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    placed = _feyd_effect_state(spies_supply=0, spy_post_ids=posts)
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+    recall = next(
+        action
+        for action in legal_feyd_track_actions(advanced, 0)
+        if action.action_id == "recall_spy_for_leader_placement"
+    )
+    recalled = apply_feyd_track_action(advanced, recall).state
+    assert recalled.players[0].spies_supply == 1
+
+    # Another effect places the freed Spy elsewhere before the stage resolves.
+    spent_owner = replace(
+        recalled.players[0],
+        spies_supply=0,
+        spy_post_ids=(*recalled.players[0].spy_post_ids, OBSERVATION_POSTS[3].post_id),
+    )
+    spent = replace(recalled, players=(spent_owner, *recalled.players[1:]))
+
+    offered = legal_feyd_track_actions(spent, 0)
+    assert offered
+    # Committed by the earlier recall: no decline comes back (OQ-057 (14)).
+    assert all(
+        action.action_id == "recall_spy_for_leader_placement" for action in offered
+    )
+    again = apply_feyd_track_action(spent, offered[0]).state
+    assert again.players[0].spies_supply == 1
+    assert all(
+        action.action_id == "place_leader_spy"
+        for action in legal_feyd_track_actions(again, 0)
+    )
+
+
+@pytest.mark.parametrize("stage", ("first_spy", "final"))
+def test_personal_training_spy_stage_can_pass_up_the_recall_first(
+    stage: str,
+) -> None:
+    # "you may first recall one of your Spies for no effect" [Main pp. 11,
+    # 20]; docs/rules/uprising-systems.md: "supply가 비었을 때의 선행 recall
+    # ... 은 그대로 선택이므로, 그때는 배치하지 않고 넘어갈 수 있다" (OQ-057
+    # (14)). Declining moves the token without a Spy; at the final space
+    # the troop was already recruited on arrival [Feyd-Rautha Harkonnen card].
+    posts = tuple(post.post_id for post in OBSERVATION_POSTS[:3])
+    track_space = "start" if stage == "first_spy" else "late_trash"
+    placed = _feyd_effect_state(
+        track_space=track_space, spies_supply=0, spy_post_ids=posts
+    )
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == stage
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+    decline = legal_feyd_track_actions(advanced, 0)[0]
+    assert decline.action_id == "decline_leader_spy_placement"
+
+    result = apply_leader_spy_action(advanced, decline)
+
+    owner = result.state.players[0]
+    assert owner.feyd_track_space == stage
+    assert owner.spy_post_ids == posts
+    assert owner.spies_recalled_turn == 0
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "feyd_track_stage" not in context
+    assert "spy_recalled_this_turn" not in context or (
+        context["spy_recalled_this_turn"] is False
+    )
+    # The refusal ends the box: its event is the last, declined.
+    assert [event.kind for event in result.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
+    assert result.events[-1].event_id == "round:1:player:0:leader_signet:declined"
+
+
+def test_personal_training_spy_stage_with_a_spy_in_supply_must_place() -> None:
+    # Placing is mandatory while a Spy is in the supply (OQ-057 (14)).
+    placed = _feyd_effect_state(
+        spies_supply=1, spy_post_ids=("arrakis-hagga-basin", "arrakis-deep-desert")
+    )
+    advance = next(
+        action
+        for action in legal_feyd_track_actions(placed, 0)
+        if dict(action.arguments)["space_id"] == "first_spy"
+    )
+    advanced = apply_feyd_track_action(placed, advance).state
+
+    assert {action.action_id for action in legal_feyd_track_actions(advanced, 0)} == {
+        "place_leader_spy"
+    }
+
+
+def test_devious_strength_recalls_a_spy_for_two_swords() -> None:
+    post_id = OBSERVATION_POSTS[0].post_id
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    revealed = _reveal_state(owner)
+    assert dict(revealed.decision_stack[-1].context)["strength"] == 3
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    assert action.action_id == "recall_spy_for_leader"
+    result = apply_leader_reveal_action(revealed, action)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert resolved.spies_supply == 3
+    assert resolved.spy_post_ids == ()
+    assert resolved.combat_strength == 5
+    assert context["strength"] == 5
+    assert context["optional_sword_strength"] == 2
+    assert context["leader_reveal_ability_used"] is True
+    assert legal_leader_reveal_actions(result.state, 0) == ()
+
+
+def test_devious_strength_swords_do_not_count_without_units() -> None:
+    post_id = OBSERVATION_POSTS[0].post_id
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        spies_supply=2,
+        spy_post_ids=(post_id,),
+    )
+    revealed = _reveal_state(owner)
+
+    (action,) = legal_leader_reveal_actions(revealed, 0)
+    result = apply_leader_reveal_action(revealed, action)
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Swords only count while units are in the Conflict [Main pp. 12-13]; the
+    # chosen bonus is still recorded for later deployments.
+    assert result.state.players[0].combat_strength == 0
+    assert context["strength"] == 0
+    assert context["optional_sword_strength"] == 2
+
+
+def test_devious_strength_is_not_offered_without_placed_spies() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="feyd_rautha_harkonnen",
+        hand=("player:0:starter:dagger:0",),
+        troops_supply=8,
+        troops_garrison=3,
+        troops_conflict=1,
+    )
+    revealed = _reveal_state(owner)
+
+    assert legal_leader_reveal_actions(revealed, 0) == ()
+
+
+def _jessica_owner(
+    *,
+    face: str = "lady_jessica",
+    spice: int = 0,
+    water: int = 1,
+    memories: int = 0,
+    hand: tuple[str, ...] = (),
+    deck: tuple[str, ...] = (),
+) -> PlayerState:
+    return PlayerState(
+        player_id=0,
+        leader_id="lady_jessica",
+        leader_face_id=face,
+        resources=Resources(spice=spice, water=water),
+        troops_supply=9 - memories,
+        memories=memories,
+        hand=hand,
+        deck=deck,
+    )
+
+
+def test_spice_agony_pays_for_an_intrigue_card_and_a_memory() -> None:
+    owner = _jessica_owner(spice=1, hand=(_signet_instance(),))
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_leader_signet_payment",
+        "pay_leader_signet_spice",
+    }
+    pay = next(
+        action for action in actions if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Spice Agony: one Spice buys one Intrigue card and moves a supply troop
+    # to the Bene Gesserit area as a memory [Lady Jessica card].
+    assert resolved.resources.spice == 0
+    assert resolved.spice_spent_turn == 1
+    assert resolved.intrigue_cards == ("intrigue:test",)
+    assert resolved.memories == 1
+    assert resolved.troops_supply == 8
+    assert context["pending_agent_effect"] is False
+
+
+def test_spice_agony_without_spice_only_declines() -> None:
+    owner = _jessica_owner(spice=0, hand=(_signet_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+
+    assert [action.action_id for action in actions] == ["decline_leader_signet_payment"]
+    result = apply_leader_signet_payment(placed, actions[0])
+    assert result.state.players[0].memories == 0
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_spice_agony_with_an_empty_supply_still_draws_intrigue() -> None:
+    owner = replace(
+        _jessica_owner(spice=1, hand=(_signet_instance(),)),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    pay = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:test",)
+    assert result.state.players[0].memories == 0
+
+
+def test_water_of_life_pays_one_spice_for_one_water() -> None:
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        spice=1,
+        water=0,
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    pay = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(placed, pay)
+
+    # Water of Life: one Spice buys one water [Reverend Mother Jessica card].
+    assert result.state.players[0].resources.spice == 0
+    assert result.state.players[0].resources.water == 1
+
+
+def _diplomacy_instance() -> str:
+    return "player:0:starter:diplomacy:0"
+
+
+def _signet_action_to_card(state: GameState, space_id: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+        and dict(action.arguments)["card_id"] == _diplomacy_instance()
+    )
+
+
+def test_other_memories_flips_and_draws_per_memory() -> None:
+    dagger = "player:0:starter:dagger:0"
+    second = "player:0:starter:dagger:1"
+    owner = _jessica_owner(
+        spice=1,
+        memories=2,
+        hand=(_diplomacy_instance(),),
+        deck=(dagger, second),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+    assert dict(placed.decision_stack[-1].context)["pending_leader_ability"] is True
+
+    # "you may" [Lady Jessica card]: optional, so no refusal row; left
+    # unused it lapses at the turn end (OQ-095 (2), user ruling 2026-10-14).
+    actions = legal_leader_placement_ability_actions(placed, 0)
+    assert {action.action_id for action in actions} == {"use_other_memories"}
+    use = next(action for action in actions if action.action_id == "use_other_memories")
+    result = apply_leader_placement_ability(placed, use)
+    resolved = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    # Other Memories returns every memory, draws one card per memory, and
+    # flips the Leader [Lady Jessica card]; the Reverend Mother ability opens
+    # on this same turn [FAQ p. 3].
+    assert resolved.leader_face_id == "reverend_mother_jessica"
+    assert resolved.memories == 0
+    assert resolved.troops_supply == 9
+    assert set(resolved.hand) >= {dagger, second}
+    assert context["pending_leader_ability"] is False
+    assert context["pending_leader_board_repeat"] is True
+    assert result.events[0].kind == "leader_flipped"
+
+
+def test_other_memories_with_no_memories_still_flips() -> None:
+    owner = _jessica_owner(spice=1, memories=0, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+
+    use = next(
+        action
+        for action in legal_leader_placement_ability_actions(placed, 0)
+        if action.action_id == "use_other_memories"
+    )
+    result = apply_leader_placement_ability(placed, use)
+
+    assert result.state.players[0].leader_face_id == "reverend_mother_jessica"
+    assert len(result.events) == 1
+    assert dict(result.events[0].payload)["memories_returned"] == 0
+
+
+def test_other_memories_left_unused_lapses_and_keeps_the_lady_jessica_face() -> (
+    None
+):
+    # "you may return all your memories" [Lady Jessica card] is used at any
+    # point of the turn (user ruling 2026-10-14: "기존대로 턴 중에 원할 때").
+    # Before codec v146 it offered ``decline_other_memories`` and held the
+    # turn end until answered; now it offers no refusal, stays offered
+    # beside the turn end, and the press lapses it (OQ-095 (2)).
+    owner = _jessica_owner(spice=1, memories=1, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "espionage")).state
+    engine = UprisingRulesEngine()
+    use = DomainAction(action_id="use_other_memories", actor=0)
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+
+    while finish not in (legal := engine.whole_actions(placed, 0)):
+        assert use in legal
+        assert "decline_other_memories" not in {action.action_id for action in legal}
+        placed = apply_whole(engine, 
+            placed, next(action for action in legal if action != use)
+        ).state
+    assert set(legal) == {use, finish}
+
+    result = apply_whole(engine, placed, finish)
+
+    (lapsed,) = [
+        event for event in result.events if event.kind == "leader_ability_lapsed"
+    ]
+    assert lapsed.event_id.endswith(":other_memories:lapsed")
+    assert lapsed.payload == (("player", 0),)
+    assert result.state.players[0].leader_face_id == "lady_jessica"
+    assert result.state.players[0].memories == 1
+
+
+def test_other_memories_is_not_pending_outside_bene_gesserit_spaces() -> None:
+    owner = _jessica_owner(memories=1, hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(
+        state, _signet_action_to_card(state, "dutiful_service")
+    ).state
+
+    assert dict(placed.decision_stack[-1].context)["pending_leader_ability"] is False
+    assert legal_leader_placement_ability_actions(placed, 0) == ()
+
+
+def test_reverend_mother_repeats_a_board_space_for_one_water() -> None:
+    dagger = "player:0:starter:dagger:0"
+    second = "player:0:starter:dagger:1"
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=1,
+        hand=(_diplomacy_instance(),),
+        deck=(dagger, second),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_leader_board_repeat"] is True
+
+    # The repeat waits for the printed effect's first resolution.
+    assert legal_leader_board_repeat_actions(placed, 0) == ()
+    first = resolve_board_effect(placed, _board_icon_action(placed, "cards"))
+    assert first.state.players[0].hand[-1] == dagger
+
+    # The repeat is an arrow (water -> repeat): no refusal row, the turn end
+    # lapses it (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    actions = legal_leader_board_repeat_actions(first.state, 0)
+    assert {action.action_id for action in actions} == {"pay_leader_board_repeat"}
+    pay = next(
+        action for action in actions if action.action_id == "pay_leader_board_repeat"
+    )
+    paid = apply_leader_board_repeat(first.state, pay)
+    paid_context = dict(paid.state.decision_stack[-1].context)
+
+    assert paid.state.players[0].resources.water == 0
+    assert paid_context["pending_board_effect"] is True
+    assert paid_context["pending_leader_board_repeat"] is False
+
+    second_pass = resolve_board_effect(
+        paid.state, _board_icon_action(paid.state, "cards")
+    )
+    assert second_pass.state.players[0].hand[-1] == second
+    assert legal_leader_board_repeat_actions(second_pass.state, 0) == ()
+
+
+def test_reverend_mother_repeat_without_water_lapses_at_the_turn_end() -> None:
+    # Before codec v146 only ``decline_leader_board_repeat`` was offered and
+    # the turn waited on it; since the user ruling of 2026-10-14 (OQ-095
+    # (2)) the optional repeat offers nothing it cannot pay and the owner's
+    # press lapses it with ``leader_ability_lapsed``.
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=0,
+        hand=(_diplomacy_instance(),),
+        deck=("player:0:starter:dagger:0",),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+    first = resolve_board_effect(placed, _board_icon_action(placed, "cards")).state
+
+    assert legal_leader_board_repeat_actions(first, 0) == ()
+    engine = UprisingRulesEngine()
+    while steps := [
+        action
+        for action in engine.whole_actions(first, 0)
+        if action.action_id
+        in ("resolve_faction_influence", "resolve_agent_card_effect")
+    ]:
+        first = apply_whole(engine, first, steps[0]).state
+    assert dict(first.decision_stack[-1].context)["pending_leader_board_repeat"]
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in engine.whole_actions(first, 0)
+    result = apply_whole(engine, first, finish)
+    # The two abilities' lapses differ by their event ids only.
+    assert [
+        (event.event_id.rsplit(":", 2)[-2], dict(event.payload))
+        for event in result.events
+        if event.kind == "leader_ability_lapsed"
+    ] == [("board_repeat", {"player": 0})]
+
+
+def test_reverend_mother_repeat_rearms_every_icon_of_the_space() -> None:
+    # Desert Tactics prints a troop icon and an optional trash icon, each its
+    # own freely ordered effect [Main p. 9] (OQ-027); the paid repeat queues
+    # both again. It waits only for the mandatory troop: the optional trash
+    # left unused holds it back no more than it holds the turn end (OQ-095
+    # (2), user ruling 2026-10-14; before codec v146 the trash had to be
+    # declined first). Paying the repeat lapses that unused trash
+    # (``board_effect_lapsed``) before arming the printed icons again, as
+    # declining it before the repeat did in the old engine.
+    owner = _jessica_owner(
+        face="reverend_mother_jessica",
+        water=2,
+        hand=(_diplomacy_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(
+        state, _signet_action_to_card(state, "desert_tactics")
+    ).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "troops,trash"
+    assert legal_leader_board_repeat_actions(placed, 0) == ()
+
+    recruited = resolve_board_effect(placed, _board_icon_action(placed, "troops")).state
+    assert recruited.players[0].troops_garrison == 4
+    assert dict(recruited.decision_stack[-1].context)["pending_board_icons"] == "trash"
+    pay = DomainAction(action_id="pay_leader_board_repeat", actor=0)
+    assert legal_leader_board_repeat_actions(recruited, 0) == (pay,)
+
+    def lapsed(result: RuleResult) -> list[tuple[str, dict[str, object]]]:
+        return [
+            (event.event_id, dict(event.payload))
+            for event in result.events
+            if event.kind == "board_effect_lapsed"
+        ]
+
+    # Used first, the trash is armed again by the repeat; nothing lapses.
+    trash = legal_desert_tactics_actions(recruited, 0)[0]
+    trashed = apply_desert_tactics_action(recruited, trash).state
+    repeated_result = apply_leader_board_repeat(trashed, pay)
+    assert lapsed(repeated_result) == []
+    rearmed = dict(repeated_result.state.decision_stack[-1].context)
+    assert rearmed["pending_board_icons"] == "troops,trash"
+
+    # Unused, it lapses with the payment and the repeat arms it anew: one
+    # trash queued beside the repeated troop.
+    paid_result = apply_leader_board_repeat(recruited, pay)
+    assert lapsed(paid_result) == [
+        (
+            "round:1:player:0:leader:reverend_mother_jessica:trash:lapsed",
+            {"effect": "trash", "player": 0, "space_id": "desert_tactics"},
+        )
+    ]
+    assert [event.kind for event in paid_result.events[-2:]] == [
+        "resources_paid",
+        "leader_ability_resolved",
+    ]
+    # The flipped face's ability, as the page names it (2026-10-18 review).
+    assert dict(paid_result.events[-1].payload)["leader_id"] == (
+        "reverend_mother_jessica"
+    )
+    paid = paid_result.state
+    paid_context = dict(paid.decision_stack[-1].context)
+    assert paid_context["pending_board_icons"] == "troops,trash"
+    assert paid_context["pending_board_effect"] is True
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_board_effect_actions(paid, 0)
+    ] == ["troops"]
+    assert legal_desert_tactics_actions(paid, 0) != ()
+
+    second = resolve_board_effect(paid, _board_icon_action(paid, "troops")).state
+    assert second.players[0].troops_garrison == 5
+    assert dict(second.decision_stack[-1].context)["pending_board_icons"] == "trash"
+
+
+def _board_icon_action(state: GameState, effect: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_board_effect_actions(state, 0)
+        if dict(action.arguments)["effect"] == effect
+    )
+
+
+def test_lady_jessica_repeat_is_not_pending_before_the_flip() -> None:
+    owner = _jessica_owner(hand=(_diplomacy_instance(),))
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to_card(state, "fremkit")).state
+
+    assert (
+        dict(placed.decision_stack[-1].context)["pending_leader_board_repeat"] is False
+    )
+
+
+def test_setup_assigns_the_printed_leader_faces() -> None:
+    from dune_imperium import RulesetConfig as _Config
+
+    setup = create_initial_state(
+        _Config(),
+        seed=5,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    faces = tuple(player.leader_face_id for player in setup.state.players)
+
+    # Lady Jessica starts on her Lady Jessica face [Main p. 17]; single-faced
+    # Leaders show their identity.
+    assert faces == (
+        "feyd_rautha_harkonnen",
+        "gurney_halleck",
+        "lady_amber_metulli",
+        "lady_jessica",
+    )
+
+
+def test_loyalty_grants_two_spice_on_reaching_two_bene_gesserit() -> None:
+    owner = PlayerState(player_id=0, leader_id="lady_margot_fenring")
+    state = _turn_state(owner)
+
+    result = gain_faction_influence(
+        state,
+        0,
+        Faction.BENE_GESSERIT,
+        2,
+        event_prefix="test:loyalty",
+    )
+    resolved = result.state.players[0]
+
+    # Loyalty: reaching two Bene Gesserit Influence grants two Spice, and
+    # passing 2 within one multi-step gain counts [Main pp. 7, 17].
+    assert resolved.influence.bene_gesserit == 2
+    assert resolved.resources.spice == 2
+    assert any(event.kind == "leader_influence_bonus_gained" for event in result.events)
+
+
+def test_loyalty_triggers_again_after_dropping_below_two() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_margot_fenring",
+        influence=Influence(bene_gesserit=2),
+        victory_points=2,
+    )
+    state = _turn_state(owner)
+
+    lost = lose_faction_influence(
+        state,
+        0,
+        Faction.BENE_GESSERIT,
+        1,
+        event_prefix="test:loyalty:loss",
+    )
+    assert lost.state.players[0].resources.spice == 0
+
+    regained = gain_faction_influence(
+        lost.state,
+        0,
+        Faction.BENE_GESSERIT,
+        1,
+        event_prefix="test:loyalty:regain",
+    )
+
+    assert regained.state.players[0].resources.spice == 2
+
+
+def test_loyalty_ignores_other_factions_and_leaders() -> None:
+    margot = PlayerState(player_id=0, leader_id="lady_margot_fenring")
+    state = _turn_state(margot)
+
+    other_faction = gain_faction_influence(
+        state,
+        0,
+        Faction.EMPEROR,
+        2,
+        event_prefix="test:loyalty:other",
+    )
+    assert other_faction.state.players[0].resources.spice == 0
+
+    gurney_state = _turn_state(PlayerState(player_id=0, leader_id="gurney_halleck"))
+    other_leader = gain_faction_influence(
+        gurney_state,
+        0,
+        Faction.BENE_GESSERIT,
+        2,
+        event_prefix="test:loyalty:gurney",
+    )
+    assert other_leader.state.players[0].resources.spice == 0
+
+
+def test_imperial_birthright_is_the_owners_next_step_in_its_turn() -> None:
+    # "When you reach [Emperor] 2 Influence: [Intrigue 1 draw]." [Princess
+    # Irulan card]. Inside the seat's own turn the card is not drawn by the
+    # step that raised the Influence: it is the seat's own step (user ruling
+    # 2026-10-10, OQ-106: "그 외에는 전부 나누자"), the very next one (user
+    # decision 2026-10-10, "가 로 가자": "faction bonuses ... may interrupt
+    # this flow", Message from designer).
+    owner = PlayerState(player_id=0, leader_id="princess_irulan")
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+
+    result = gain_faction_influence(
+        state,
+        0,
+        Faction.EMPEROR,
+        2,
+        event_prefix="test:birthright",
+    )
+
+    held = result.state.players[0]
+    assert held.intrigue_cards == ()
+    assert result.state.intrigue_deck == ("intrigue:test",)
+    assert [entry[:2] for entry in held.owed_draws] == [
+        ("intrigue", "imperial_birthright")
+    ]
+    (draw,) = legal_owed_draw_actions(result.state, 0)
+    # The leader's ability earned it, so it is the leader's own action (stage
+    # B3e-1).
+    assert draw == DomainAction(
+        action_id="draw_owed_intrigue",
+        actor=0,
+        arguments=(("printed", "princess_irulan"), ("source", "leader")),
+    )
+    # The turn offers it by its effect row (stage B3d-4): an Intrigue draw
+    # the leader's ability earned.
+    row = first_step(result.state, draw)
+    assert row == DomainAction(
+        action_id="draw",
+        actor=0,
+        arguments=(
+            ("icon", "intrigue"),
+            ("printed", "princess_irulan"),
+            ("source", "leader"),
+        ),
+    )
+    assert UprisingRulesEngine().legal_actions(result.state, 0) == (row,)
+    drawn = apply_owed_draw(result.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+    assert drawn.intrigue_deck == ()
+    assert legal_owed_draw_actions(drawn, 0) == ()
+
+
+def test_imperial_birthright_draws_at_once_outside_the_seats_turn() -> None:
+    # Outside the seat's own turn (a Conflict reward) the card is drawn at
+    # once, and an empty deck queues it for the reshuffle as before (OQ-106).
+    owner = PlayerState(player_id=0, leader_id="princess_irulan")
+    combat = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        decision_stack=(),
+        intrigue_deck=("intrigue:test",),
+    )
+
+    drawn = gain_faction_influence(
+        combat, 0, Faction.EMPEROR, 2, event_prefix="test:birthright"
+    ).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert drawn.players[0].owed_draws == ()
+
+    queued = gain_faction_influence(
+        replace(combat, intrigue_deck=()),
+        0,
+        Faction.EMPEROR,
+        2,
+        event_prefix="test:birthright:empty",
+    ).state
+    (owed,) = queued.pending_intrigue_draws
+    assert owed[:2] == (0, 1)
+    assert queued.players[0].owed_draws == ()
+
+
+def test_arrakis_informant_places_a_spy_only_next_to_city_spaces() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_margot_fenring",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+
+    # Arrakis Informant: a Spy on a post connected to a City board space
+    # [Lady Margot Fenring card] [Main p. 20].
+    assert {action.action_id for action in actions} == {"place_leader_spy"}
+    assert {dict(action.arguments)["post_id"] for action in actions} == {
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    }
+    result = apply_leader_spy_action(placed, actions[0])
+    assert result.state.players[0].spies_supply == 2
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_arrakis_informant_fizzles_when_every_city_post_is_taken() -> None:
+    city_posts = (
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_margot_fenring",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    opponent = replace(
+        state.players[1],
+        spies_supply=0,
+        spy_post_ids=city_posts,
+    )
+    crowded = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+    placed = apply_agent_action(crowded, _signet_action_to(crowded, "arrakeen")).state
+
+    assert legal_leader_signet_actions(placed, 0) == ()
+    result = resolve_agent_card_effect(placed)
+
+    assert [(e.kind, e.event_id) for e in result.events] == [
+        ("leader_signet_unavailable", "round:1:player:0:leader_signet:unavailable")
+    ]
+
+
+def test_arrakis_informant_can_pass_up_the_recall_first_without_supply() -> None:
+    # Arrakis Informant prints "[Spy] on [City]" [Lady Margot Fenring card];
+    # "If you have no Spies in your supply, you may first recall one of your
+    # Spies for no effect" [Main pp. 11, 20], a choice (docs/rules/
+    # uprising-systems.md, OQ-057 (14)). The Signet used to force a recall.
+    posts = (
+        "emperor-sardaukar-dutiful-service",
+        "landsraad-assembly-hall-gather-support",
+        "arrakis-deep-desert",
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_margot_fenring",
+        hand=(_signet_instance(),),
+        spies_supply=0,
+        spy_post_ids=posts,
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert [action.action_id for action in actions] == [
+        "decline_leader_spy_placement",
+        *("recall_spy_for_leader_placement",) * 3,
+    ]
+    declined = apply_leader_spy_action(placed, actions[0])
+    assert declined.state.players[0].spy_post_ids == posts
+    assert declined.state.players[0].spies_recalled_turn == 0
+    assert (
+        dict(declined.state.decision_stack[-1].context)["pending_agent_effect"]
+        is False
+    )
+    assert [event.kind for event in declined.events] == [
+        "spy_placement_unavailable",
+        "leader_signet_declined",
+    ]
+
+    # Once a Spy is recalled it has to be placed on a City post.
+    recalled = apply_leader_spy_action(placed, actions[3]).state
+    after = legal_leader_signet_actions(recalled, 0)
+    assert {action.action_id for action in after} == {"place_leader_spy"}
+    assert {dict(action.arguments)["post_id"] for action in after} == {
+        "arrakis-research-station-spice-refinery",
+        "arrakis-research-station-sietch-tabr",
+        "arrakis-spice-refinery-arrakeen",
+    }
+
+
+def test_lead_the_way_signet_draws_one_card() -> None:
+    drawn = "player:0:starter:dagger:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="muad_dib",
+        hand=(_signet_instance(),),
+        deck=(drawn,),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    result = resolve_agent_card_effect(placed)
+
+    assert drawn in result.state.players[0].hand
+    assert result.events[0].kind == "leader_signet_resolved"
+
+
+def test_unpredictable_foe_draws_intrigue_with_a_sandworm() -> None:
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        leader_id="muad_dib",
+        hand=("player:0:starter:dagger:0",),
+        sandworms_conflict=1,
+    )
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
+    context = dict(transition.state.decision_stack[-1].context)
+
+    # Unpredictable Foe: one or more sandworms in the Conflict during the
+    # Reveal turn draw one Intrigue card [Muad'Dib card]. The card waits on
+    # the Reveal's pending gains as his own ``draw_reveal_intrigue`` (OQ-045),
+    # so the Reveal itself stays undoable (user ruling 2026-10-10, OQ-106).
+    assert transition.state.players[0].intrigue_cards == ()
+    assert context["leader_intrigue_granted"] is True
+    # His ability printed it, so it names the leader (stage B3e-1).
+    draw = DomainAction(
+        action_id="draw_reveal_intrigue",
+        actor=0,
+        arguments=(("printed", "muad_dib"), ("source", "leader")),
+    )
+    offered = engine.whole_actions(transition.state, 0)
+    assert draw in offered
+    assert DomainAction(action_id="finish_reveal", actor=0) not in offered
+    drawn = apply_whole(engine, transition.state, draw).state
+    assert drawn.players[0].intrigue_cards == ("intrigue:test",)
+    assert draw not in engine.whole_actions(drawn, 0)
+    # Granted once per Reveal: no second card comes.
+    assert dict(drawn.decision_stack[-1].context)["leader_intrigue_granted"] is True
+    assert DomainAction(action_id="finish_reveal", actor=0) in (
+        engine.whole_actions(drawn, 0)
+    )
+
+
+def test_unpredictable_foe_stays_quiet_without_sandworms() -> None:
+    engine = UprisingRulesEngine()
+    owner = PlayerState(
+        player_id=0,
+        leader_id="muad_dib",
+        hand=("player:0:starter:dagger:0",),
+    )
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+
+    transition = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    )
+
+    assert transition.state.players[0].intrigue_cards == ()
+    assert "leader_intrigue_granted" not in dict(
+        transition.state.decision_stack[-1].context
+    )
+
+
+def test_limited_allies_removes_diplomacy_from_the_starting_deck() -> None:
+    setup = create_initial_state(
+        RulesetConfig(),
+        seed=9,
+        leader_ids=(
+            "staban_tuek",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    staban_zones = (
+        *setup.state.players[0].deck,
+        *setup.state.players[0].hand,
+        *setup.state.players[0].discard_pile,
+    )
+    other_zones = (
+        *setup.state.players[1].deck,
+        *setup.state.players[1].hand,
+    )
+
+    # Limited Allies: Staban Tuek starts without Diplomacy [Staban Tuek card].
+    assert not any("diplomacy" in card_id for card_id in staban_zones)
+    assert len(staban_zones) == 9
+    assert any("diplomacy" in card_id for card_id in other_zones)
+
+
+def test_smuggle_spice_pays_staban_for_spied_maker_visits() -> None:
+    staban = PlayerState(
+        player_id=1,
+        leader_id="staban_tuek",
+        spies_supply=2,
+        spy_post_ids=("arrakis-hagga-basin",),
+    )
+    visitor = PlayerState(
+        player_id=0,
+        hand=("player:0:starter:dune_the_desert_planet:0",),
+    )
+    state = replace(
+        _turn_state(visitor),
+        players=(visitor, staban, *(_turn_state(visitor).players[2:])),
+    )
+
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
+
+    # Smuggle Spice: another player's Agent on a spied Maker space pays one
+    # Spice [Staban Tuek card].
+    assert result.state.players[1].resources.spice == 1
+    # The payout is a plain resource gain whose source names the Leader
+    # (cleanup-2c-4: the log reads a ``leader`` source as the Leader's name).
+    smuggled = [
+        e
+        for e in result.events
+        if e.kind == "resources_gained"
+        and dict(e.payload)["source"] == "round:1:player:1:leader:staban_tuek"
+    ]
+    assert [dict(event.payload) for event in smuggled] == [
+        {"player": 1, "source": "round:1:player:1:leader:staban_tuek", "spice": 1}
+    ]
+    assert smuggled[0].event_id == "round:1:player:1:leader:staban_tuek:resources"
+    assert smuggled[0].visible_to is None
+    assert not any(e.kind == "leader_ability_spice_gained" for e in result.events)
+
+
+def test_smuggle_spice_needs_a_spy_on_the_visited_maker_space() -> None:
+    staban = PlayerState(
+        player_id=1,
+        leader_id="staban_tuek",
+        spies_supply=2,
+        spy_post_ids=("arrakis-deep-desert",),
+    )
+    visitor = PlayerState(
+        player_id=0,
+        hand=("player:0:starter:dune_the_desert_planet:0",),
+    )
+    state = replace(
+        _turn_state(visitor),
+        players=(visitor, staban, *(_turn_state(visitor).players[2:])),
+    )
+
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
+
+    assert result.state.players[1].resources.spice == 0
+
+
+def test_smuggle_spice_ignores_stabans_own_maker_visits() -> None:
+    staban = PlayerState(
+        player_id=0,
+        leader_id="staban_tuek",
+        hand=("player:0:starter:dune_the_desert_planet:0",),
+        spies_supply=2,
+        spy_post_ids=("arrakis-hagga-basin",),
+    )
+    state = _turn_state(staban)
+
+    result = apply_agent_action(
+        state,
+        _signet_action_to_card_id(
+            state, "hagga_basin", "player:0:starter:dune_the_desert_planet:0"
+        ),
+    )
+
+    assert result.state.players[0].resources.spice == 0
+
+
+def test_unseen_network_offers_the_landsraad_bonus() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="staban_tuek",
+        hand=(_signet_instance(),),
+        resources=Resources(spice=1),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    placement = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments)["post_id"] == "landsraad-assembly-hall-gather-support"
+    )
+    after_spy = apply_leader_spy_action(placed, placement)
+    context = dict(after_spy.state.decision_stack[-1].context)
+    assert context["staban_bonus_post"] == "landsraad-assembly-hall-gather-support"
+
+    actions = legal_leader_signet_actions(after_spy.state, 0)
+    assert {action.action_id for action in actions} == {
+        "decline_leader_signet_payment",
+        "pay_leader_signet_spice",
+    }
+    pay = next(
+        action for action in actions if action.action_id == "pay_leader_signet_spice"
+    )
+    result = apply_leader_signet_payment(after_spy.state, pay)
+    resolved = result.state.players[0]
+
+    # Unseen Network next to the Landsraad: one Spice buys three Solari
+    # [Staban Tuek card].
+    assert resolved.resources.spice == 0
+    assert resolved.resources.solari == 3
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def test_unseen_network_offers_the_faction_bonus() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="staban_tuek",
+        hand=(_signet_instance(),),
+        resources=Resources(solari=2),
+    )
+    state = replace(_turn_state(owner), intrigue_deck=("intrigue:test",))
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    placement = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments)["post_id"] == "emperor-sardaukar-dutiful-service"
+    )
+    after_spy = apply_leader_spy_action(placed, placement)
+
+    pay = next(
+        action
+        for action in legal_leader_signet_actions(after_spy.state, 0)
+        if action.action_id == "pay_leader_signet_solari"
+    )
+    result = apply_leader_signet_payment(after_spy.state, pay)
+    resolved = result.state.players[0]
+
+    # Unseen Network next to a Faction: two Solari buy one Intrigue card
+    # [Staban Tuek card].
+    assert resolved.resources.solari == 0
+    assert resolved.intrigue_cards == ("intrigue:test",)
+
+
+def test_unseen_network_has_no_bonus_on_other_posts() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="staban_tuek",
+        hand=(_signet_instance(),),
+        resources=Resources(spice=3, solari=3),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    placement = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments)["post_id"] == "choam-shipping-accept-contract"
+    )
+    result = apply_leader_spy_action(placed, placement)
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert "staban_bonus_post" not in context
+    assert context["pending_agent_effect"] is False
+
+
+def test_unseen_network_bonus_without_funds_only_declines() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="staban_tuek",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    placement = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments)["post_id"] == "landsraad-assembly-hall-gather-support"
+    )
+    after_spy = apply_leader_spy_action(placed, placement)
+
+    actions = legal_leader_signet_actions(after_spy.state, 0)
+
+    assert [action.action_id for action in actions] == ["decline_leader_signet_payment"]
+    result = apply_leader_signet_payment(after_spy.state, actions[0])
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_agent_effect"] is False
+    assert "staban_bonus_post" not in context
+
+
+def test_chroniclers_insight_acquires_a_one_cost_card_to_hand() -> None:
+    target = "imperium:sardaukar_soldier:0"
+    refill = "imperium:overthrow:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=(refill,),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    acquire = next(
+        action for action in actions if action.action_id == "acquire_leader_imperium"
+    )
+    assert dict(acquire.arguments)["instance_id"] == target
+    result = apply_leader_signet_acquire(placed, acquire)
+    resolved = result.state.players[0]
+
+    # Chronicler's Insight: acquire a card that costs one to your hand
+    # [Princess Irulan card]; the Row refills at once [Main p. 13].
+    assert target in resolved.hand
+    assert refill in result.state.imperium_row
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def _fake_signet_troop_contract(card_id: str, target: str) -> ContractDefinition:
+    return ContractDefinition(
+        card=CardDefinition(
+            card_id=card_id,
+            name="Fake Troop Acquire",
+            sources=CONTRACT_SOURCES,
+        ),
+        terms=Ability(
+            timing=AbilityTiming.CONTRACT,
+            sections=(EffectSection(rewards=(RecruitTroops(1),)),),
+            requirement=AcquiredCard(target),
+        ),
+    )
+
+
+def _install_fake_signet_troop_contract(
+    monkeypatch: pytest.MonkeyPatch, card_id: str, target: str
+) -> None:
+    """Add the fake Acquire Contract, whose definition holds its record."""
+
+    monkeypatch.setitem(
+        CONTRACTS_BY_ID, card_id, _fake_signet_troop_contract(card_id, target)
+    )
+
+
+def test_chroniclers_insight_troop_reward_joins_the_still_open_agent_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test gap flagged by mutation testing on ``ce533c4``: no acquisition
+    # this Signet reaches currently recruits a troop (that commit's own
+    # note). A monkeypatched Acquire Contract (as ``test_acquisition.py``'s
+    # ``_fake_troop_contract``) exercises the same shape as a real
+    # troop-rewarding acquisition would: Chronicler's Insight resolved as
+    # the turn's last effect, with every other seat already revealed. That
+    # used to close and reopen a fresh "turn" frame for this same player,
+    # and the Contract's troop was kept out of it (OQ-044 (d),
+    # ``4e29e27``). Since OQ-095 (3) the turn stays open until its owner
+    # ends it, so the troop the completed Contract recruits is this turn's:
+    # "그 turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다" [Main p. 10] [FAQ p. 4] (docs/rules/player-turns.md:137). The
+    # press then reopens his own next turn with nothing carried over.
+    target = "imperium:sardaukar_soldier:0"
+    _install_fake_signet_troop_contract(
+        monkeypatch, "fake_troop_acquire_signet", "sardaukar_soldier"
+    )
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        active_contract_ids=("contract:fake_troop_acquire_signet",),
+    )
+    state = _turn_state(
+        owner,
+        config=RulesetConfig(choam_module=True),
+        players=(
+            owner,
+            PlayerState(player_id=1, has_revealed=True),
+            PlayerState(player_id=2, has_revealed=True),
+            PlayerState(player_id=3, has_revealed=True),
+        ),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=("imperium:overthrow:0",),
+        intrigue_deck=("intrigue:test",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "assembly_hall")).state
+    # Assembly Hall's own Intrigue icon is a separate pending effect from
+    # the Signet's own box [Main p. 9] (OQ-027); resolve it first so the
+    # Signet acquisition below is the turn's last one. Assembly Hall is not
+    # a Combat space, so nothing else keeps a deployment window open
+    # (OQ-029).
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    garrison = placed.players[0].troops_garrison
+
+    acquire = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    )
+    result = apply_leader_signet_acquire(placed, acquire)
+    # v150 (stage B3b, OQ-112 (4)): the completed Contract's reward is a row
+    # of this Agent turn, which holds its end; it is answered here before the
+    # turn is looked at again.
+    assert result.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result.state, 0)
+    assert result.state.players[0].troops_garrison == garrison
+    settled = settle_reward_window(result.state)
+    assert not turn_rows.holds_the_end(settled, 0)
+
+    assert settled.players[0].troops_garrison == garrison + 1
+    assert settled.players[0].completed_contract_ids == (
+        "contract:fake_troop_acquire_signet",
+    )
+    top = settled.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context)["troops_recruited"] == 1
+    engine = UprisingRulesEngine()
+    assert [action.action_id for action in engine.whole_actions(settled, 0)] == [
+        "finish_agent_turn"
+    ]
+
+    closed = finish_agent_turn(settled)
+    top = closed.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_chroniclers_insight_still_acquires_once_the_imperium_deck_is_empty() -> None:
+    # "Acquire a card that costs [1] to your hand" puts no condition on the
+    # Imperium Deck [Princess Irulan card]; once the deck is exhausted the Row
+    # keeps operating with fewer cards (OQ-004), so its one-cost card stays
+    # acquirable and the Row shrinks instead of refilling.
+    target = "imperium:sardaukar_soldier:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=(target, "imperium:calculus_of_power:0"),
+        imperium_deck=(),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    acquire = DomainAction(
+        action_id="acquire_leader_imperium",
+        actor=0,
+        arguments=(("instance_id", target),),
+    )
+    assert acquire in legal_leader_signet_actions(placed, 0)
+    result = apply_leader_signet_acquire(placed, acquire)
+    assert target in result.state.players[0].hand
+    assert result.state.imperium_row == ("imperium:calculus_of_power:0",)
+    assert result.state.imperium_deck == ()
+
+
+def test_chroniclers_insight_reaches_the_owners_set_aside_one_cost_card() -> None:
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: a printed-1 Manipulate
+    # card is in reach, a printed-2 one (1 with the discount) is not.
+    target = "imperium:sardaukar_soldier:0"
+    discounted = "imperium:desert_survival:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+        imperium_set_aside=(target, discounted),
+    )
+    state = replace(
+        _turn_state(owner),
+        imperium_row=("imperium:calculus_of_power:0",),
+        imperium_deck=("imperium:overthrow:0",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_leader_signet_actions(placed, 0)
+        if action.action_id == "acquire_leader_imperium"
+    ]
+    assert offered == [target]
+    result = apply_leader_signet_acquire(
+        placed,
+        DomainAction(
+            action_id="acquire_leader_imperium",
+            actor=0,
+            arguments=(("instance_id", target),),
+        ),
+    )
+    assert target in result.state.players[0].hand
+    assert result.state.players[0].imperium_set_aside == (discounted,)
+    assert result.state.imperium_row == state.imperium_row
+    assert result.state.imperium_deck == state.imperium_deck
+
+
+def test_chroniclers_insight_trash_pays_spice_only_for_costed_cards() -> None:
+    costed = "imperium:overthrow:0"
+    starter = "player:0:starter:dagger:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(), costed, starter),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    trash_costed = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == costed
+    )
+    result = apply_leader_card_trash(placed, trash_costed)
+    assert costed in result.state.players[0].trashed
+    assert result.state.players[0].resources.spice == 2
+
+    trash_starter = next(
+        action
+        for action in legal_leader_signet_actions(placed, 0)
+        if dict(action.arguments).get("card_id") == starter
+    )
+    starter_result = apply_leader_card_trash(placed, trash_starter)
+    assert starter in starter_result.state.players[0].trashed
+    assert starter_result.state.players[0].resources.spice == 0
+
+
+def test_chroniclers_insight_can_decline_entirely() -> None:
+    owner = PlayerState(
+        player_id=0,
+        leader_id="princess_irulan",
+        hand=(_signet_instance(),),
+    )
+    state = _turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    decline = next(
+        action
+        for action in actions
+        if action.action_id == "decline_leader_signet_payment"
+    )
+    result = apply_leader_signet_payment(placed, decline)
+
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_agent_effect"] is False
+    )
+
+
+def _choam_turn_state(owner: PlayerState) -> GameState:
+    return GameState(
+        config=RulesetConfig(choam_module=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _shaddam_owner(
+    *,
+    solari: int = 0,
+    hand: tuple[str, ...] = (),
+) -> PlayerState:
+    return PlayerState(
+        player_id=0,
+        leader_id="shaddam_corrino_iv",
+        resources=Resources(solari=solari),
+        hand=hand,
+    )
+
+
+def test_setup_sets_aside_both_sardaukar_contracts_for_shaddam() -> None:
+    setup = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=11,
+        leader_ids=(
+            "shaddam_corrino_iv",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    state = setup.state
+
+    # Sardaukar Commander sets aside both Sardaukar Contracts before the
+    # shuffle [Shaddam Corrino IV card]; the market still opens with two of
+    # the remaining eighteen tiles.
+    assert set(state.sardaukar_contract_ids) == {
+        "contract:sardaukar_i",
+        "contract:sardaukar_ii",
+    }
+    assert len(state.face_up_contract_ids) == 2
+    assert len(state.contract_bank) == 16
+    assert not set(state.sardaukar_contract_ids) & set(
+        (*state.face_up_contract_ids, *state.contract_bank)
+    )
+
+
+def test_setup_without_shaddam_keeps_the_sardaukar_tiles_in_the_pool() -> None:
+    setup = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=11,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    )
+
+    state = setup.state
+
+    assert state.sardaukar_contract_ids == ()
+    assert len(state.face_up_contract_ids) + len(state.contract_bank) == 20
+
+
+def test_shaddam_may_take_a_set_aside_sardaukar_contract() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        begin_contract_gain,
+        legal_contract_actions,
+    )
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        face_up_contract_ids=("contract:immediate",),
+        contract_bank=("contract:deliver_supplies",),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+    opened = begin_contract_gain(state, 0, 1, source="test:shaddam").state
+
+    choices = {
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_actions(opened, 0)
+    }
+    assert choices == {
+        "contract:immediate",
+        "contract:sardaukar_i",
+        "contract:sardaukar_ii",
+    }
+
+    take = next(
+        action
+        for action in legal_contract_actions(opened, 0)
+        if dict(action.arguments)["instance_id"] == "contract:sardaukar_i"
+    )
+    result = apply_contract_action(opened, take)
+
+    # The set-aside tile is taken in place of a face-up one [FAQ p. 3]: the
+    # market keeps its tile and nothing refills from the bank.
+    assert result.state.players[0].active_contract_ids == ("contract:sardaukar_i",)
+    assert result.state.sardaukar_contract_ids == ("contract:sardaukar_ii",)
+    assert result.state.face_up_contract_ids == ("contract:immediate",)
+    assert result.state.contract_bank == ("contract:deliver_supplies",)
+
+
+def test_other_players_never_see_the_set_aside_contracts() -> None:
+    from dune_imperium.rules.contracts import (
+        begin_contract_gain,
+        legal_contract_actions,
+    )
+
+    owner = PlayerState(player_id=0, leader_id="gurney_halleck")
+    state = replace(
+        _choam_turn_state(owner),
+        face_up_contract_ids=("contract:immediate",),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+    opened = begin_contract_gain(state, 0, 1, source="test:other").state
+
+    choices = {
+        dict(action.arguments)["instance_id"]
+        for action in legal_contract_actions(opened, 0)
+    }
+
+    # Only Shaddam can acquire the set-aside Sardaukar Contracts
+    # [Shaddam Corrino IV card].
+    assert choices == {"contract:immediate"}
+
+
+def test_shaddam_must_take_a_set_aside_contract_over_an_empty_market() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        begin_contract_gain,
+        legal_contract_actions,
+    )
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        sardaukar_contract_ids=(
+            "contract:sardaukar_i",
+            "contract:sardaukar_ii",
+        ),
+    )
+
+    # OQ-021 (user ruling 2026-10-04, following the Steam app): the icon
+    # reverts to two Solari only "If all contracts have been taken by
+    # players" [Main p. 16], and nobody has taken the set-aside Sardaukar
+    # Contracts, so Shaddam's icon must take one of them.
+    opened = begin_contract_gain(state, 0, 1, source="test:exhausted").state
+    offered = legal_contract_actions(opened, 0)
+    assert [action.action_id for action in offered] == [
+        "take_contract",
+        "take_contract",
+    ]
+
+    taken = apply_contract_action(opened, offered[0]).state
+    assert taken.players[0].active_contract_ids == ("contract:sardaukar_i",)
+    assert taken.sardaukar_contract_ids == ("contract:sardaukar_ii",)
+    assert taken.players[0].resources.solari == 0
+    assert taken.decision_stack == state.decision_stack
+
+
+def test_shaddam_icons_revert_to_solari_once_the_set_aside_runs_out() -> None:
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        begin_contract_gain,
+        exhausted_contract_choice_is_pending,
+        legal_contract_actions,
+        resolve_exhausted_contract_choice,
+    )
+
+    owner = _shaddam_owner()
+    state = replace(
+        _choam_turn_state(owner),
+        sardaukar_contract_ids=("contract:sardaukar_i",),
+    )
+
+    # Two icons over an exhausted market with one set-aside tile left: the
+    # first takes it, then every Contract has been taken and the second
+    # icon reverts to two Solari like anyone else's [Main p. 16] (OQ-021).
+    opened = begin_contract_gain(state, 0, 2, source="test:exhausted").state
+    (only,) = legal_contract_actions(opened, 0)
+    assert dict(only.arguments)["instance_id"] == "contract:sardaukar_i"
+
+    taken = apply_contract_action(opened, only).state
+    assert taken.players[0].active_contract_ids == ("contract:sardaukar_i",)
+    assert taken.sardaukar_contract_ids == ()
+    # The engine settles the second icon without asking.
+    assert exhausted_contract_choice_is_pending(taken)
+    converted = resolve_exhausted_contract_choice(taken).state
+    assert converted.players[0].resources.solari == 2
+    assert converted.decision_stack == state.decision_stack
+
+
+def test_emperor_signet_gains_a_solari_and_a_deployable_free_troop() -> None:
+    owner = _shaddam_owner(hand=(_signet_instance(),))
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    context = dict(placed.decision_stack[-1].context)
+
+    # The deployment restriction takes effect immediately at placement
+    # [Main p. 17]: no Combat deployment is pending even on a Combat space.
+    assert context["units_deploy_blocked"] is True
+    assert context["pending_combat_deployment"] is False
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert [action.action_id for action in actions] == ["gain_leader_signet_troop"]
+    result = apply_shaddam_signet_choice(placed, actions[0])
+    resolved = result.state.players[0]
+    next_context = dict(result.state.decision_stack[-1].context)
+
+    assert resolved.resources.solari == 1
+    assert resolved.troops_garrison == 4
+    assert next_context["troops_recruited"] == 1
+    assert next_context["pending_agent_effect"] is False
+
+
+def test_emperor_signet_can_buy_influence_with_three_solari() -> None:
+    owner = _shaddam_owner(solari=3, hand=(_signet_instance(),))
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+
+    actions = legal_leader_signet_actions(placed, 0)
+    assert {action.action_id for action in actions} == {
+        "gain_leader_signet_troop",
+        "choose_leader_signet_influence",
+    }
+    choose = next(
+        action
+        for action in actions
+        if dict(action.arguments).get("faction") == "fremen"
+    )
+    result = apply_shaddam_signet_choice(placed, choose)
+    resolved = result.state.players[0]
+
+    assert resolved.resources.solari == 0
+    assert resolved.influence.fremen == 1
+
+
+def test_emperor_signet_never_buys_influence_at_the_top() -> None:
+    """OQ-060: a gain on a cube at 6 is lost, so Emperor of the Known
+    Universe offers no Faction there; with every cube at 6 the three Solari
+    would buy nothing and are not offered (OQ-071), only the Solari and
+    troop."""
+
+    owner = replace(
+        _shaddam_owner(solari=3, hand=(_signet_instance(),)),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=5),
+    )
+    state = _choam_turn_state(owner)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [
+        (action.action_id, dict(action.arguments).get("faction"))
+        for action in legal_leader_signet_actions(placed, 0)
+    ] == [
+        ("gain_leader_signet_troop", None),
+        ("choose_leader_signet_influence", "fremen"),
+    ]
+    assert not signet_influence_withheld(placed, 0)
+
+    full = replace(
+        owner,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _choam_turn_state(full)
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    assert [action.action_id for action in legal_leader_signet_actions(placed, 0)] == [
+        "gain_leader_signet_troop"
+    ]
+    assert signet_influence_withheld(placed, 0)
+
+
+def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
+    from dune_imperium.rules.board_effects import legal_maker_space_actions
+
+    owner = replace(
+        _shaddam_owner(hand=(_signet_instance(),)),
+        resources=Resources(water=1),
+        maker_hooks=True,
+    )
+    state = replace(
+        _choam_turn_state(owner),
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "hagga_basin")).state
+
+    actions = legal_maker_space_actions(placed, 0)
+
+    # A summoned sandworm is immediately deployed [Main p. 20], so only the
+    # Spice harvest remains during the restricted turn.
+    assert [action.action_id for action in actions] == ["harvest_maker_spice"]
+
+
+def test_emperor_restriction_leaves_intrigue_deployment_options_deploying_none() -> (
+    None
+):
+    # Emperor of the Known Universe blocks every unit for the turn
+    # [Main p. 17], so "Deploy up to four troops" could change nothing; the
+    # line has no cost, so it is offered all the same and only the zero
+    # deployment is: "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고
+    # 모든 비용을 지불해야 한다. [FAQ p. 2]", with the user's ruling of
+    # 2026-10-24 (OQ-113 (C), (2) 1; on 2026-10-06 it was not offered).
+    from dune_imperium.content.registry.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+    from dune_imperium.rules.effect_interpreter import option_is_playable
+
+    detonation = "intrigue:detonation:0"
+    owner = replace(
+        _shaddam_owner(hand=(_signet_instance(),)),
+        troops_garrison=3,
+        intrigue_cards=(detonation,),
+    )
+    state = replace(
+        _choam_turn_state(owner),
+        shield_wall_present=False,
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    placed = apply_agent_action(state, _signet_action_to(state, "arrakeen")).state
+    card = INTRIGUE_CARDS_BY_INSTANCE[detonation]
+
+    deploy_option = next(
+        index
+        for index, option in enumerate(card.options)
+        if any(
+            type(reward).__name__ == "DeployFromGarrison"
+            for section in option.sections
+            for reward in section.rewards
+        )
+    )
+
+    assert option_is_playable(placed, 0, card.options[deploy_option])
+    nothing = apply_whole(
+        UprisingRulesEngine(),
+        placed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", detonation), ("option", deploy_option)),
+        ),
+    )
+    assert "intrigue_without_effect" in [event.kind for event in nothing.events]
+    assert UprisingRulesEngine().whole_actions(nothing.state, 0) == (
+        DomainAction(
+            action_id="deploy_intrigue_troops",
+            actor=0,
+            arguments=(("count", 0),),
+        ),
+    )
+    unrestricted = _choam_turn_state(
+        replace(owner, hand=(), intrigue_cards=(detonation,))
+    )
+    unrestricted = replace(
+        unrestricted,
+        shield_wall_present=False,
+        current_conflict_ids=("siege_of_arrakeen",),
+    )
+    assert option_is_playable(unrestricted, 0, card.options[deploy_option])

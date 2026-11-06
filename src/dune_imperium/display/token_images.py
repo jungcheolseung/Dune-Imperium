@@ -1,0 +1,157 @@
+"""Player-colour token images for the markers the browser UI draws on the board.
+
+The Combat marker is a two-sided token in each player's colour: "strength를
+공개하고 Combat marker를 Combat track의 해당 칸으로 옮긴다. 20을 넘으면 marker의
+`+20` 면을 사용해 track 처음부터 남은 수치를 센다." [Main p. 12]
+(``docs/rules/combat-and-round-end.md``). The UI shows a picture of each
+face when the owner's private assets checkout carries them under
+``tokens/`` (``strength_<colour>.png`` and ``strength_<colour>_plus20.png``).
+The Steam app has no such marker (it shows strength as a number), so the
+faces are composed from its parts by ``scripts/dwgr/app_assets.py
+strength``: a tile in the seat's colour, a dark inner square, and the
+printed strength icon or "+20" in the app's font. Like every other picture
+there they are built from copyrighted artwork and never live in this
+repository, the same policy as the card scans in
+``dune_imperium.display.images`` and the rulebook icons in
+``dune_imperium.display.icons``. Without them the UI keeps its drawn seat
+token.
+"""
+
+from typing import Final
+
+# The Shield Wall token's picture in the same directory: on the board until
+# a player removes it, "제거된 Shield Wall은 게임이 끝날 때까지 돌아오지 않는다"
+# [Main p. 10] (docs/rules/player-turns.md).
+SHIELD_WALL_TOKEN_FILENAME: Final = "shield_wall.png"
+
+# The Maker Hooks token, the same for every player: "Take a Maker Hooks token
+# from the bank, if you don't already have one. Place it on your garrison"
+# [Main p. 20]. The picture has the handle along its bottom edge and the hook
+# at the right; ``board_layout.MAKER_HOOKS_TURNS`` turns it into each
+# garrison's printed slot.
+MAKER_HOOKS_TOKEN_FILENAME: Final = "maker_hooks.png"
+
+# A Sardaukar Commander figure, the same piece for every seat: five (six with
+# four players) stand on board spaces from setup until someone acquires them
+# [Bloodlines p. 3] (docs/rules/bloodlines.md). The picture is the figure on
+# the rulebook's components page [Bloodlines p. 2], cut out of its ground by
+# ``scripts/cut_commander_token.py``; where its base lies is
+# ``board_layout.COMMANDER_PICTURE_BASE``.
+SARDAUKAR_COMMANDER_TOKEN_FILENAME: Final = "sardaukar_commander.png"
+
+# The First Player marker, beside the holder's name on the seat panel: "첫
+# 라운드의 First Player는 공개된 Objective로 결정한다" [Main p. 5], and it passes
+# clockwise in Recall [Main p. 15] (docs/rules/setup-and-game-flow.md). The
+# picture is the Steam app's HUD token, a sandworm on a round token (written
+# by ``scripts/dwgr/app_assets.py pieces``); without it the panel keeps its
+# text badge.
+FIRST_PLAYER_TOKEN_FILENAME: Final = "first_player.png"
+
+# The four Alliance tokens, one per Faction (``Faction`` values): on the marked
+# area of the Faction's Influence track until a player earns the Alliance,
+# then in that player's supply [Main pp. 4, 7]. The pictures are the Steam
+# app's round tokens (``alliance_<faction>.png``, cropped to the disc, written
+# by ``scripts/dwgr/app_assets.py pieces``); an older checkout's Tabletop
+# Simulator photos (``.jpg``, a round token on a black square) still work. The
+# UI cuts the circle out either way.
+ALLIANCE_TOKEN_FACTIONS: Final[tuple[str, ...]] = (
+    "emperor",
+    "spacing_guild",
+    "bene_gesserit",
+    "fremen",
+)
+
+
+def alliance_token_filename(faction: str, suffix: str = ".png") -> str:
+    """Return the filename of one Faction's Alliance token picture."""
+
+    return f"alliance_{faction}{suffix}"
+
+
+def available_alliance_tokens(files: frozenset[str]) -> dict[str, str]:
+    """Return ``{faction: filename}`` for the Alliance pictures in ``files``,
+    the app's ``.png`` before an old ``.jpg``."""
+
+    found: dict[str, str] = {}
+    for faction in ALLIANCE_TOKEN_FACTIONS:
+        for suffix in (".png", ".jpg"):
+            name = alliance_token_filename(faction, suffix)
+            if name in files:
+                found[faction] = name
+                break
+    return found
+
+
+# The token colour of each seat, in seat order. The browser UI tints
+# everything else a seat owns with ``SEAT_COLORS`` in ``server/static/render.js``
+# (green, red, yellow, blue: the Steam app's default for its Players 1-4,
+# user decision 2026-10-25); keep the two tables in step.
+STRENGTH_TOKEN_COLORS: Final[tuple[str, ...]] = ("green", "red", "yellow", "blue")
+
+
+def strength_token_filenames(color: str) -> tuple[str, str]:
+    """Return the ``(sword face, +20 face)`` filenames of one colour's token."""
+
+    return f"strength_{color}.png", f"strength_{color}_plus20.png"
+
+
+def available_strength_tokens(
+    files: frozenset[str],
+) -> tuple[tuple[str, str] | None, ...]:
+    """Return each seat's ``(sword face, +20 face)`` filenames, or ``None``.
+
+    ``files`` is the listing of a local token directory (e.g. the
+    gitignored ``assets/tokens``). A seat gets its pictures only when both
+    faces are there: a token that could show its sword but not flip would
+    misreport every strength beyond 20.
+    """
+
+    result: list[tuple[str, str] | None] = []
+    for color in STRENGTH_TOKEN_COLORS:
+        front, plus20 = strength_token_filenames(color)
+        result.append((front, plus20) if front in files and plus20 in files else None)
+    return tuple(result)
+
+
+# The seat pieces on the board, drawn from the Steam app's sprites by
+# ``scripts/dwgr/app_assets.py pieces`` (``<kind>_<colour>.png``, colours as
+# ``STRENGTH_TOKEN_COLORS``): an Agent on a space or in a Conflict, a Spy on
+# an observation post, a Control marker on a space's flag, a troop cube (also
+# drawn as the Influence cube on the Faction tracks), a sandworm in a Conflict
+# or garrison, the High Council seat token, the plain player disc (the
+# Score marker and both Bene Tleilax track markers), and Rise of Ix's
+# dreadnought in a garrison, a Conflict or on a Control flag. Without a
+# kind's four pictures the UI keeps its flat drawn piece for that kind.
+SEAT_PIECE_KINDS: Final[tuple[str, ...]] = (
+    "agent",
+    "spy",
+    "control",
+    "troop",
+    "sandworm",
+    "council",
+    "disc",
+    "dreadnought",
+)
+
+
+def seat_piece_filename(kind: str, color: str) -> str:
+    """Return the filename of one seat colour's picture of a piece."""
+
+    return f"{kind}_{color}.png"
+
+
+def available_seat_pieces(files: frozenset[str]) -> dict[str, tuple[str, ...]]:
+    """Return ``{kind: per-seat filenames}`` for the kinds pictured in ``files``.
+
+    A kind counts only when all four colours are there, so the seats never
+    mix a picture with a drawn piece of the same kind.
+    """
+
+    result: dict[str, tuple[str, ...]] = {}
+    for kind in SEAT_PIECE_KINDS:
+        names = tuple(
+            seat_piece_filename(kind, color) for color in STRENGTH_TOKEN_COLORS
+        )
+        if all(name in files for name in names):
+            result[kind] = names
+    return result

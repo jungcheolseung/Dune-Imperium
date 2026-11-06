@@ -1,0 +1,465 @@
+"""Browser E2E harness for the play server (see README.md in this folder).
+
+Spawns the play server of this checkout, opens cookie-separated browser
+contexts and records every request, console line and page error with a
+monotonic timestamp, so that a hang can be read off the timeline.
+
+Playwright is deliberately not a project dependency: run these scripts with
+the git-ignored environment in this folder that has it (README.md).
+
+Every temporary file of a run stays inside the project (user decision
+2026-10-06): importing this module points TMPDIR and ``tempfile`` at the
+git-ignored ``tmp/e2e/`` of the checkout the scripts live in, so the
+scripts' screenshot and save folders, the servers they start and the
+browsers' profiles all write there.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from playwright.sync_api import sync_playwright
+
+REPO = Path(os.environ.get("E2E_REPO", Path(__file__).resolve().parents[2]))
+PROJECT_PYTHON = REPO / ".venv" / (
+    "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+)
+E2E_TMP = Path(__file__).resolve().parents[2] / "tmp" / "e2e"
+E2E_TMP.mkdir(parents=True, exist_ok=True)
+os.environ["TMPDIR"] = str(E2E_TMP)
+tempfile.tempdir = str(E2E_TMP)
+# The address the server binds and the browsers use. Set it to this machine's
+# Tailscale address (100.x.y.z) to rehearse what friends will really get: a
+# plain-HTTP origin that is not a secure context. Anything but loopback needs
+# a --remote server, so only remote.py, races.py and recovery.py run that way.
+HOST = os.environ.get("E2E_HOST", "127.0.0.1")
+# One file per script, so that scripts running side by side (run_all.py) do
+# not overwrite each other's copy.
+SERVER_LOG_COPY = E2E_TMP / f"dune-e2e-server-last-{Path(sys.argv[0]).stem}.log"
+T0 = time.monotonic()
+
+
+def now() -> float:
+    return round(time.monotonic() - T0, 3)
+
+
+def free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind((HOST, 0))
+        return int(sock.getsockname()[1])
+
+
+def api_post(base: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    """One raw JSON POST to the play server, no browser."""
+    request = urllib.request.Request(
+        base + path,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
+
+
+def api_get(base: str, path: str) -> dict[str, Any]:
+    """One raw JSON GET from the play server, no browser."""
+    with urllib.request.urlopen(base + path) as response:
+        result: dict[str, Any] = json.loads(response.read())
+    return result
+
+
+class ServerProcess:
+    """One play-server process on a known port and saves directory.
+
+    `kill()` is SIGKILL: no graceful shutdown, which is what a crashed host
+    machine looks like to the save files and to the browsers.
+    """
+
+    def __init__(
+        self, *extra: str, port: int | None = None, saves: str | None = None
+    ) -> None:
+        self.port = port if port is not None else free_port()
+        self.saves = saves or tempfile.mkdtemp(prefix="dune-e2e-saves-")
+        self.base = f"http://{HOST}:{self.port}"
+        self.log_path = Path(self.saves) / f"server-{self.port}-{int(now() * 1000)}.log"
+        self._extra = extra
+        self._log = None
+        self._process: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> ServerProcess:
+        self._log = open(self.log_path, "w")
+        command = [
+            str(PROJECT_PYTHON),
+            "-m",
+            "dune_imperium.cli.server",
+            "--host",
+            HOST,
+            "--port",
+            str(self.port),
+            "--saves-dir",
+            self.saves,
+            # The play server paces its AI seats for the tables by default;
+            # the checks here want every AI answer inside the request, as
+            # before, unless a script asks for a pace (ai_pace.py).
+            *(() if "--ai-pace" in self._extra else ("--ai-pace", "instant")),
+            # The setup screen shuffles the configured seats by default (and
+            # a remote room waits for its start); the checks here expect row
+            # N to play seat N, unless a script asks for a seating
+            # (setup_options.py, room_start.py).
+            *(() if "--seating" in self._extra else ("--seating", "fixed")),
+            # Likewise its "Player 1 starts" box (OQ-132) opens checked; the
+            # checks here play the printed deal their seeds were chosen for.
+            *(() if "--first-player" in self._extra else ("--first-player", "deal")),
+            *self._extra,
+        ]
+        self._process = subprocess.Popen(
+            command, cwd=REPO, stdout=self._log, stderr=subprocess.STDOUT
+        )
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection((HOST, self.port), timeout=0.2):
+                    return self
+            except OSError:
+                if self._process.poll() is not None:
+                    raise RuntimeError(self.log_path.read_text()) from None
+                time.sleep(0.1)
+        raise RuntimeError("the server did not start listening")
+
+    def kill(self) -> None:
+        assert self._process is not None
+        self._process.kill()
+        self._process.wait(timeout=10)
+        self._close_log()
+
+    def stop(self) -> None:
+        if self._process is None or self._process.poll() is not None:
+            self._close_log()
+            return
+        self._process.terminate()
+        try:
+            self._process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+        self._close_log()
+
+    def _close_log(self) -> None:
+        if self._log is not None:
+            self._log.close()
+            self._log = None
+
+
+@contextmanager
+def server(*extra: str):
+    process = ServerProcess(*extra).start()
+    try:
+        yield process.base, process.log_path
+    finally:
+        process.stop()
+
+
+# Every Recorder of this run, so that Check.finish() can fail on a JS error in
+# any page, including in a script that never looks at rec.js_errors itself.
+RECORDERS: list[Recorder] = []
+
+# A resource the server did not deliver is a request failure, not a JS error;
+# scripts that care about requests check them, and some cut them on purpose
+# (races.py, recovery.py kill the server mid-game).
+NETWORK_FAILURES = ("Failed to load resource", "net::ERR_")
+
+
+class Recorder:
+    """Per-context timeline of requests, console lines and page errors."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.events: list[tuple[float, str, str]] = []
+        self.js_errors: list[str] = []
+        self.requests: list[tuple[float, str, str, int | None]] = []
+        RECORDERS.append(self)
+
+    def attach(self, page) -> None:
+        page.on("console", lambda m: self._console(m))
+        page.on("pageerror", lambda e: self._pageerror(e))
+        page.on(
+            "request",
+            lambda r: self.events.append((now(), "req", f"{r.method} {short(r.url)}")),
+        )
+        page.on("response", lambda r: self._response(r))
+        page.on(
+            "requestfailed",
+            lambda r: self.events.append(
+                (now(), "reqfail", f"{r.method} {short(r.url)} {r.failure}")
+            ),
+        )
+
+    def _console(self, message) -> None:
+        self.events.append((now(), "console." + message.type, message.text))
+        if message.type == "error":
+            self.js_errors.append(message.text)
+
+    def _pageerror(self, error) -> None:
+        self.events.append((now(), "pageerror", str(error)))
+        self.js_errors.append(str(error))
+
+    def _response(self, response) -> None:
+        request = response.request
+        self.events.append(
+            (now(), "res", f"{response.status} {request.method} {short(response.url)}")
+        )
+        self.requests.append(
+            (now(), request.method, short(response.url), response.status)
+        )
+
+    def count(self, method: str, fragment: str, since: float = 0.0) -> int:
+        return sum(
+            1
+            for at, verb, url, _ in self.requests
+            if at >= since and verb == method and fragment in url
+        )
+
+    def dump(self, since: float = 0.0, limit: int = 80) -> None:
+        rows = [row for row in self.events if row[0] >= since]
+        print(f"--- timeline of {self.name} ({len(rows)} events, last {limit}) ---")
+        for at, kind, text in rows[-limit:]:
+            print(f"  {at:8.3f} {kind:14s} {text}")
+
+
+# The setup form's expansion boxes. Since 2026-09-22 every one starts checked
+# and the Tech Module box is disabled while Bloodlines is off; the Go to 11
+# box (2026-09-28, OQ-091) also starts checked and is disabled while
+# Immortality is off; the Epic Game Mode box (2026-09-28, OQ-092) starts
+# checked and depends on no other box. A script that wants a narrower game
+# says which boxes it keeps: keeping "immortality" alone plays from the
+# printed start of 1 VP, and leaving out "epic-game" plays the retail setup.
+RULE_OPTIONS = (
+    "choam",
+    "promo",
+    "bloodlines",
+    "tech",
+    "immortality",
+    "go-to-11",
+    "epic-game",
+)
+
+
+def rule_option_steps(*keep: str) -> list[tuple[str, bool]]:
+    """Checkbox moves leaving exactly ``keep`` of RULE_OPTIONS checked.
+
+    Unchecks run Tech before Bloodlines and Go to 11 before Immortality, and
+    checks run each parent before its dependant, so no move touches the Tech
+    or Go to 11 box while it is disabled.
+    """
+    unchecks = [
+        (f"#opt-{name}", False) for name in reversed(RULE_OPTIONS) if name not in keep
+    ]
+    checks = [(f"#opt-{name}", True) for name in RULE_OPTIONS if name in keep]
+    return unchecks + checks
+
+
+def set_rule_options(page, *keep: str) -> None:
+    for selector, checked in rule_option_steps(*keep):
+        page.set_checked(selector, checked)
+
+
+def short(url: str) -> str:
+    return url.split("://", 1)[-1].split("/", 1)[-1] if "://" in url else url
+
+
+STATE_JS = (
+    """() => ({
+  busy: state.busy,
+  gameId: state.gameId,
+  viewSeat: state.viewSeat,
+  mine: state.me ? state.me.seats : null,
+  rev: state.summary ? state.summary.revision : null,
+  undo: state.summary ? state.summary.undo_count : null,
+  logCount: state.summary ? state.summary.log_count : null,
+  owner: state.summary && state.summary.decision ? state.summary.decision.owner : null,
+  kind: state.summary && state.summary.decision ? state.summary.decision.kind : null,
+  confirmation: state.summary ? state.summary.confirmation : null,
+  finished: state.summary ? state.summary.finished : null,
+  nActions: state.actions ? state.actions.actions.length : null,
+  actionsRev: state.actions ? state.actions.revision : null,
+  logLen: state.log ? state.log.entries.length : null,
+  flight: refreshFlight !== null,
+  screen: ["setup-screen","landing-screen","lobby-screen","game-screen"].filter("""
+    """(id) => !document.getElementById(id).hidden),
+  error: document.getElementById("game-error").hidden ? null"""
+    """ : document.getElementById("game-error").textContent,
+  title: document.title,
+})"""
+)
+
+
+def client_state(page) -> dict:
+    return page.evaluate(STATE_JS)
+
+
+class Check:
+    def __init__(self) -> None:
+        self.failed: list[str] = []
+        self.passed = 0
+
+    def ok(self, condition: bool, label: str, detail: object = "") -> bool:
+        if condition:
+            self.passed += 1
+            print(f"  ok   {label}")
+        else:
+            self.failed.append(label)
+            print(f"  FAIL {label} {detail}")
+        return bool(condition)
+
+    def finish(self) -> None:
+        # A console error or an uncaught exception in any page fails the run,
+        # whether or not the script asked. The client reports some bugs only
+        # there: a kind-blind catalog lookup of an id two sections share is a
+        # console.error (core.js lookup(), docs/lessons.md 2026-09-27). A
+        # script that provokes one on purpose clears it after its own check.
+        errors = [
+            (recorder.name, error)
+            for recorder in RECORDERS
+            for error in recorder.js_errors
+            if not any(marker in error for marker in NETWORK_FAILURES)
+        ]
+        self.ok(not errors, "no JS errors in any page (common.Check)", errors[:5])
+        print(f"\n{self.passed} passed, {len(self.failed)} failed")
+        for label in self.failed:
+            print(f"  FAILED: {label}")
+        sys.exit(1 if self.failed else 0)
+
+
+# Chrome talks to Google on its own: the autofill server for every page with
+# a form, new-tab warm-up, push registration, component updates. One
+# leader_card.py made 231 such requests in 32 s, and four browsers at a time
+# left so many connections hanging that every other program on the machine
+# lost the internet for up to 43 s (2026-10-09). The pages need nothing but
+# the play server, so no other name resolves. Loopback always does: under
+# WSL the launcher's admin link goes to 127.0.0.1 whatever E2E_HOST is.
+BROWSER_ARGS = [
+    "--host-resolver-rules=MAP * ~NOTFOUND, "
+    f"EXCLUDE {HOST}, EXCLUDE localhost, EXCLUDE 127.0.0.1"
+]
+
+
+def launch_options() -> dict[str, object]:
+    """System Chrome by default; `E2E_CHROMIUM` names another executable
+    (e.g. a cached `chromium_headless_shell` on a box without Chrome)."""
+
+    executable = os.environ.get("E2E_CHROMIUM")
+    if executable:
+        return {"executable_path": executable, "headless": True, "args": BROWSER_ARGS}
+    return {"channel": "chrome", "headless": True, "args": BROWSER_ARGS}
+
+
+# The size every script has used since these checks were written. A check
+# that cares about a CSS breakpoint passes its own size to open_context;
+# style.css switches the side column's scroller at 1700px, so "the one
+# viewport" has hidden a regression before (README, 새 검사를 더할 때).
+DEFAULT_VIEWPORT = {"width": 1600, "height": 1000}
+LAPTOP_VIEWPORT = {"width": 1366, "height": 768}
+
+@contextmanager
+def chrome():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**launch_options())
+        try:
+            yield browser
+        finally:
+            browser.close()
+
+
+def open_context(browser, name: str, viewport: dict | None = None):
+    """Open a page. `viewport` defaults to the size every script has always
+    used, so passing nothing keeps a script's existing assertions exactly as
+    they were; a check that cares about a breakpoint names its own size."""
+    context = browser.new_context(viewport=viewport or DEFAULT_VIEWPORT)
+    page = context.new_page()
+    recorder = Recorder(name)
+    recorder.attach(page)
+    page.set_default_timeout(15000)
+    return context, page, recorder
+
+
+# Portrait Android phones, where the phone layout applies (below 600px wide;
+# docs/mobile-ui-plan.md, user decision 2026-11-06): a small, a common and a
+# large screen.
+PHONE_SIZES = (
+    {"width": 360, "height": 780},
+    {"width": 390, "height": 844},
+    {"width": 412, "height": 915},
+)
+
+
+def open_phone_context(browser, name: str, viewport: dict):
+    """A page as a phone's Chrome shows it: the mobile viewport rules, touch
+    events and twice the pixels. Drive it with page.tap(): a mouse click
+    leaves a pointer resting where it landed, which a phone does not have."""
+    context = browser.new_context(
+        viewport=viewport, device_scale_factor=2, is_mobile=True, has_touch=True
+    )
+    page = context.new_page()
+    recorder = Recorder(name)
+    recorder.attach(page)
+    page.set_default_timeout(15000)
+    return context, page, recorder
+
+
+# Phone games (mobile_layout.py, mobile_turn.py): seat 0 human against three
+# heuristic seats, on the setup screen's boxes plus these (every expansion on
+# Uprising; the original board's with Rise of Ix and Arrakeen Scouts).
+ONE_HUMAN = ("human", "heuristic", "heuristic", "heuristic")
+EVERY_EXPANSION = ("opt-imperium-cards", "opt-rise-of-ix", "opt-scouts")
+ORIGINAL_EXPANSIONS = ("opt-rise-of-ix", "opt-scouts")
+PHONE_SEED = 11
+
+
+def create_by_touch(
+    page, base: str, kinds, boxes=(), base_game: str | None = None
+) -> None:
+    """The setup screen, touched: the selects set as a picker sets them, the
+    boxes and the button tapped, the AI at its instant pace."""
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    page.wait_for_function(
+        "document.querySelectorAll('#seat-selects select').length === 4"
+        " && state.server !== null"
+    )
+    if base_game is not None:
+        page.select_option("#opt-base-game", base_game)
+    for seat, kind in enumerate(kinds):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", kind)
+    for name in boxes:
+        if page.is_enabled(f"#{name}") and not page.is_checked(f"#{name}"):
+            page.tap(f"#{name}")
+            assert page.is_checked(f"#{name}"), f"a tap checks #{name}"
+    page.fill("#opt-seed", str(PHONE_SEED))
+    page.select_option("#opt-ai-pace", "instant")
+    page.tap("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+
+
+# Where a seek lands: never between a waiting effect and its target (stage
+# B3; review.js ``reviewGoto``), so a pick step goes on to its effect's end.
+REVIEW_LANDING = """(target) => {
+    const review = state.review;
+    const labels = review.meta.steps || [];
+    const back = target < review.cursor;
+    let cursor = target;
+    while (cursor > 0 && cursor < review.meta.step_count && labels[cursor - 1]?.pick) {
+        cursor += back ? -1 : 1;
+    }
+    return cursor;
+}"""

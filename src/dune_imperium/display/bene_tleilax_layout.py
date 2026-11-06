@@ -1,0 +1,170 @@
+"""Percent-coordinate layout of the Bene Tleilax board scan (Immortality).
+
+The play server can serve one machine-local scan of the printed Bene
+Tleilax board (``assets/board/bene_tleilax.jpg``, or
+``DUNE_IMPERIUM_BENE_TLEILAX_IMAGE``) and the browser draws the live state
+on top of it: each seat's research token on its hex, the Tleilaxu tokens on
+the track, the bank's spice on the track's fourth space, and each player's
+specimens in the Axolotl tanks at the lower left.
+
+Every value is a percentage of the image's width or height, so any scan
+with the same framing works regardless of resolution. They were measured
+on 2026-09-08 against the owner's 5551x3952 scan with a 5 % grid overlay;
+a differently cropped scan needs a re-measure, not a rules change. The
+space ids are the engine's (``content.immortality.board``), and the tests
+pin that the table covers them exactly.
+
+``RESEARCH_POINTS`` are hex centres (the token is drawn in the dark upper
+half, above the printed bonus). ``TRACK_CELLS`` are ``(left, width)`` of the
+eight Tleilaxu track spaces inside the top band. The tokens are the common
+player disc at the size of the spots the board prints for it
+(``DISC_SIZE``, ``TRACK_START_DISCS``, ``RESEARCH_START_DISCS``).
+"""
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Any, Final
+
+# Column centres of the eight hex columns and the start piece on the left
+# edge; rows step by 8.8 % (half a hex height).
+_COLUMN_X: Final = (4.5, 14.5, 25.5, 36.5, 47.5, 58.5, 69.5, 80.5, 91.7)
+_ROW_Y: Final = {1: 35.1, 2: 43.9, 3: 52.7, 4: 61.4, 5: 70.2, 6: 79.0}
+
+RESEARCH_POINTS: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
+    {
+        f"c{column}r{row}": (_COLUMN_X[column], _ROW_Y[row])
+        for column, rows in (
+            (0, (3,)),
+            (1, (3,)),
+            (2, (2, 4)),
+            (3, (1, 3, 5)),
+            (4, (2, 4, 6)),
+            (5, (1, 3, 5)),
+            (6, (2, 4, 6)),
+            (7, (1, 3, 5)),
+            (8, (2, 4, 6)),
+        )
+        for row in rows
+    }
+)
+# One hex's footprint (the start piece is a half hex of the same height).
+HEX_SIZE: Final = (11.5, 17.5)
+
+# The Tleilaxu track band and its eight spaces, left to right.
+TRACK_BAND: Final = (3.0, 19.5)  # (top, height)
+TRACK_CELLS: Final[tuple[tuple[float, float], ...]] = (
+    (2.7, 13.3),
+    (16.5, 10.5),
+    (27.0, 10.5),
+    (37.5, 10.5),
+    (48.0, 22.5),
+    (70.5, 10.0),
+    (80.5, 7.5),
+    (88.0, 10.0),
+)
+# The setup spice sits on the fourth space's printed "1st / 2" hexagon
+# [Immortality p. 4], drawn as the main board's bonus spice hexagon
+# (board_layout.MAKER_SPICE_SIZE): centre and size of the printed white
+# outline's outer edge, from half-maximum brightness edges on the 5551x3952
+# scan (x 3474.5..3784.5, y 541..811; 2026-09-27). 270/310 = 0.871 against
+# a regular flat-topped hexagon's sqrt(3)/2 = 0.866.
+SPICE_POINT: Final = (65.38, 17.11)
+SPICE_SIZE: Final = (5.58, 6.83)
+
+# The player disc (the same common token as the Score marker and the
+# Councilor token of the main board, ``board_layout.SEAT_DISC_SIZE``): the
+# board prints its spots, and all seven measure 324 px across on the
+# 5551 px scan (radial edge fit, 2026-09-18), so that is the disc's
+# diameter here, as a percent of the scan's width.
+DISC_SIZE: Final = 5.84
+# Width over height of the scan: the overlay's y values are percents of the
+# height, so a round disc is ``DISC_SIZE * SCAN_ASPECT`` of it tall.
+SCAN_ASPECT: Final = 5551 / 3952
+# The four printed spots in the Tleilaxu track's first space (seats 0..3:
+# top row left to right, then the bottom row); their two rows are also the
+# rows discs take in the other spaces.
+TRACK_START_DISCS: Final = ((6.08, 8.65), (12.28, 8.65), (6.08, 17.36), (12.28, 17.36))
+# The start piece of the research track prints three spots in a column;
+# the fourth seat's disc continues the column onto the flask under them.
+RESEARCH_START_DISCS: Final = ((4.39, 38.79), (4.39, 47.47), (4.39, 56.3), (4.39, 65.0))
+
+
+# Arrakeen Scouts pieces on this board (docs/rules/arrakeen-scouts.md 5):
+# - Sponsored Research's spice lies "beside the Helix on the research track",
+#   the first genetic marker (OQ-089 (b)): the tile printed under column 4
+#   with the DNA marker, its white outline x 41.1-51.6 and y 87.8-96.6 on a
+#   1 % grid (2026-09-30). The spice is the setup spice's hexagon
+#   (``SPICE_SIZE``) left of it, on the empty nebula art, its right edge
+#   0.8 off the outline and its centre level with the tile's.
+# - Tleilaxu Offering's troops stand on "the third space of the Tleilaxu
+#   Track" (index 3, ``TRACK_CELLS[3]``): the box is the part of that
+#   chevron-shaped space clear of both chevron lines (their points reach
+#   x 39.3 and 49.5, their ends x 37 and 47) and inside the band. A troop
+#   is the main board's Influence cube at this scan's scale: the player
+#   disc is 176 px of the main scan and 324 px of this one, so the 95 px cube
+#   is 174.9 px here, and the main board's 18 px gap between pieces 33 px.
+#   The Tleilaxu tokens are drawn over the troops.
+SCOUTS_HELIX_SPICE_POINT: Final = (37.5, 92.2)
+TLEILAXU_OFFERING_TRACK_SPACE: Final = 3
+SCOUTS_OFFERING_BOX: Final = (39.8, 4.3, 7.0, 16.9)
+_SCALE_FROM_MAIN: Final = 324 / 176
+_CUBE_PX: Final = 95 * _SCALE_FROM_MAIN
+_GAP_PX: Final = 18 * _SCALE_FROM_MAIN
+SCOUTS_TROOP_SIZE: Final = (
+    round(_CUBE_PX / 5551 * 100, 3),
+    round(_CUBE_PX / 3952 * 100, 3),
+)
+SCOUTS_GAP: Final = (round(_GAP_PX / 5551 * 100, 3), round(_GAP_PX / 3952 * 100, 3))
+
+# Axolotl tanks: the outlined lower-left panel (x 1.6..26.7, y 74..96.5
+# on the owner's scan, measured 2026-10-05). Specimens are the player's
+# troop cubes, at the same size as the Offering troops above. The four
+# inset boxes are a UI arrangement within the shared printed tank, not
+# printed player spaces: one colour per quarter, without overlap.
+SPECIMEN_BOX: Final = (2.2, 74.4, 24.0, 21.6)
+SPECIMEN_PLAYER_BOXES: Final = (
+    (3.0, 75.2, 10.5, 9.6),
+    (14.8, 75.2, 10.5, 9.6),
+    (3.0, 85.6, 10.5, 9.6),
+    (14.8, 85.6, 10.5, 9.6),
+)
+
+
+def bene_tleilax_layout() -> dict[str, Any]:
+    """Return the overlay layout as plain JSON-ready values."""
+
+    return {
+        "research_points": {
+            space_id: [x, y] for space_id, (x, y) in RESEARCH_POINTS.items()
+        },
+        "hex_size": list(HEX_SIZE),
+        "track_band": list(TRACK_BAND),
+        "track_cells": [[left, width] for left, width in TRACK_CELLS],
+        "spice_point": list(SPICE_POINT),
+        "spice_size": list(SPICE_SIZE),
+        "disc_size": DISC_SIZE,
+        "aspect": SCAN_ASPECT,
+        "track_start_discs": [list(point) for point in TRACK_START_DISCS],
+        "research_start_discs": [list(point) for point in RESEARCH_START_DISCS],
+        "specimens": {
+            "box": list(SPECIMEN_BOX),
+            "boxes": [list(box) for box in SPECIMEN_PLAYER_BOXES],
+            "sizes": {"troop": list(SCOUTS_TROOP_SIZE)},
+            "gap": 0.4,
+            "padding": 0.35,
+            "min_scale": 0.5,
+        },
+        "scouts": {
+            "helix_spice_point": list(SCOUTS_HELIX_SPICE_POINT),
+            "offering_space": TLEILAXU_OFFERING_TRACK_SPACE,
+            "regions": {
+                "tleilaxu_track": [
+                    {"box": list(SCOUTS_OFFERING_BOX), "from_bottom": False}
+                ],
+            },
+            "sizes": {"troop": list(SCOUTS_TROOP_SIZE)},
+            "gap": list(SCOUTS_GAP),
+            "group_gap": [round(2.5 * value, 3) for value in SCOUTS_GAP],
+            "min_scale": 0.5,
+        },
+    }

@@ -1,0 +1,124 @@
+/* The header's panel toggles (layout.js; user request 2026-11-06): the
+   hand, the players, the shared cards and the log, each shown or hidden.
+
+   From 700px up only. Narrower, the header has no room beside the round
+   (a watched game in English already gives the title away at 600px), and
+   below 600px the phone's tabs do this job (phone.css). The toggles are
+   inline from 1200px and fold into one "보기 ▾" button below. A panel is
+   hidden only inside these media queries, where its toggle is, so a
+   window narrowed past 700px shows every panel again. Linked after
+   style.css: rules here that repeat a selector's weight win by order. */
+
+#panel-toggles {
+  display: none;
+  position: relative;
+  flex: none;
+}
+#panel-toggles-open { display: none; position: relative; }
+#panel-toggles-list { display: flex; gap: 0.25rem; }
+#panel-toggles-list button {
+  position: relative;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+#panel-toggles-list button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#panel-toggles-list button[aria-pressed="false"] { opacity: 0.6; }
+/* A hidden panel holding something the decision can take (layout.js
+   markPanelToggles); the folded button carries it too. */
+#panel-toggles-list button.cue::after,
+#panel-toggles-open.cue::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--glow);
+  box-shadow: 0 0 5px var(--glow);
+}
+#panel-toggles-list button.cue[aria-pressed="false"] { opacity: 1; }
+
+@media (min-width: 700px) {
+  body.in-game #panel-toggles { display: flex; align-items: center; }
+
+  /* What a hidden panel gives back: its column (and handle), its row. */
+  #game-screen.hide-seats { --seats-width: 0px; }
+  #game-screen.hide-seats :is(#seats, #split-seats) { display: none; }
+  /* The table's columns are filled in order: without the seats the centre
+     would slide into their empty first column, the decisions into the
+     board's. Each keeps its own. */
+  #game-screen.hide-seats #center { grid-column: 2; grid-row: 1; }
+  #game-screen.hide-seats #side { grid-column: 3; grid-row: 1; }
+  #game-screen.hide-market { --market-room: 0px; }
+  #game-screen.hide-market :is(#market, #split-market) { display: none; }
+  #game-screen.hide-hand #private-zone { display: none; }
+  #game-screen.hide-log #side-log { display: none; }
+  #game-screen.hide-log #side { grid-template-rows: minmax(0, 1fr); }
+}
+
+/* The centre beside the shared-card column (style.css #center). */
+@media (min-width: 1341px) {
+  #game-screen.hide-hand #center {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "board market";
+  }
+  #game-screen.hide-market #center {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "board" "hand";
+  }
+  #game-screen.hide-market #center:has(#private-zone[hidden]),
+  #game-screen.hide-market.hide-hand #center {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "board";
+  }
+}
+
+/* The centre stacked, the shared cards under the board (style.css, the
+   max-width: 1340px block). */
+@media (min-width: 700px) and (max-width: 1340px) {
+  #game-screen.hide-market #center {
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "board" "hand";
+  }
+  #game-screen.hide-hand #center {
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-areas: "board" "market";
+  }
+  #game-screen.hide-market #center:has(#private-zone[hidden]),
+  #game-screen.hide-market.hide-hand #center {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "board";
+  }
+}
+
+/* Folded into one button: the toggles open under it, over the table. */
+@media (min-width: 700px) and (max-width: 1199px) {
+  body.in-game #panel-toggles-open { display: inline-block; }
+  #panel-toggles-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 65;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    min-width: 9.5rem;
+    padding: 0.45rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+  }
+  #panel-toggles.open #panel-toggles-list { display: flex; }
+  #panel-toggles-list button {
+    padding: 0.35rem 0.6rem;
+    text-align: left;
+  }
+}

@@ -1,0 +1,368 @@
+"""Security and fidelity tests for player-scoped observations."""
+
+from dataclasses import replace
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.core import GameState, PlayerState, observation, observe_state
+
+
+def _state() -> GameState:
+    players = tuple(
+        PlayerState(
+            player_id=seat,
+            leader_id=f"leader_{seat}",
+            deck=(f"p{seat}:deck:0", f"p{seat}:deck:1"),
+            hand=(f"p{seat}:hand",),
+            discard_pile=(f"p{seat}:discard",),
+            intrigue_cards=(f"p{seat}:intrigue",),
+            intrigue_faceup=(f"p{seat}:faceup",),
+            objective_ids=(f"objective_{seat}",),
+        )
+        for seat in range(4)
+    )
+    return GameState(
+        config=RulesetConfig(),
+        seed=17,
+        round_number=1,
+        first_player=2,
+        players=players,
+        conflict_deck=("conflict_hidden_1", "conflict_hidden_2"),
+        unused_conflict_ids=("conflict_unused",),
+        current_conflict_ids=("conflict_public",),
+        imperium_deck=("imperium_hidden_1", "imperium_hidden_2"),
+        imperium_row=("imperium_public",),
+        intrigue_deck=("intrigue_hidden",),
+        intrigue_discard=("intrigue_public",),
+        reserve_stacks=(("prepare_the_way", 8),),
+    )
+
+
+def test_view_contains_public_state_and_only_observers_private_cards() -> None:
+    state = _state()
+
+    view = observe_state(state, player=0)
+
+    assert view.first_player == 2
+    assert view.reveal_order == state.reveal_order
+    assert view.endgame_intrigue_complete is False
+    assert view.current_conflict_ids == ("conflict_public",)
+    assert view.combat_intrigue_complete is False
+    assert view.combat_rewards_resolved is False
+    assert view.imperium_row == ("imperium_public",)
+    assert view.shield_wall_present is True
+    assert view.maker_bonus_spice == (
+        ("deep_desert", 0),
+        ("hagga_basin", 0),
+        ("imperial_basin", 0),
+    )
+    assert view.intrigue_discard == ("intrigue_public",)
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04).
+    assert not hasattr(view, "intrigue_trash")
+    # A face-up Intrigue card waiting on its trigger is public [FAQ p. 2].
+    assert view.players[1].intrigue_faceup == ("p1:faceup",)
+    assert view.players[1].objective_ids == ("objective_1",)
+    assert view.players[1].won_conflict_ids == ()
+    assert view.players[1].face_down_battle_card_ids == ()
+    assert view.players[1].alliance_faction_ids == ()
+    assert view.players[1].has_revealed is False
+    assert view.private is not None
+    assert view.private.deck_size == 2
+    assert view.private.hand == ("p0:hand",)
+    assert view.private.intrigue_cards == ("p0:intrigue",)
+    assert not hasattr(view.private, "discard_pile")
+    # Every discard pile is re-checkable by everyone (OQ-010 ruling 1): each
+    # card entered it face up [Main pp. 9, 12, 13, 20].
+    assert view.players[0].discard_pile == ("p0:discard",)
+    assert view.players[1].discard_pile == ("p1:discard",)
+
+
+def test_publicly_acquired_hand_cards_and_resolving_intrigue_are_public() -> None:
+    from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+
+    state = _state()
+    players = list(state.players)
+    # A card that reached the hand face up (Corrinth City, Intrigue "put it
+    # in your hand", a Bond return) stays known to everyone (OQ-010).
+    players[1] = replace(
+        players[1],
+        hand=("p1:hand", "p1:known"),
+        hand_public=("p1:known",),
+    )
+    state = replace(
+        state,
+        players=tuple(players),
+        decision_stack=(
+            DecisionFrame(
+                kind="intrigue_choice",
+                frame_id="test:choice",
+                decision=PlayerDecision(owner=1, prompt="Resolve"),
+                context=(("card_id", "p1:intrigue"), ("slot", 0)),
+            ),
+        ),
+    )
+
+    view = observe_state(state, 0)
+
+    assert view.players[1].hand_public == ("p1:known",)
+    assert view.players[1].hand_size == 2
+    # The played Intrigue is revealed while its choices resolve [Main p. 7].
+    assert view.intrigue_resolving == ("p1:intrigue",)
+    # The rest of the hand stays hidden.
+    hidden_variant = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(state.players[1], hand=("p1:known", "other")),
+            *state.players[2:],
+        ),
+    )
+    assert observe_state(hidden_variant, 0) == view
+
+
+def test_opponent_secrets_and_hidden_deck_orders_do_not_change_view() -> None:
+    """An opponent's hand and deck may trade cards and the deck may change
+    order without the view changing: only the two zones' combined
+    composition is public (``deck_pool``, OQ-010 ruling 6)."""
+
+    state = _state()
+    opponent = state.players[1]
+    pool = (*opponent.deck, *opponent.hand)
+    changed_opponent = replace(
+        opponent,
+        deck=tuple(reversed(pool[len(opponent.hand) :])),
+        hand=pool[: len(opponent.hand)],
+        intrigue_cards=("different_intrigue",),
+    )
+    hidden_variant = replace(
+        state,
+        players=(state.players[0], changed_opponent, *state.players[2:]),
+        conflict_deck=tuple(reversed(state.conflict_deck)),
+        imperium_deck=tuple(reversed(state.imperium_deck)),
+    )
+
+    assert observe_state(state, 0) == observe_state(hidden_variant, 0)
+
+
+def test_every_seat_sees_each_seats_deck_and_hidden_hand_composition() -> None:
+    """OQ-010 ruling 6 (user decision 2026-10-13): the cards in a seat's deck
+    and the hidden part of its hand, together, by identity and sorted --
+    public because every way into or out of the two passes a public place.
+    A publicly acquired hand card is shown as such and not counted again."""
+
+    state = _state()
+    opponent = replace(
+        state.players[1],
+        deck=("player:1:starter:dune_the_desert_planet:0", "player:1:starter:dagger:1"),
+        hand=("player:1:starter:dagger:0", "imperium:public_spectacle:0"),
+        hand_public=("imperium:public_spectacle:0",),
+    )
+    state = replace(state, players=(state.players[0], opponent, *state.players[2:]))
+    expected = ("dagger", "dagger", "dune_the_desert_planet")
+    assert observe_state(state, 0).players[1].deck_pool == expected
+    assert observe_state(state, 2).players[1].deck_pool == expected
+    # A different composition is a different view.
+    changed = replace(
+        opponent, hand=("player:1:starter:diplomacy:0", "imperium:public_spectacle:0")
+    )
+    other = replace(state, players=(state.players[0], changed, *state.players[2:]))
+    assert observe_state(other, 0).players[1].deck_pool == (
+        "dagger",
+        "diplomacy",
+        "dune_the_desert_planet",
+    )
+
+
+def test_each_player_receives_their_own_private_cards() -> None:
+    state = _state()
+
+    first = observe_state(state, 0)
+    second = observe_state(state, 1)
+
+    assert first.private != second.private
+    assert second.private is not None
+    assert second.private.hand == ("p1:hand",)
+    assert all(not hasattr(player, "hand") for player in second.players)
+    assert all(not hasattr(player, "intrigue_cards") for player in second.players)
+    # Zone sizes are public by project convention (OQ-010): every pile and
+    # hand count is visible at the table while identities stay redacted.
+    assert first.private is not None
+    assert second.players[0].hand_size == len(first.private.hand)
+    assert second.players[0].deck_size == first.private.deck_size
+    assert second.players[0].intrigue_card_count == len(first.private.intrigue_cards)
+
+
+def test_every_seat_sees_the_imperium_and_intrigue_deck_sizes() -> None:
+    """ "개인 deck과 공용 deck·bank의 남은 장수는 언제나 공개한다."
+    (docs/rules/information-visibility.md, project convention; the official
+    text only puts both decks face down [Main p. 4]). Every seat's view
+    carries the face-down Imperium deck's and Intrigue deck's sizes, never
+    their cards or order."""
+
+    state = replace(
+        _state(),
+        imperium_deck=("imperium_hidden_1", "imperium_hidden_2", "imperium_hidden_3"),
+        intrigue_deck=("intrigue_hidden_1", "intrigue_hidden_2"),
+    )
+    reordered = replace(
+        state,
+        imperium_deck=tuple(reversed(state.imperium_deck)),
+        intrigue_deck=tuple(reversed(state.intrigue_deck)),
+    )
+    for seat in range(4):
+        view = observe_state(state, seat)
+        assert view.imperium_deck_size == len(state.imperium_deck) == 3
+        assert view.intrigue_deck_size == len(state.intrigue_deck) == 2
+        assert not hasattr(view, "imperium_deck")
+        assert not hasattr(view, "intrigue_deck")
+        assert observe_state(reordered, seat) == view
+
+
+def test_contract_market_is_public_but_hidden_contract_identities_are_redacted() -> (
+    None
+):
+    state = _state()
+    players = list(state.players)
+    players[0] = replace(
+        players[0],
+        active_contract_ids=("contract:arrakeen_i",),
+        completed_contract_ids=("contract:immediate",),
+    )
+    players[1] = replace(
+        players[1],
+        completed_contract_ids=("contract:espionage_i",),
+    )
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        players=tuple(players),
+        contract_bank=("contract:hidden_a", "contract:hidden_b"),
+        face_up_contract_ids=("contract:high_council_i",),
+    )
+
+    view = observe_state(state, 0)
+    reordered = replace(state, contract_bank=tuple(reversed(state.contract_bank)))
+
+    assert view.face_up_contract_ids == ("contract:high_council_i",)
+    assert view.contract_bank_size == 2
+    # The face-down Conflict deck is likewise exposed only as a count.
+    assert view.conflict_deck_size == len(state.conflict_deck)
+    assert not hasattr(view, "conflict_deck")
+    assert view.players[0].active_contract_ids == ("contract:arrakeen_i",)
+    # A completed Contract was face up while active and its completion was
+    # announced before it flipped [Main p. 16], so the identity stays public
+    # for every seat (OQ-010 ruling 2); only the bank order is hidden.
+    assert view.players[0].completed_contract_ids == ("contract:immediate",)
+    assert view.players[1].completed_contract_ids == ("contract:espionage_i",)
+    assert not hasattr(view.players[1], "completed_contract_count")
+    assert observe_state(reordered, 0) == view
+
+
+def test_observation_is_pure_and_rejects_invalid_seats() -> None:
+    state = _state()
+
+    assert observe_state(state, 3) == observe_state(state, 3)
+    assert state == _state()
+    with pytest.raises(ValueError, match="configured player"):
+        observe_state(state, 4)
+
+
+def test_every_seat_sees_each_seats_commanders_in_supply() -> None:
+    """The seat panel shows every seat's Sardaukar Commanders in its supply.
+
+    "각 플레이어의 남은 개인 구성물은 다른 모든 플레이어가 명확히 볼 수
+    있는 supply에 둔다." (docs/rules/information-visibility.md, [Main p. 5]),
+    and a Commander goes back to that supply after a Combat
+    (docs/rules/bloodlines.md, [Bloodlines p. 4]). The count is a public
+    field, so an opponent reads it as well as the owner, apart from the
+    garrison and Conflict counts the board draws.
+    """
+
+    state = _state()
+    state = replace(state, config=RulesetConfig(bloodlines=True))
+    players = list(state.players)
+    players[1] = replace(
+        players[1],
+        commanders_supply=2,
+        commanders_garrison=1,
+        commanders_conflict=0,
+    )
+    state = replace(state, players=tuple(players))
+
+    for observer in range(4):
+        view = observe_state(state, player=observer)
+        assert view.players[1].commanders_supply == 2
+        assert view.players[1].commanders_garrison == 1
+        assert view.players[1].commanders_conflict == 0
+        assert view.players[0].commanders_supply == 0
+
+
+def test_game_state_rejects_duplicate_hidden_and_public_conflicts() -> None:
+    with pytest.raises(ValueError, match="Conflict card"):
+        replace(
+            _state(),
+            conflict_deck=("same",),
+            current_conflict_ids=("same",),
+        )
+
+
+def test_game_state_rejects_conflict_in_board_and_player_supply() -> None:
+    state = _state()
+    winner = replace(state.players[0], won_conflict_ids=("conflict_public",))
+
+    with pytest.raises(ValueError, match="Conflict card"):
+        replace(state, players=(winner, *state.players[1:]))
+
+
+def test_game_state_allows_different_players_to_share_observation_post() -> None:
+    state = _state()
+    first = replace(
+        state.players[0],
+        spies_supply=2,
+        spy_post_ids=("same_post",),
+    )
+    second = replace(
+        state.players[1],
+        spies_supply=2,
+        spy_post_ids=("same_post",),
+    )
+
+    shared = replace(state, players=(first, second, *state.players[2:]))
+
+    assert shared.players[0].spy_post_ids == ("same_post",)
+    assert shared.players[1].spy_post_ids == ("same_post",)
+
+
+def test_game_state_rejects_two_owners_of_one_alliance() -> None:
+    state = _state()
+    first = replace(state.players[0], alliance_faction_ids=("fremen",))
+    second = replace(state.players[1], alliance_faction_ids=("fremen",))
+
+    with pytest.raises(ValueError, match="only one owner"):
+        replace(state, players=(first, second, *state.players[2:]))
+
+
+def test_public_views_are_reused_for_unchanged_seats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A seat's public view is built once per state object: between two
+    # decisions most seats do not change, so their views come back from the
+    # identity cache unchanged while a replaced seat gets a fresh view.
+    # The cache starts empty here: it clears itself when full, and the tests
+    # a worker ran before could leave it a few entries short of that, so the
+    # two calls below would straddle a clear (2026-10-21, one run in four).
+    monkeypatch.setattr(observation, "_PUBLIC_VIEW_CACHE", {})
+    state = _state()
+    first = observe_state(state, 0)
+    again = observe_state(state, 0)
+    assert again.players == first.players
+    assert all(a is b for a, b in zip(again.players, first.players, strict=True))
+
+    seat = state.players[2]
+    richer = replace(seat, victory_points=seat.victory_points + 1)
+    changed = replace(state, players=(*state.players[:2], richer, *state.players[3:]))
+    view = observe_state(changed, 0)
+    assert view.players[2] is not first.players[2]
+    assert view.players[2].victory_points == first.players[2].victory_points + 1
+    assert all(view.players[i] is first.players[i] for i in (0, 1, 3))

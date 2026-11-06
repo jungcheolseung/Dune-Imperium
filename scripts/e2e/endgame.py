@@ -1,0 +1,648 @@
+"""E2E of how a game ENDS, with every expansion on.
+
+Nothing checked this before: `grep -ril standings scripts/e2e` found only
+`is_visible`, and `disclosure`, `tleilax` and `contract` found nothing at all.
+Both surfaces only exist once a game is over, and only an all-AI game reaches
+that cheaply — the server plays it to the end inside the create request.
+
+The sharp one is the Garrison column. The endgame tiebreak counts a garrisoned
+Sardaukar Commander as a troop — `rules/endgame.py` ranks on
+`troops_garrison + commanders_garrison` (OQ-047, 사용자 판정 2026-09-08,
+`docs/rules/open-questions.md`) — so a table printing the troops alone shows a
+number that does not explain the order it stands in. At seed 6 three seats held
+a Commander in garrison (two of them two each), which is why this check used
+that seed. It was seed 7 until the Imperial Privilege recall confirm
+(2026-10-02) gave the heuristic seats new decisions and moved that game off
+its garrisoned Commanders; a seed with several seats holding one is less
+likely to lose them all to the next such move.
+
+Seed 6 lost them too when graft-boxes (codec v143) offered both grafted Agent
+boxes from the start and the heuristic began playing grafted turns
+differently: it ended with no Commander in any garrison. Seed 10 was the first
+seed from 0 on, through the page's own setup payload (every expansion, the
+Leader draft, Go to 11 and Epic Game Mode on, as the checked boxes send it),
+where three seats hold one.
+
+Seed 10 lost them in turn at codec v149 (the cleanup-2 engine changes moved
+the heuristic seats' games again): it ended with no Commander in any
+garrison. Scanning seeds 0-39 the same way (2026-10-19, codec v149: the
+page's payload sent through `GameSessionManager.create_game`, the standings
+read from `summary`), seed 3 is the first where three seats hold one (ranks 1,
+2 and 4, the last holding two).
+
+Codec v154 (the cost-free Intrigue lines played even when they fizzle, OQ-113
+(C); the Planetary Array card drawn as a row of the Conflict winner's reward
+window, OQ-121; Suspensor Suits' missing troop made up later, OQ-042) moved
+seed 3 off its garrisoned Commanders in turn. The same scan over seeds 0-39
+(2026-10-26, codec v154), now with "Player 1 starts" off as the E2E server
+runs it (``--first-player deal``, so the printed deal): seeds 1, 5, 8, 13, 18,
+19, 20, 26, 27, 29, 30, 32 and 36 have two seats holding one, and seed 12 is
+the first where three seats hold one (ranks 1, 2 and 3, the first holding
+two).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+from common import (
+    LAPTOP_VIEWPORT,
+    REPO,
+    SERVER_LOG_COPY,
+    Check,
+    ServerProcess,
+    chrome,
+    open_context,
+    server,
+)
+
+check = Check()
+
+SEED = 12
+EXPANSIONS = ("choam", "bloodlines", "tech", "immortality", "promo")
+
+
+def watched_game(page, base: str, seed: int = SEED) -> str:
+    """Create an all-AI game with every expansion; the page opens it watched."""
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    for seat in range(4):
+        page.select_option(f"#seat-selects select[data-seat='{seat}']", "heuristic")
+    for option in EXPANSIONS:
+        page.check(f"#opt-{option}")
+    page.fill("#opt-seed", str(seed))
+    page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.review !== null && state.view !== null")
+    return page.evaluate("state.gameId")
+
+
+def seek_to_end(page) -> None:
+    page.evaluate("stopPlayback(); reviewSeek(state.review.meta.step_count)")
+    page.wait_for_function(
+        "state.review.cursor === state.review.meta.step_count"
+        " && !playback.playing && refreshFlight === null"
+    )
+
+
+def run(base: str, browser) -> None:
+    context, page, rec = open_context(browser, "endgame")
+    game_id = watched_game(page, base)
+    print(f"  .. watched game {game_id[:8]} (all expansions, seed {SEED})")
+    seek_to_end(page)
+
+    summary = page.evaluate("state.summary")
+    check.ok(summary["finished"], "the watched game is finished")
+    standings = summary["standings"]
+    check.ok(
+        bool(standings) and len(standings) == 4,
+        "the server sent four standings rows",
+        standings and len(standings),
+    )
+
+    # The table must be on screen once the replay reaches the end.
+    check.ok(
+        page.is_visible("#standings"), "the final standings show at the end of a replay"
+    )
+    header = page.eval_on_selector_all(
+        "#standings tr:first-child th", "els => els.map((e) => e.textContent.trim())"
+    )
+    check.ok(
+        # The glossary's words: 승점, 스파이스, 솔라리, 물 [Main p. 20], 주둔지 병력.
+        header
+        == ["순위", "플레이어", "승점", "스파이스", "솔라리", "물", "주둔지 병력"],
+        "the standings header is the seven printed columns",
+        header,
+    )
+
+    rows = page.eval_on_selector_all(
+        "#standings tr:not(:first-child)",
+        """els => els.map((e) => ({
+            cells: [...e.querySelectorAll('td')].map((c) => c.textContent.trim()),
+            title: e.querySelector('td:last-child').getAttribute('title'),
+            winner: e.classList.contains('winner'),
+        }))""",
+    )
+    check.ok(len(rows) == 4, "four rows are drawn", len(rows))
+
+    # The Garrison cell must be the number the tiebreak used, not the troops
+    # alone. Seat order in the table is rank order, so pair by rank.
+    by_rank = {entry["rank"]: entry for entry in standings}
+    wrong = []
+    for index, row in enumerate(rows, start=1):
+        entry = by_rank[index]
+        expected = entry["troops_garrison"] + entry.get("commanders_garrison", 0)
+        if row["cells"][6] != str(expected):
+            wrong.append((index, row["cells"][6], expected))
+    check.ok(
+        not wrong,
+        "Garrison shows troops + garrisoned Commanders, the tiebreak's own number",
+        wrong,
+    )
+
+    # A Commander in garrison must also be spelled out, or the number is a
+    # bare total nobody can check against the board.
+    with_commanders = [
+        index
+        for index, row in enumerate(rows, start=1)
+        if by_rank[index].get("commanders_garrison", 0)
+    ]
+    check.ok(
+        bool(with_commanders),
+        f"seed {SEED} really does leave a Commander in a garrison",
+        [(i, by_rank[i]["commanders_garrison"]) for i in with_commanders],
+    )
+    missing_title = [i for i in with_commanders if not rows[i - 1]["title"]]
+    check.ok(
+        not missing_title,
+        "a row counting Commanders explains the split in its title",
+        missing_title,
+    )
+
+    winners = [index for index, row in enumerate(rows, start=1) if row["winner"]]
+    check.ok(winners == [1], "exactly the rank-1 row is marked the winner", winners)
+
+    # Post-game disclosure (OQ-010 ruling 4): every hidden zone, for every seat.
+    view = page.evaluate("state.view")
+    check.ok("disclosure" in view, "the finished view carries disclosure")
+    check.ok(page.is_visible("#disclosure"), "the disclosure panel is shown")
+
+    # In a review it starts folded (사용자 결정 2026-09-21): every hand and deck
+    # order as of the reviewed step is the replay's own future.
+    folded = disclosure_state(page)
+    check.ok(
+        folded["expanded"] == "false" and not folded["sections"] and not folded["tags"],
+        "in a review the disclosure starts folded, with no seat or card on show",
+        folded,
+    )
+    if folded["expanded"] is not None:  # an unfoldable panel fails just above
+        page.click("#disclosure h2 button")
+    opened = disclosure_state(page)
+    check.ok(
+        opened["expanded"] == "true" and len(opened["sections"]) >= 4,
+        "one click on its heading opens it",
+        opened,
+    )
+    # A cursor move re-renders everything; opened by hand, it stays open.
+    page.evaluate("reviewSeek(state.review.meta.step_count - 1)")
+    page.wait_for_function(
+        "state.review.cursor === state.review.meta.step_count - 1"
+        " && refreshFlight === null"
+    )
+    seek_to_end(page)
+    check.ok(
+        disclosure_state(page)["expanded"] == "true",
+        "the opened disclosure survives the review moving",
+    )
+    # section() in turn.js appends its h3 straight to the panel; there is no
+    # wrapping <section> element to select.
+    seats = page.eval_on_selector_all(
+        "#disclosure h3", "els => els.map((e) => e.textContent.trim())"
+    )
+    check.ok(
+        len([s for s in seats if s.startswith("플레이어")]) == 4,
+        "disclosure has a section per seat",
+        seats,
+    )
+    lines = page.inner_text("#disclosure")
+    # The glossary's words since the language switch (핸드, 카드덱 [Main p. 20];
+    # the three decks [Main p. 4]).
+    for label in ("핸드", "카드덱 순서", "책략 카드", "임페리움 카드덱", "교전 카드덱"):
+        check.ok(label in lines, f"disclosure lists {label}")
+    # With CHOAM on there is a contract bank to reveal.
+    check.ok(
+        "남은 계약" in lines,
+        "disclosure lists the Contract bank when CHOAM is on",
+    )
+
+    # The expansion surfaces exist at all: no check had ever opened one.
+    # By the columns' fixed names (data-strip); their titles follow the language.
+    strips = page.eval_on_selector_all(
+        "#market .strip[data-strip]", "els => els.map((e) => e.dataset.strip)"
+    )
+    for want in ("Imperium Row", "Reserve", "Tleilaxu Row", "Bene Tleilax board"):
+        check.ok(want in strips, f"the shared columns include {want}", strips)
+    # In Korean the titles are the glossary's (임페리움 열 [Main p. 20]).
+    titles = page.eval_on_selector_all(
+        "#market .strip h3", "els => els.map((e) => e.textContent.trim())"
+    )
+    check.ok(
+        any(title.startswith("▾ 임페리움 열") or title.startswith("▸ 임페리움 열")
+            for title in titles),
+        "the Imperium Row column is titled in Korean",
+        titles,
+    )
+
+    check_review_status(page)
+    check_id_lists(page)
+    check_side_stacking(page, "1600x1000, disclosure open")
+
+    # Another seat's eyes on the same position keep it open too.
+    page.select_option("#review-seat", "1")
+    # phase is reset to null by enterReview and set just before its render().
+    page.wait_for_function("state.review.seat === 1 && state.review.phase !== null")
+    check.ok(
+        disclosure_state(page)["expanded"] == "true",
+        "switching the reviewed seat keeps the disclosure open",
+    )
+
+    # Leaving the review shows the live banner. Nobody sits at a watched game,
+    # so there is no seat view (pickViewSeat) and no disclosure out of review;
+    # open_mode.py checks the unfolded panel on a game with human seats.
+    page.evaluate("exitReview()")
+    page.wait_for_function("state.review === null && refreshFlight === null")
+    page.wait_for_selector("#decision-banner:not([hidden])")
+    check_banner(page, standings)
+
+    # Watching the game again starts a new review: folded again.
+    page.click("#standings button")
+    page.wait_for_function("state.review !== null && state.review.phase !== null")
+    page.evaluate("stopPlayback()")
+    check.ok(
+        disclosure_state(page)["expanded"] == "false",
+        "a new review folds the disclosure again",
+    )
+    page.evaluate("stopPlayback(); exitReview()")
+    page.wait_for_function("state.review === null && refreshFlight === null")
+
+    check_margins(page)
+
+    bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
+    check.ok(not bad, "no failed requests", bad[:3])
+    check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])
+    if check.failed:
+        rec.dump()
+    context.close()
+
+
+def check_review_status(page) -> None:
+    """The status line names the step as words. describeAction() returns
+    nodes, and dropped into its template string the line read
+    "좌석 0: [object DocumentFragment]"."""
+    status = page.inner_text("#review-status")
+    check.ok(
+        "[object" not in status and re.search(r"플레이어\d: \S", status) is not None,
+        "the review status names the step's action in words",
+        status,
+    )
+
+
+def check_id_lists(page) -> None:
+    """An event's id list (leader_ids, contract_ids) reads as names; the log
+    once printed it raw ("staban_tuek,gurney_halleck"). A Leader-draft game
+    logs the unused Leaders right at the start."""
+    lines = page.evaluate(
+        """() => {
+            const prefix = phraseText(EVENT_LABELS.leader_draft_unused);
+            return [...document.querySelectorAll('#action-log .logevent')]
+                .map((e) => e.textContent)
+                .filter((text) => text.startsWith(prefix));
+        }"""
+    )
+    raw = [line for line in lines if re.search(r"[a-z]+_[a-z]+", line)]
+    check.ok(
+        bool(lines) and not raw,
+        "an id list in the log reads as names, not engine ids",
+        raw[:2] or lines[:2],
+    )
+
+
+def check_side_stacking(page, where: str) -> None:
+    """Stacked (<= 1700px), no pane of #side may run on under the next one.
+    The implicit rows were `auto` over min-height: 0 items, so the grid gave
+    each pane half the column and #side-main's overflow went on underneath
+    the opaque log panel — at 1366px the standings sat behind it."""
+    panes = page.evaluate(
+        """() => [...document.getElementById('side').children].map((pane) => ({
+            id: pane.id,
+            overflow: getComputedStyle(pane).overflowY,
+            scrollH: pane.scrollHeight,
+            clientH: pane.clientHeight,
+        }))"""
+    )
+    hidden = [
+        pane
+        for pane in panes
+        if pane["overflow"] == "visible" and pane["scrollH"] > pane["clientH"] + 1
+    ]
+    check.ok(
+        not hidden, f"no side pane runs on under the next one ({where})", hidden
+    )
+
+
+def disclosure_state(page) -> dict:
+    return page.evaluate(
+        """() => {
+            const panel = document.getElementById('disclosure');
+            const button = panel.querySelector('h2 button');
+            return {
+                expanded: button ? button.getAttribute('aria-expanded') : null,
+                sections: [...panel.querySelectorAll('h3')].map((e) => e.textContent),
+                tags: panel.querySelectorAll('.tag').length,
+            };
+        }"""
+    )
+
+
+# The Uprising tiebreaks after equal VP, in order [Main p. 15] (a garrisoned
+# Commander counting as a troop, OQ-047), then the most recent Reveal turn
+# [FAQ p. 2]. Written out here rather than read from the client, so the banner
+# is checked against the rulebook's order and not against itself.
+TIEBREAK_ORDER = (
+    ("스파이스", lambda e: e["spice"]),
+    ("솔라리", lambda e: e["solari"]),
+    ("물", lambda e: e["water"]),
+    ("주둔지 병력", lambda e: e["troops_garrison"] + e.get("commanders_garrison", 0)),
+)
+
+
+def expected_margin(first: dict, second: dict) -> str:
+    """The banner's margin line as read with each icon's alt text — the same
+    text the line shows on a machine without the icon set."""
+    vp = f"{first['victory_points']}승점"
+    if first["victory_points"] != second["victory_points"]:
+        return f"{vp} ({first['victory_points'] - second['victory_points']} 차)"
+    for label, value in TIEBREAK_ORDER:
+        if value(first) != value(second):
+            return f"{vp} 동점 · 동점 판정 {label} {value(first)} 대 {value(second)}"
+    last = "공개 차례를 더 늦게 마친 플레이어가 승리"
+    return f"{vp} 동점 · 동점 판정 항목도 모두 같아 {last}"
+
+
+# Text of an element with every icon read as its alt text.
+READ_WITH_ALT = """(e) => {
+    const copy = e.cloneNode(true);
+    copy.querySelectorAll('img').forEach((img) => img.replaceWith(img.alt));
+    return copy.textContent;
+}"""
+
+
+def check_banner(page, standings: list) -> None:
+    """The finished banner names the winner and what beat second place."""
+    by_rank = sorted(standings, key=lambda entry: entry["rank"])
+    first, second = by_rank[0], by_rank[1]
+    label = page.evaluate(f"playerLabel({first['player']})")
+    second_label = page.evaluate(f"playerLabel({second['player']})")
+    prompt = page.inner_text("#decision-info .prompt").strip()
+    check.ok(
+        prompt == f"게임 종료 — {label} 승리",
+        "the finished banner names the rank-1 seat as the winner",
+        prompt,
+    )
+    meta = page.evaluate(
+        f"""() => {{
+            const meta = document.querySelector('#decision-info .meta');
+            return meta ? ({READ_WITH_ALT})(meta).trim() : null;
+        }}"""
+    )
+    want = f"{expected_margin(first, second)} · 2위 {second_label}"
+    check.ok(meta == want, "the banner says what put the winner ahead", (meta, want))
+
+
+def check_margins(page) -> None:
+    """Every branch of the margin line, on made-up standings.
+
+    One seeded game reaches one branch; a VP tie is rare. The rows below are
+    built so that each tiebreak in turn is the first to differ.
+    """
+    base = {
+        "victory_points": 11,
+        "spice": 3,
+        "solari": 4,
+        "water": 1,
+        "troops_garrison": 2,
+        "commanders_garrison": 0,
+    }
+    cases = {
+        "VP": ({**base, "victory_points": 12}, base),
+        "spice": ({**base, "spice": 5}, base),
+        "solari": ({**base, "solari": 6}, base),
+        "water": ({**base, "water": 2}, base),
+        # 2 troops + 2 Commanders against 3 troops: the troops alone would
+        # rank them the other way round.
+        "garrison": (
+            {**base, "commanders_garrison": 2},
+            {**base, "troops_garrison": 3},
+        ),
+        "reveal": (base, dict(base)),
+    }
+    for name, (first, second) in cases.items():
+        try:
+            text = page.evaluate(
+                f"""([a, b]) => {{
+                    const box = document.createElement('div');
+                    const margin = gameOverMargin(a, b);
+                    box.append(tNode(margin.key, margin.vars));
+                    return ({READ_WITH_ALT})(box);
+                }}""",
+                [first, second],
+            )
+        except Exception as error:  # the old client has no gameOverMargin
+            text = f"<error: {str(error).splitlines()[0]}>"
+        want = expected_margin(first, second)
+        check.ok(text == want, f"the margin line for a {name} decision", (text, want))
+
+
+def run_laptop(base: str, browser) -> None:
+    """The same finished game at a laptop size.
+
+    Every other script runs at one viewport, which is how a scroll check stayed
+    vacuous for months (README). The standings and the disclosure panel are the
+    tallest things the UI ever draws, so they are the right place to ask
+    whether the result is reachable on a smaller screen.
+    """
+    context, page, rec = open_context(browser, "endgame-laptop", LAPTOP_VIEWPORT)
+    watched_game(page, base)
+    seek_to_end(page)
+    size = page.evaluate(
+        """() => {
+            const side = document.getElementById('side-main');
+            const standings = document.getElementById('standings');
+            return {
+                viewport: [innerWidth, innerHeight],
+                sideScrolls: getComputedStyle(side).overflowY,
+                sideScrollH: side.scrollHeight,
+                sideClientH: side.clientHeight,
+                standingsTop: standings.getBoundingClientRect().top,
+                standingsH: standings.getBoundingClientRect().height,
+                disclosureH: document
+                    .getElementById('disclosure')
+                    .getBoundingClientRect().height,
+            };
+        }"""
+    )
+    print(
+        f"  .. laptop {size['viewport']}: "
+        f"side {size['sideScrollH']}px in {size['sideClientH']}px"
+    )
+    check.ok(
+        size["sideScrolls"] in ("auto", "scroll"),
+        "at a laptop width the content pane scrolls independently of history",
+        size["sideScrolls"],
+    )
+    # The result must be reachable: the panel exists, has height, and the
+    # column it lives in can be scrolled to it.
+    check.ok(
+        size["standingsH"] > 0, "the standings panel has height", size["standingsH"]
+    )
+    check.ok(
+        size["standingsTop"] < size["sideScrollH"],
+        "the standings sit inside the scrollable side column",
+        (size["standingsTop"], size["sideScrollH"]),
+    )
+    reached = page.evaluate(
+        """() => {
+            const side = document.getElementById('side-main');
+            const standings = document.getElementById('standings');
+            standings.scrollIntoView({block: 'start'});
+            const box = standings.getBoundingClientRect();
+            const host = side.getBoundingClientRect();
+            return box.top >= host.top - 2 && box.top < host.bottom;
+        }"""
+    )
+    check.ok(reached, "the standings can be scrolled into view on a laptop screen")
+    check_side_stacking(page, "1366x768")
+    # Reachable is not enough: nothing may be drawn over it either.
+    covered = page.evaluate(
+        """() => {
+            const box = document.getElementById('standings').getBoundingClientRect();
+            // Only the part the side column shows; below it is #private-zone.
+            const shown = document.getElementById('side-main').getBoundingClientRect();
+            const x = box.left + box.width / 2;
+            const hits = [];
+            const end = Math.min(box.bottom, shown.bottom) - 4;
+            for (let y = box.top + 4; y < end; y += 24) {
+                const top = document.elementFromPoint(x, y);
+                if (top && !document.getElementById('standings').contains(top)) {
+                    hits.push([Math.round(y), top.id || top.className]);
+                }
+            }
+            return hits;
+        }"""
+    )
+    check.ok(not covered, "nothing is drawn over the standings", covered[:3])
+    print(f"  .. disclosure is {size['disclosureH']:.0f}px tall here")
+    context.close()
+
+
+# The final clocks of a finished game with a human seat (static/clock.js):
+# fixtures/finished_human_save.py saves one with these totals.
+FINAL_CLOCK = {"elapsed_ms": 3_725_000, "seat_ms": [1_234_000, 61_000, 5_500, 999]}
+
+FINAL_CLOCK_JS = """() => {
+    const line = document.querySelector('#standings .clock-totals');
+    const panel = document.getElementById('standings');
+    return {
+        text: line ? line.textContent : null,
+        afterTable: Boolean(line && line.previousElementSibling
+            && line.previousElementSibling.tagName === 'TABLE'),
+        columns: document.querySelectorAll('#standings tr:first-child th').length,
+        // The line itself: the table's own width is not this line's to fix.
+        fits: Boolean(line) && line.scrollWidth <= line.clientWidth + 1
+            && line.getBoundingClientRect().right
+                <= panel.getBoundingClientRect().right + 1,
+        lineBox: line ? [line.scrollWidth, line.clientWidth,
+            line.getBoundingClientRect().right] : null,
+        panelBox: [panel.scrollWidth, panel.clientWidth,
+            panel.getBoundingClientRect().right],
+        header: document.getElementById('game-clock').textContent,
+        seats: [...document.querySelectorAll("#seats [data-clock='seat']")]
+            .map((node) => node.textContent),
+        running: document.querySelectorAll('#seats .seat-clock.running').length,
+        spell: document.querySelectorAll("#decision-info [data-clock='spell']").length,
+        timer: playClock.timer !== 0,
+        expected: [t('clock.totals_game', {time: '1:02:05'}),
+            ...['20:34', '1:01', '0:05', '0:00'].map((time, seat) =>
+                t('clock.totals_seat', {name: playerLabel(seat), time}))].join(' · '),
+    };
+}"""
+
+
+def run_final_clocks(browser) -> None:
+    """A finished game with a human seat freezes its clocks: the totals stay
+    on the seat panels and the header, and a line under the standings sums
+    them up, outside the table's seven columns."""
+    saves = tempfile.mkdtemp(prefix="dune-endgame-clock-e2e-")
+    found = json.loads(
+        subprocess.run(
+            [
+                str(REPO / ".venv/bin/python"),
+                str(Path(__file__).parent / "fixtures/finished_human_save.py"),
+                saves,
+            ],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    process = ServerProcess(saves=saves).start()
+    try:
+        context, page, _rec = open_context(browser, "endgame-clock", LAPTOP_VIEWPORT)
+        page.goto(process.base + "/")
+        page.wait_for_selector("#setup-screen:not([hidden])")
+        loaded = page.evaluate(
+            "(id) => api(`/saves/${id}/load`, {method: 'POST'})", found["finished"]
+        )
+        page.evaluate("(id) => openGame(id)", loaded["game_id"])
+        page.wait_for_function(
+            "(id) => state.gameId === id && state.view !== null"
+            " && refreshFlight === null",
+            arg=loaded["game_id"],
+        )
+        shown = page.evaluate(FINAL_CLOCK_JS)
+        check.ok(
+            shown["text"] == shown["expected"] and shown["afterTable"],
+            "the final clocks read as one line under the standings table",
+            shown,
+        )
+        check.ok(shown["columns"] == 7, "the table keeps its seven columns", shown)
+        check.ok(shown["fits"], "the line fits the panel at 1366x768", shown)
+        check.ok(
+            shown["header"] == "1:02:05"
+            and shown["seats"] == ["20:34", "1:01", "0:05", "0:00"],
+            "the header and the seat panels keep the final totals",
+            shown,
+        )
+        check.ok(
+            not shown["running"] and not shown["spell"] and not shown["timer"],
+            "a finished game's clocks stand still and mark nobody",
+            shown,
+        )
+        page.click("#language-toggle")
+        page.wait_for_function("TERM_LANGUAGE === 'en'")
+        english = page.evaluate(FINAL_CLOCK_JS)
+        check.ok(
+            english["text"] == english["expected"]
+            and english["text"].startswith("Game time 1:02:05 · Player 1"),
+            "the final clocks in English",
+            english["text"],
+        )
+        context.close()
+    finally:
+        process.stop()
+
+
+def main() -> None:
+    with server() as (base, log_path):
+        with chrome() as browser:
+            run(base, browser)
+            run_laptop(base, browser)
+            print("[clock] the final clocks of a game with a human seat")
+            run_final_clocks(browser)
+        errors = [
+            line
+            for line in log_path.read_text().splitlines()
+            if "ERROR" in line or "Traceback" in line
+        ]
+        check.ok(not errors, f"no server errors (see {SERVER_LOG_COPY})", errors[:3])
+        SERVER_LOG_COPY.write_text(log_path.read_text())
+    check.finish()
+
+
+if __name__ == "__main__":
+    main()

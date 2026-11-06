@@ -1,0 +1,237 @@
+"""Golden scenarios derived from the official Uprising rulebook examples."""
+
+from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.registry.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+)
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
+from dune_imperium.rules.phases import resolve_makers, resolve_recall_or_endgame
+
+
+def _starting_card(player: int, card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(player)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _imperium_card(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def test_main_page_11_imperial_basin_deploys_at_most_two_garrison_troops() -> None:
+    """John visits Imperial Basin and deploys two troops without recruiting."""
+
+    john = PlayerState(
+        player_id=0,
+        hand=(_starting_card(0, "dune_the_desert_planet"),),
+        troops_supply=9,
+        troops_garrison=3,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=11,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        first_player=0,
+        players=(john, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        current_conflict_ids=("propaganda",),
+        maker_bonus_spice=(
+            ("deep_desert", 0),
+            ("hagga_basin", 0),
+            ("imperial_basin", 1),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+                context=(("round", 1), ("turn_owner", 0)),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    visit = next(
+        action
+        for action in executable_placements(state, 0)
+        if dict(action.arguments).get("space_id") == "imperial_basin"
+    )
+
+    # The visit is a card pick and then a space pick (stage B1).
+    state = apply_placement(engine, state, visit).state
+    effect_actions = engine.whole_actions(state, 0)
+    assert "summon_maker_sandworms" not in {
+        action.action_id for action in effect_actions
+    }
+    harvest = next(
+        action for action in effect_actions if action.action_id == "harvest_maker_spice"
+    )
+    state = apply_whole(engine, state, harvest).state
+    deployments = engine.whole_actions(state, 0)
+
+    # Two garrison troops at most [Main p. 11]; deploying none is the
+    # explicit turn end (OQ-029).
+    assert tuple(
+        (action.action_id, dict(action.arguments).get("count"))
+        for action in deployments
+    ) == (
+        ("deploy_troops", 1),
+        ("deploy_troops", 2),
+        ("finish_agent_turn", None),
+    )
+    deploy_two = DomainAction(
+        action_id="deploy_troops",
+        actor=0,
+        arguments=(("count", 2),),
+    )
+    state = apply_whole(engine, state, deploy_two).state
+    state = apply_whole(engine, 
+        state, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+
+    assert state.players[0].resources.spice == 2
+    assert state.players[0].troops_garrison == 1
+    assert state.players[0].troops_conflict == 2
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_main_page_13_reveal_acquires_and_immediately_refills_the_row() -> None:
+    """Three Persuasion buys a cost-two card and leaves one unspent."""
+
+    argument = _starting_card(0, "convincing_argument")
+    diplomacy = _starting_card(0, "diplomacy")
+    desert_survival = _imperium_card("desert_survival")
+    all_imperium = imperium_deck_instance_ids(False)
+    other_cards = tuple(card for card in all_imperium if card != desert_survival)
+    row = (desert_survival, *other_cards[:4])
+    replacement = other_cards[4]
+    john = PlayerState(
+        player_id=0,
+        hand=(argument, diplomacy),
+        troops_supply=10,
+        troops_garrison=0,
+        troops_conflict=2,
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=13,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        first_player=0,
+        players=(john, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        current_conflict_ids=("propaganda",),
+        imperium_row=row,
+        imperium_deck=(replacement, *other_cards[5:]),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+                context=(("round", 1), ("turn_owner", 0)),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    reveal = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "reveal_turn"
+    )
+
+    state = apply_whole(engine, state, reveal).state
+    context = dict(state.decision_stack[-1].context)
+    assert context["persuasion"] == 3
+    assert state.players[0].combat_strength == 4
+    acquire = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if dict(action.arguments).get("instance_id") == desert_survival
+    )
+    state = apply_whole(engine, state, acquire).state
+
+    assert state.imperium_row == (replacement, *row[1:])
+    assert state.imperium_deck == other_cards[5:]
+    assert state.players[0].discard_pile == (desert_survival,)
+    assert dict(state.decision_stack[-1].context)["persuasion"] == 1
+
+    finish = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "finish_reveal"
+    )
+    state = apply_whole(engine, state, finish).state
+
+    assert state.players[0].discard_pile == (
+        desert_survival,
+        argument,
+        diplomacy,
+    )
+    assert state.players[0].has_revealed is True
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_main_page_15_makers_accumulate_before_recall_and_marker_pass() -> None:
+    """Only empty Maker spaces gain spice before Agents are recalled."""
+
+    players = (
+        PlayerState(
+            player_id=0,
+            agents_available=1,
+            agent_locations=("imperial_basin",),
+            has_revealed=True,
+        ),
+        *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=15,
+        phase=GamePhase.MAKERS,
+        round_number=1,
+        first_player=0,
+        players=players,
+        conflict_deck=("skirmish_crysknife",),
+        maker_bonus_spice=(
+            ("deep_desert", 1),
+            ("hagga_basin", 0),
+            ("imperial_basin", 0),
+        ),
+    )
+
+    makers = resolve_makers(state)
+
+    assert makers.state.phase is GamePhase.RECALL_OR_ENDGAME
+    assert makers.state.maker_bonus_spice == (
+        ("deep_desert", 2),
+        ("hagga_basin", 1),
+        ("imperial_basin", 0),
+    )
+    assert tuple(dict(event.payload)["space_id"] for event in makers.events) == (
+        "deep_desert",
+        "hagga_basin",
+    )
+
+    recalled = resolve_recall_or_endgame(makers.state).state
+
+    assert recalled.phase is GamePhase.ROUND_START
+    assert recalled.first_player == 1
+    assert all(player.agents_available == 2 for player in recalled.players)
+    assert all(not player.agent_locations for player in recalled.players)
+    assert all(not player.has_revealed for player in recalled.players)

@@ -1,0 +1,122 @@
+"""Spy decisions tied to Agent placement timing."""
+
+from copy import replace
+
+from dune_imperium.content.registry.board import ALL_OBSERVATION_POSTS
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.effects import (
+    advance_after_effect,
+    current_agent_effect_context,
+)
+
+
+def gather_intelligence_draw_available(state: GameState, player: int) -> bool:
+    """Whether a personal draw can find a card: either pile holds one."""
+
+    owner = state.players[player]
+    return bool(owner.deck or owner.discard_pile)
+
+
+def legal_gather_intelligence_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return the immediate post-placement Gather Intelligence choice."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_gather_intelligence") is not True:
+        return ()
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Agent-turn effect frame has invalid space ID")
+
+    owner = state.players[player]
+    connected_post_ids = {
+        post.post_id
+        for post in ALL_OBSERVATION_POSTS
+        if space_id in post.connected_space_ids
+    }
+    actions = [DomainAction(action_id="decline_gather_intelligence", actor=player)]
+    # The recall is offered even when both personal piles are empty and the
+    # draw finds nothing (OQ-099, user ruling 2026-10-07 "허용 (앱처럼)"):
+    # the Spy still returns, and the recall counts for "If you recalled a
+    # Spy this turn" (OQ-101).
+    actions.extend(
+        DomainAction(
+            action_id="gather_intelligence",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in owner.spy_post_ids
+        if post_id in connected_post_ids
+    )
+    if owner.leader_id == "gaius_helen_mohiam" and len(actions) > 1:
+        # Clandestine: "Whenever you could recall a Spy to Gather
+        # Intelligence, you must" [Gaius Helen Mohiam card].
+        return tuple(actions[1:])
+    return tuple(actions)
+
+
+def apply_gather_intelligence_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Decline Gather Intelligence or recall one connected Spy to draw."""
+
+    if action not in legal_gather_intelligence_actions(state, action.actor):
+        raise ValueError("action is not a legal Gather Intelligence choice")
+    _, context = current_agent_effect_context(state)
+    owner = state.players[action.actor]
+    events: list[GameEvent] = []
+    if action.action_id == "gather_intelligence":
+        post_id = dict(action.arguments).get("post_id")
+        if not isinstance(post_id, str):
+            raise RuntimeError("Gather Intelligence has invalid post ID")
+        owner = replace(
+            owner,
+            spies_supply=owner.spies_supply + 1,
+            spies_recalled_turn=owner.spies_recalled_turn + 1,
+            spy_post_ids=tuple(
+                candidate for candidate in owner.spy_post_ids if candidate != post_id
+            ),
+        )
+        events.append(
+            GameEvent(
+                event_id=(
+                    f"round:{state.round_number}:player:{action.actor}:"
+                    f"gather_intelligence:{post_id}"
+                ),
+                kind="gather_intelligence",
+                payload=(("player", action.actor), ("post_id", post_id)),
+            )
+        )
+
+    context["pending_gather_intelligence"] = False
+    players = tuple(
+        owner if candidate.player_id == action.actor else candidate
+        for candidate in state.players
+    )
+    continued = advance_after_effect(state, context, players)
+    if action.action_id == "gather_intelligence":
+        draw = draw_or_request_personal_cards(
+            continued,
+            action.actor,
+            1,
+            source=(
+                f"round:{state.round_number}:player:{action.actor}:gather_intelligence"
+            ),
+        )
+        return RuleResult(state=draw.state, events=(*events, *draw.events))
+    return RuleResult(state=continued, events=tuple(events))

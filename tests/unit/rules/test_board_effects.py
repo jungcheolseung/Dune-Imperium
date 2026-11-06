@@ -1,0 +1,2267 @@
+"""Tests for typed automatic board-space effects."""
+
+import sys
+from dataclasses import replace
+from itertools import permutations
+from pathlib import Path
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.core.effects import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.registry.imperium import imperium_deck_instance_ids
+from dune_imperium.content.uprising.board import BOARD_SPACES
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
+    ChanceResolver,
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+    canonical_state_hash,
+)
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effects import resolve_faction_influence
+from dune_imperium.rules.agent_turn import (
+    apply_agent_action,
+    executable_placements,
+    legal_agent_actions,
+)
+from dune_imperium.rules.board_effects import (
+    AUTOMATIC_BOARD_ICONS,
+    CHOICE_DRIVEN_SPACE_IDS,
+    apply_desert_tactics_action,
+    apply_espionage_action,
+    apply_imperial_privilege_action,
+    apply_maker_space_action,
+    apply_secrets_steal,
+    apply_shipping_action,
+    apply_sietch_tabr_action,
+    board_effect_is_implemented,
+    board_effects_for,
+    board_icons_for,
+    imperial_privilege_recall_targets,
+    legal_board_effect_actions,
+    legal_desert_tactics_actions,
+    legal_espionage_actions,
+    legal_imperial_privilege_actions,
+    legal_maker_space_actions,
+    legal_shipping_actions,
+    legal_sietch_tabr_actions,
+    resolve_board_effect,
+    static_board_effects,
+)
+from dune_imperium.rules.combat_deployment import (
+    legal_agent_turn_finish_actions,
+    legal_combat_deployments,
+)
+from dune_imperium.rules.contracts import apply_contract_action, legal_contract_actions
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import (  # type: ignore[import-not-found]  # noqa: E402
+    finish_agent_turn,
+    finish_agent_turn_result,
+)
+
+
+def _instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _state(card_id: str, resources: Resources | None = None) -> GameState:
+    card = _instance(card_id)
+    starting_resources = resources or Resources()
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(player_id=0, hand=(card,), resources=starting_resources),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _action_to(
+    state: GameState,
+    space_id: str,
+    cost_option: int | None = None,
+) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+        and (
+            cost_option is None
+            or dict(action.arguments).get("cost_option") == cost_option
+        )
+    )
+
+
+def _board_action(state: GameState, effect: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_board_effect_actions(state, 0)
+        if dict(action.arguments)["effect"] == effect
+    )
+
+
+def _resolve_board(state: GameState, *effects: str) -> GameState:
+    """Resolve the named icons in order, or every pending automatic icon."""
+
+    keys = effects or tuple(
+        str(dict(action.arguments)["effect"])
+        for action in legal_board_effect_actions(state, 0)
+    )
+    for key in keys:
+        state = resolve_board_effect(state, _board_action(state, key)).state
+    return state
+
+
+def _finish_open_turn(state: GameState) -> GameState:
+    """Press seat 0's still-open Agent turn end; return the next seat's turn.
+
+    Resolving the last effect leaves the owner's Agent-turn effect frame on
+    top with the end offered: every Agent turn ends only through its
+    owner's ``finish_agent_turn`` (user ruling OQ-095 (1)).
+    """
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 0
+    assert legal_agent_turn_finish_actions(state, 0)
+    finished: GameState = finish_agent_turn(state)
+    return finished
+
+
+def test_first_resource_board_effects_are_typed() -> None:
+    state = _state("diplomacy")
+
+    assert board_effects_for(state, "dutiful_service", 0) == (
+        GainResources(solari=2),
+    )
+    assert board_effects_for(state, "deliver_supplies", 0) == (
+        GainResources(water=1),
+    )
+    assert board_effects_for(state, "spice_refinery", 1) == (
+        GainResources(solari=4),
+    )
+
+
+def test_accept_contract_draws_and_opens_the_choam_market_choice() -> None:
+    state = _state("dune_the_desert_planet")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        players=(owner, *state.players[1:]),
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "accept_contract")).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "cards,contract"
+
+    # The card draw and the Contract icon are separate effects (OQ-027).
+    drawn_state = resolve_board_effect(placed, _board_action(placed, "cards")).state
+    assert drawn_state.players[0].hand == (drawn,)
+    assert legal_contract_actions(drawn_state, 0) == ()
+
+    result = resolve_board_effect(drawn_state, _board_action(drawn_state, "contract"))
+
+    assert len(legal_contract_actions(result.state, 0)) == 2
+    assert result.events[-1].kind == "board_effect_resolved"
+
+
+def test_dutiful_service_resolves_board_reward_and_keeps_faction_pending() -> None:
+    state = _state("diplomacy")
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    result = resolve_board_effect(placed, _board_action(placed, "resources"))
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert result.state.players[0].resources.solari == 2
+    assert context["pending_board_effect"] is False
+    assert context["pending_board_icons"] == ""
+    assert context["pending_faction_influence"] is True
+    # The gain, then the icon's event (cleanup-2c-3).
+    source = f"round:{placed.round_number}:player:0:board:dutiful_service"
+    assert result.events[0] == resources_gained_event(source, 0, solari=2)
+    assert result.events[1].kind == "board_effect_resolved"
+    assert result.events[1].event_id == f"{source}:resources"
+    assert dict(result.events[1].payload) == {
+        "effect": "resources",
+        "player": 0,
+        "space_id": "dutiful_service",
+    }
+
+
+def test_dutiful_service_choam_opens_contract_market_and_grants_influence() -> None:
+    state = _state("diplomacy")
+    state = replace(
+        state,
+        config=RulesetConfig(choam_module=True),
+        contract_bank=("contract:research_station_i",),
+        face_up_contract_ids=(
+            "contract:arrakeen_i",
+            "contract:high_council_ii",
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service"))
+
+    assert placed.state.players[0].resources == state.players[0].resources
+    assert dict(placed.state.decision_stack[-1].context)["board_icons"] == "contract"
+
+    result = resolve_board_effect(placed.state, _board_action(placed.state, "contract"))
+
+    assert result.state.players[0].resources.solari == 0
+    assert len(legal_contract_actions(result.state, 0)) == 2
+    assert result.events[-1].kind == "board_effect_resolved"
+
+    taken = apply_contract_action(
+        result.state, legal_contract_actions(result.state, 0)[0]
+    )
+    context = dict(taken.state.decision_stack[-1].context)
+    assert context["pending_faction_influence"] is True
+    assert taken.state.players[0].active_contract_ids == ("contract:arrakeen_i",)
+
+    influenced = resolve_faction_influence(taken.state)
+
+    assert influenced.state.players[0].influence.emperor == 1
+
+
+def test_dutiful_service_choam_falls_back_to_solari_with_empty_market() -> None:
+    state = _state("diplomacy")
+    state = replace(state, config=RulesetConfig(choam_module=True))
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+
+    result = resolve_board_effect(placed, _board_action(placed, "contract"))
+
+    assert result.state.players[0].resources.solari == 2
+    assert legal_contract_actions(result.state, 0) == ()
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["pending_board_effect"] is False
+    assert context["pending_faction_influence"] is True
+    assert result.events[-1].kind == "board_effect_resolved"
+
+
+def test_spice_refinery_reward_depends_on_already_paid_option() -> None:
+    state = _state("signet_ring", Resources(spice=1))
+    action = _action_to(state, "spice_refinery", cost_option=1)
+    placed = apply_agent_action(state, action).state
+
+    resolved = _resolve_board(placed, "resources")
+
+    assert resolved.players[0].resources.spice == 0
+    assert resolved.players[0].resources.solari == 4
+
+
+def test_unprinted_or_already_resolved_board_icon_is_rejected() -> None:
+    state = _state("diplomacy")
+    placed = apply_agent_action(state, _action_to(state, "dutiful_service")).state
+    before = canonical_state_hash(placed)
+
+    # Only the space's own pending icons are legal: Dutiful Service prints
+    # no card draw, and a Spy choice icon never takes the generic action.
+    for effect in ("cards", "spy"):
+        with pytest.raises(ValueError, match="not a legal"):
+            resolve_board_effect(
+                placed,
+                DomainAction(
+                    action_id="resolve_board_effect",
+                    actor=0,
+                    arguments=(("effect", effect),),
+                ),
+            )
+    assert canonical_state_hash(placed) == before
+
+    solari_icon = _board_action(placed, "resources")
+    resolved = resolve_board_effect(placed, solari_icon).state
+    assert legal_board_effect_actions(resolved, 0) == ()
+    with pytest.raises(ValueError, match="not a legal"):
+        resolve_board_effect(resolved, solari_icon)
+
+
+def test_draw_and_recruit_board_effects_are_typed() -> None:
+    state = _state("diplomacy")
+
+    assert board_effects_for(state, "fremkit", 0) == (DrawPersonalCards(1),)
+    assert board_effects_for(state, "assembly_hall", 0) == (DrawIntrigueCards(1),)
+    assert board_effects_for(state, "research_station", 0) == (
+        RecruitTroops(2),
+        DrawPersonalCards(2),
+    )
+
+
+def test_fremkit_draws_a_card_and_leaves_combat_deployment_pending() -> None:
+    state = _state("diplomacy")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    placed = apply_agent_action(state, _action_to(state, "fremkit")).state
+
+    resolved = _resolve_board(placed, "cards")
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert resolved.players[0].hand == (drawn,)
+    assert resolved.players[0].deck == ()
+    assert context["pending_board_effect"] is False
+    assert context["pending_combat_deployment"] is True
+
+
+def test_arrakeen_troop_and_card_draw_are_independent_icons() -> None:
+    # "troop 1개 recruit, card 1장 draw" [Board Guide p. 1] are two printed
+    # icons, each resolved by its own action in the order the owner picks
+    # ("You may carry out all these effects in any order" [Main p. 9];
+    # OQ-027).
+    state = _state("reconnaissance")
+    drawn = _instance("dagger")
+    owner = replace(state.players[0], deck=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    placed = apply_agent_action(state, _action_to(state, "arrakeen")).state
+    context = dict(placed.decision_stack[-1].context)
+    assert context["board_icons"] == "troops,cards"
+    assert context["pending_board_icons"] == "troops,cards"
+    assert [
+        dict(action.arguments)["effect"]
+        for action in legal_board_effect_actions(placed, 0)
+    ] == ["troops", "cards"]
+
+    troops_first = resolve_board_effect(placed, _board_action(placed, "troops"))
+    owner = troops_first.state.players[0]
+    context = dict(troops_first.state.decision_stack[-1].context)
+    assert owner.troops_supply == 8
+    assert owner.troops_garrison == 4
+    assert owner.hand == ()
+    assert context["troops_recruited"] == 1
+    assert context["pending_board_icons"] == "cards"
+    assert context["pending_board_effect"] is True
+    assert [event.kind for event in troops_first.events] == ["board_effect_resolved"]
+    assert dict(troops_first.events[0].payload) == {
+        "effect": "troops",
+        "player": 0,
+        "space_id": "arrakeen",
+    }
+
+    both = resolve_board_effect(
+        troops_first.state, _board_action(troops_first.state, "cards")
+    ).state
+    owner = both.players[0]
+    context = dict(both.decision_stack[-1].context)
+    assert owner.hand == (drawn,)
+    assert owner.troops_garrison == 4
+    assert context["pending_board_icons"] == ""
+    assert context["pending_board_effect"] is False
+    assert context["pending_combat_deployment"] is True
+    assert legal_board_effect_actions(both, 0) == ()
+
+    # The other order reaches the same state.
+    cards_first = resolve_board_effect(placed, _board_action(placed, "cards")).state
+    assert cards_first.players[0].hand == (drawn,)
+    assert cards_first.players[0].troops_garrison == 3
+    reversed_order = resolve_board_effect(
+        cards_first, _board_action(cards_first, "troops")
+    ).state
+    assert reversed_order.players == both.players
+    assert reversed_order.decision_stack == both.decision_stack
+
+
+def test_gather_support_paid_option_prints_a_separate_water_icon() -> None:
+    state = _state("dagger", Resources(solari=2))
+    placed = apply_agent_action(state, _action_to(state, "gather_support", 1)).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "troops,resources"
+
+    watered = _resolve_board(placed, "resources")
+    assert watered.players[0].resources.water == placed.players[0].resources.water + 1
+    assert watered.players[0].troops_garrison == 3
+
+    done = _resolve_board(watered, "troops")
+    assert done.players[0].troops_garrison == 5
+    # Nothing else is pending for a Dagger at Gather Support, yet the turn
+    # stays open until its owner presses the end (OQ-095); the press opens
+    # the clockwise player's turn.
+    decision = _finish_open_turn(done).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_assembly_hall_draws_hidden_intrigue() -> None:
+    state = _state("dagger")
+    state = replace(state, intrigue_deck=("intrigue:first", "intrigue:second"))
+    placed = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+
+    resolved = _resolve_board(placed, "intrigue")
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:first",)
+    assert resolved.intrigue_deck == ("intrigue:second",)
+
+
+def _espionage_state(*, spies_supply: int = 3) -> tuple[GameState, str]:
+    state = _state("diplomacy", Resources(spice=1))
+    drawn = _instance("dagger")
+    spy_post_ids = (
+        "emperor-sardaukar-dutiful-service",
+        "landsraad-assembly-hall-gather-support",
+        "arrakis-imperial-basin",
+    )[: 3 - spies_supply]
+    owner = replace(
+        state.players[0],
+        deck=(drawn,),
+        spies_supply=spies_supply,
+        spy_post_ids=spy_post_ids,
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "espionage")).state, drawn
+
+
+def test_espionage_spy_placement_and_card_draw_are_separate_icons() -> None:
+    # "card 1장 draw, Spy 1개를 배치할 수 있음" [Board Guide p. 1]: the draw
+    # keeps the generic icon action while the Spy icon resolves through its
+    # own choices (OQ-027).
+    state, drawn = _espionage_state()
+    assert dict(state.decision_stack[-1].context)["board_icons"] == "cards,spy"
+    actions = legal_espionage_actions(state, 0)
+    placement = next(
+        action
+        for action in actions
+        if action.action_id == "resolve_espionage_place_spy"
+    )
+    post_id = dict(placement.arguments)["post_id"]
+
+    result = apply_espionage_action(state, placement)
+    owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert drawn not in owner.hand
+    assert owner.spies_supply == 2
+    assert post_id in owner.spy_post_ids
+    assert context["pending_board_icons"] == "cards"
+    assert context["pending_board_effect"] is True
+    assert context["pending_faction_influence"] is True
+    assert tuple(event.kind for event in result.events) == (
+        "spy_placed",
+        "board_effect_resolved",
+    )
+    assert dict(result.events[-1].payload) == {
+        "action_id": "resolve_espionage_place_spy",
+        "effect": "spy",
+        "player": 0,
+        "space_id": "espionage",
+    }
+    assert legal_espionage_actions(result.state, 0) == ()
+
+    drawn_state = _resolve_board(result.state, "cards")
+    assert drawn in drawn_state.players[0].hand
+    assert dict(drawn_state.decision_stack[-1].context)["pending_board_effect"] is (
+        False
+    )
+
+
+def test_espionage_card_draw_may_precede_the_spy_choice() -> None:
+    state, drawn = _espionage_state()
+
+    drawn_state = _resolve_board(state, "cards")
+
+    assert drawn in drawn_state.players[0].hand
+    assert dict(drawn_state.decision_stack[-1].context)["pending_board_icons"] == (
+        "spy"
+    )
+    assert legal_board_effect_actions(drawn_state, 0) == ()
+    assert {action.action_id for action in legal_espionage_actions(drawn_state, 0)} == {
+        "resolve_espionage_place_spy",
+    }
+
+
+def test_espionage_must_place_its_spy_while_one_is_in_supply() -> None:
+    # The designer's erratum to [Main p. 11] (Hidden Assets Discord; adopted
+    # with OQ-057): "The word 'may' is incorrectly used here. It is mandatory
+    # to place a Spy if you have at least one Spy in your supply."
+    state, _ = _espionage_state()
+
+    assert state.players[0].spies_supply == 3
+    offered = legal_espionage_actions(state, 0)
+    assert offered
+    assert {action.action_id for action in offered} == {"resolve_espionage_place_spy"}
+    with pytest.raises(ValueError, match="not a legal Espionage choice"):
+        apply_espionage_action(
+            state, DomainAction(action_id="resolve_espionage_without_spy", actor=0)
+        )
+
+
+def test_espionage_reshuffles_discard_before_drawing() -> None:
+    state, drawn = _espionage_state()
+    owner = replace(state.players[0], deck=(), discard_pile=(drawn,))
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+    place = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "resolve_espionage_place_spy"
+    )
+
+    declined = apply_whole(engine, state, place).state
+    pending = apply_whole(engine, declined, _board_action(declined, "cards")).state
+    decision = engine.current_decision(pending)
+    assert isinstance(decision, ChanceDecision)
+    finished = apply_whole(engine, 
+        pending,
+        ChanceOutcome(decision.decision_id, (drawn,)),
+    ).state
+
+    assert finished.players[0].hand == (drawn,)
+    assert finished.players[0].discard_pile == ()
+
+
+def test_espionage_recall_commits_to_a_replacement_when_supply_is_empty() -> None:
+    state, drawn = _espionage_state(spies_supply=0)
+    recall_actions = legal_espionage_actions(state, 0)
+    first_recall = next(
+        action
+        for action in recall_actions
+        if action.action_id == "recall_spy_for_espionage"
+    )
+    recalled_post = dict(first_recall.arguments)["post_id"]
+
+    recalled = apply_espionage_action(state, first_recall)
+    replacement_actions = legal_espionage_actions(recalled.state, 0)
+
+    # With an empty supply nothing has to be placed and the recall is the
+    # player's choice [Main pp. 11, 20]; once it is made, the recalled Spy
+    # is in the supply and has to be placed (the erratum to [Main p. 11]).
+    assert {action.action_id for action in recall_actions} == {
+        "resolve_espionage_without_spy",
+        "recall_spy_for_espionage",
+    }
+    assert {action.action_id for action in replacement_actions} == {
+        "resolve_espionage_place_spy"
+    }
+    assert recalled_post not in recalled.state.players[0].spy_post_ids
+    assert recalled.state.players[0].spies_supply == 1
+    assert recalled.events[0].kind == "spy_recalled"
+
+    resolved = apply_espionage_action(recalled.state, replacement_actions[0]).state
+    owner = resolved.players[0]
+
+    assert owner.spies_supply == 0
+    assert len(owner.spy_post_ids) == 3
+    assert drawn in _resolve_board(resolved, "cards").players[0].hand
+
+
+def test_espionage_with_empty_supply_may_resolve_without_moving_a_spy() -> None:
+    # Placement is only mandatory with a Spy in the supply (the erratum to
+    # [Main p. 11]); an empty supply must not force the player to relocate a
+    # placed Spy ("you may first recall one of your Spies" [Main pp. 11, 20]).
+    state, drawn = _espionage_state(spies_supply=0)
+    decline = next(
+        action
+        for action in legal_espionage_actions(state, 0)
+        if action.action_id == "resolve_espionage_without_spy"
+    )
+
+    result = apply_espionage_action(state, decline)
+    owner = result.state.players[0]
+
+    assert owner.spies_supply == 0
+    assert len(owner.spy_post_ids) == 3
+    assert dict(result.state.decision_stack[-1].context)["pending_board_icons"] == (
+        "cards"
+    )
+    assert drawn in _resolve_board(result.state, "cards").players[0].hand
+
+
+def test_espionage_reopens_recall_when_the_recalled_spy_was_consumed() -> None:
+    # Placement needs a Spy in supply when it resolves [Main pp. 11, 20]; if a
+    # freely ordered effect consumed the recalled Spy, the committed placement
+    # reopens the recall choice instead of failing.
+    state, _ = _espionage_state(spies_supply=0)
+    first_recall = next(
+        action
+        for action in legal_espionage_actions(state, 0)
+        if action.action_id == "recall_spy_for_espionage"
+    )
+    recalled = apply_espionage_action(state, first_recall).state
+
+    consumed_owner = replace(
+        recalled.players[0],
+        spies_supply=0,
+        spy_post_ids=(
+            *recalled.players[0].spy_post_ids,
+            "fremen-desert-tactics-fremkit",
+        ),
+    )
+    consumed = replace(
+        recalled,
+        players=(consumed_owner, *recalled.players[1:]),
+    )
+
+    reopened = legal_espionage_actions(consumed, 0)
+    assert {action.action_id for action in reopened} == {"recall_spy_for_espionage"}
+
+    rerecalled = apply_espionage_action(consumed, reopened[0]).state
+    placements = legal_espionage_actions(rerecalled, 0)
+    assert {action.action_id for action in placements} == {
+        "resolve_espionage_place_spy"
+    }
+    placed = apply_espionage_action(rerecalled, placements[0]).state
+    assert placed.players[0].spies_supply == 0
+
+
+def test_first_high_council_visit_grants_seat_without_repeat_rewards() -> None:
+    state = _state("dagger", Resources(solari=5))
+    placed = apply_agent_action(state, _action_to(state, "high_council")).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "high_council"
+
+    resolved = _resolve_board(placed, "high_council")
+    owner = resolved.players[0]
+
+    assert owner.high_council is True
+    assert owner.resources.spice == 0
+    assert owner.intrigue_cards == ()
+    assert owner.troops_garrison == 3
+    assert legal_board_effect_actions(resolved, 0) == ()
+
+
+def test_high_council_revisit_grants_spice_intrigue_and_troops() -> None:
+    state = _state("dagger", Resources(solari=5))
+    owner = replace(state.players[0], high_council=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        intrigue_deck=("intrigue:first",),
+    )
+    placed = apply_agent_action(state, _action_to(state, "high_council")).state
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == (
+        "resources,intrigue,troops"
+    )
+
+    resolved = _resolve_board(placed)
+    owner = resolved.players[0]
+
+    assert owner.resources.spice == 2
+    assert owner.intrigue_cards == ("intrigue:first",)
+    assert owner.troops_supply == 6
+    assert owner.troops_garrison == 6
+
+
+def test_swordmaster_is_available_immediately_after_acquisition() -> None:
+    state = _state("dagger", Resources(solari=8))
+    placed = apply_agent_action(state, _action_to(state, "swordmaster")).state
+
+    resolved = _resolve_board(placed, "swordmaster")
+    owner = resolved.players[0]
+
+    assert owner.swordmaster_acquired is True
+    assert owner.agents_available == 2
+    assert owner.agent_locations == ("swordmaster",)
+
+
+def test_gather_support_recruits_available_troops_and_finishes_turn() -> None:
+    state = _state("dagger")
+    placed = apply_agent_action(state, _action_to(state, "gather_support", 0)).state
+
+    resolved = _resolve_board(placed, "troops")
+    owner = resolved.players[0]
+    # The owner's press ends the turn (OQ-095).
+    decision = _finish_open_turn(resolved).decision_stack[-1].decision
+
+    assert owner.troops_supply == 7
+    assert owner.troops_garrison == 5
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def _sietch_tabr_state() -> GameState:
+    state = _state("signet_ring")
+    owner = replace(state.players[0], influence=Influence(fremen=2))
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "sietch_tabr")).state
+
+
+def test_sietch_tabr_supplies_grant_hooks_troop_and_water() -> None:
+    state = _sietch_tabr_state()
+    action = next(
+        candidate
+        for candidate in legal_sietch_tabr_actions(state, 0)
+        if candidate.action_id == "take_sietch_tabr_supplies"
+    )
+
+    resolved = apply_sietch_tabr_action(state, action).state
+    owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert owner.maker_hooks is True
+    assert owner.resources.water == 2
+    assert owner.troops_supply == 8
+    assert owner.troops_garrison == 4
+    assert context["troops_recruited"] == 1
+    assert context["pending_board_effect"] is False
+    assert context["pending_combat_deployment"] is True
+
+
+def test_sietch_tabr_water_can_destroy_shield_wall() -> None:
+    state = _sietch_tabr_state()
+    actions = legal_sietch_tabr_actions(state, 0)
+
+    assert {action.action_id for action in actions} == {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        "take_sietch_tabr_water_and_destroy_wall",
+    }
+    detonate = next(
+        action
+        for action in actions
+        if action.action_id == "take_sietch_tabr_water_and_destroy_wall"
+    )
+    result = apply_sietch_tabr_action(state, detonate)
+
+    assert result.state.players[0].resources.water == 2
+    assert result.state.shield_wall_present is False
+    assert tuple(event.kind for event in result.events) == (
+        "resources_gained",
+        "shield_wall_destroyed",
+        "board_effect_resolved",
+    )
+
+
+def test_sietch_tabr_omits_detonation_after_wall_is_destroyed() -> None:
+    state = replace(_sietch_tabr_state(), shield_wall_present=False)
+
+    assert {action.action_id for action in legal_sietch_tabr_actions(state, 0)} == {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+    }
+
+
+def _shipping_state(influence: Influence) -> GameState:
+    state = _state("dune_the_desert_planet", Resources(spice=3))
+    owner = replace(state.players[0], influence=influence)
+    state = replace(state, players=(owner, *state.players[1:]))
+    return apply_agent_action(state, _action_to(state, "shipping")).state
+
+
+def test_shipping_requires_guild_influence_and_pays_exact_spice_cost() -> None:
+    unqualified = _state("dune_the_desert_planet", Resources(spice=3))
+    unqualified = replace(
+        unqualified,
+        players=(
+            replace(
+                unqualified.players[0],
+                influence=Influence(spacing_guild=1),
+            ),
+            *unqualified.players[1:],
+        ),
+    )
+    assert not any(
+        dict(action.arguments).get("space_id") == "shipping"
+        for action in legal_agent_actions(unqualified, 0)
+    )
+
+    placed = _shipping_state(Influence(spacing_guild=2))
+
+    assert placed.players[0].resources.spice == 0
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "shipping"
+
+
+def test_shipping_offers_all_four_faction_choices() -> None:
+    state = _shipping_state(Influence(spacing_guild=2))
+    actions = legal_shipping_actions(state, 0)
+
+    assert len(actions) == 4
+    assert all(action.action_id == "choose_shipping_influence" for action in actions)
+    assert {dict(action.arguments)["faction"] for action in actions} == {
+        faction.value for faction in Faction
+    }
+
+
+def test_shipping_never_offers_a_faction_at_the_top() -> None:
+    # "합법 행동 provider는 이미 6인 진영을 제시하지 않으므로" (OQ-060, user
+    # ruling 2026-09-16): a gain on a cube at 6 is lost, so Shipping's
+    # "Influence with a chosen Faction" [Board Guide p. 2] leaves it out.
+    state = _shipping_state(Influence(spacing_guild=6, fremen=6, emperor=1))
+    offered = [
+        dict(action.arguments)["faction"]
+        for action in legal_shipping_actions(state, 0)
+    ]
+    assert offered == ["emperor", "bene_gesserit"]
+
+
+def test_shipping_with_every_cube_at_the_top_waits_and_lapses_at_the_end() -> None:
+    # User decision 2026-10-17 (composed-effects plan 5, rule decision 1;
+    # OQ-060): with every cube at 6 Shipping offers no Faction either; the
+    # icon waits like an Agent box's Influence and the turn's end lapses it
+    # (OQ-057 (1)). Until codec v149 all four stayed on offer and the gain
+    # was lost. The paid line still buys 5 Solari (OQ-071).
+    full = Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6)
+    state = _shipping_state(full)
+    assert legal_shipping_actions(state, 0) == ()
+    state = _resolve_board(state, "resources")
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_board_icons"] == "influence"
+    assert any(
+        action.action_id == "finish_agent_turn"
+        for action in legal_agent_turn_finish_actions(state, 0)
+    )
+
+    result = finish_agent_turn_result(state)
+
+    assert result.state.players[0].influence == full
+    lapsed = [event for event in result.events if event.kind == "board_effect_lapsed"]
+    assert [dict(event.payload) for event in lapsed] == [
+        {"effect": "influence", "player": 0, "space_id": "shipping"}
+    ]
+
+
+def test_shipping_influence_choice_leaves_the_solari_icon_pending() -> None:
+    # "5 Solari, 선택한 Faction 하나의 Influence 1" [Board Guide p. 2] are two
+    # printed icons (OQ-027): the Influence choice resolves alone.
+    state = _shipping_state(Influence(spacing_guild=2))
+    assert dict(state.decision_stack[-1].context)["board_icons"] == (
+        "resources,influence"
+    )
+    action = next(
+        candidate
+        for candidate in legal_shipping_actions(state, 0)
+        if dict(candidate.arguments)["faction"] == Faction.EMPEROR.value
+    )
+
+    result = apply_shipping_action(state, action)
+    owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert owner.influence.emperor == 1
+    assert owner.resources.solari == 0
+    assert context["pending_board_icons"] == "resources"
+    assert legal_shipping_actions(result.state, 0) == ()
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "choose_shipping_influence",
+        "effect": "influence",
+        "player": 0,
+        "space_id": "shipping",
+    }
+
+    # No other group is left pending for this hand/space combination; the
+    # turn stays open after the Solari icon and the owner's end opens the
+    # clockwise player's turn (OQ-095).
+    finished = _resolve_board(result.state, "resources")
+    decision = _finish_open_turn(finished).decision_stack[-1].decision
+    assert finished.players[0].resources.solari == 5
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_shipping_choice_awards_the_two_influence_friendship_vp() -> None:
+    state = _shipping_state(Influence(spacing_guild=2, emperor=1))
+    action = next(
+        candidate
+        for candidate in legal_shipping_actions(state, 0)
+        if dict(candidate.arguments)["faction"] == Faction.EMPEROR.value
+    )
+
+    result = apply_shipping_action(state, action)
+    owner = result.state.players[0]
+
+    assert owner.influence.emperor == 2
+    assert owner.victory_points == 2
+    assert any(event.kind == "influence_gained" for event in result.events)
+
+
+def _desert_tactics_state() -> GameState:
+    fremen_card = _instance("diplomacy")
+    hand_card = _instance("dagger")
+    discard_card = _instance("reconnaissance")
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(
+                player_id=0,
+                hand=(fremen_card, hand_card),
+                discard_pile=(discard_card,),
+            ),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    return apply_agent_action(state, _action_to(state, "desert_tactics")).state
+
+
+def test_desert_tactics_placement_pays_exactly_one_water() -> None:
+    state = _desert_tactics_state()
+
+    assert state.players[0].resources.water == 0
+    context = dict(state.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "desert_tactics"
+
+
+def test_desert_tactics_offers_every_eligible_card_trash_without_a_refusal() -> None:
+    # The black trash icon is optional [Main p. 20]: since the user ruling of
+    # 2026-10-14 (OQ-095 (2)) an optional effect offers no refusal row and
+    # lapses at the turn end press (before codec v146 a
+    # ``resolve_desert_tactics_without_trash`` row came first).
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    actions = legal_desert_tactics_actions(state, 0)
+
+    assert len(actions) == len(owner.hand) + len(owner.discard_pile) + len(
+        owner.in_play
+    )
+    trash_actions = actions
+    assert all(
+        action.action_id == "trash_card_for_desert_tactics" for action in trash_actions
+    )
+    assert {dict(action.arguments)["card_id"] for action in trash_actions} == {
+        *owner.hand,
+        *owner.discard_pile,
+        *owner.in_play,
+    }
+
+
+def test_desert_tactics_trash_variant_trashes_only_the_chosen_card() -> None:
+    # "troop 1개 recruit, 원하면 card 1장 trash" [Board Guide p. 1]: the troop
+    # is its own icon and stays pending after the trash choice (OQ-027).
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    assert dict(state.decision_stack[-1].context)["board_icons"] == "troops,trash"
+    trash_target = owner.discard_pile[0]
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(state, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == trash_target
+    )
+
+    result = apply_desert_tactics_action(state, action)
+    resolved = result.state
+    resolved_owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert resolved_owner.troops_garrison == owner.troops_garrison
+    assert context["troops_recruited"] == 0
+    assert context["pending_board_icons"] == "troops"
+    assert trash_target not in resolved_owner.hand
+    assert trash_target not in resolved_owner.discard_pile
+    assert trash_target not in resolved_owner.in_play
+    assert trash_target in resolved_owner.trashed
+    assert result.events[-1].kind == "board_effect_resolved"
+    assert dict(result.events[-1].payload) == {
+        "action_id": "trash_card_for_desert_tactics",
+        "effect": "trash",
+        "player": 0,
+        "space_id": "desert_tactics",
+    }
+    assert legal_desert_tactics_actions(resolved, 0) == ()
+
+    recruited = _resolve_board(resolved, "troops")
+    recruited_context = dict(recruited.decision_stack[-1].context)
+    assert recruited.players[0].troops_garrison == owner.troops_garrison + 1
+    assert recruited_context["troops_recruited"] == 1
+    assert recruited_context["pending_board_effect"] is False
+    assert any(
+        dict(deploy.arguments)["count"] == 3
+        for deploy in legal_combat_deployments(recruited, 0)
+    )
+
+
+def test_desert_tactics_unused_trash_lapses_at_the_turn_end_and_trashes_nothing() -> (
+    None
+):
+    # Left unused, the optional trash holds no turn end back: the owner's
+    # press lapses it with a ``board_effect_lapsed`` event (OQ-095 (2), user
+    # ruling 2026-10-14). Before codec v146 the owner declined it with
+    # ``resolve_desert_tactics_without_trash``.
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    state = resolve_faction_influence(_resolve_board(state, "troops")).state
+    assert dict(state.decision_stack[-1].context)["pending_board_icons"] == "trash"
+    assert any(
+        action.action_id == "finish_agent_turn"
+        for action in legal_agent_turn_finish_actions(state, 0)
+    )
+
+    result = finish_agent_turn_result(state)
+    resolved_owner = result.state.players[0]
+
+    assert resolved_owner.troops_garrison == owner.troops_garrison + 1
+    assert resolved_owner.hand == owner.hand
+    assert resolved_owner.discard_pile == owner.discard_pile
+    assert resolved_owner.in_play == owner.in_play
+    assert resolved_owner.trashed == ()
+    lapsed = [event for event in result.events if event.kind == "board_effect_lapsed"]
+    assert [dict(event.payload) for event in lapsed] == [
+        {"effect": "trash", "player": 0, "space_id": "desert_tactics"}
+    ]
+
+
+def test_desert_tactics_can_trash_the_just_played_card_itself() -> None:
+    state = _desert_tactics_state()
+    owner = state.players[0]
+    played_card = owner.in_play[-1]
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(state, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == played_card
+    )
+
+    trashed_state = apply_desert_tactics_action(state, action).state
+    resolved_owner = trashed_state.players[0]
+
+    assert played_card not in resolved_owner.in_play
+    assert played_card in resolved_owner.trashed
+
+    trashed_state = _resolve_board(trashed_state, "troops")
+    # Desert Tactics' Fremen icon leaves the generic Faction Influence choice
+    # pending independently of the board effect just resolved above; the
+    # Combat deployment window then closes with the explicit turn end
+    # (OQ-029).
+    influenced = resolve_faction_influence(trashed_state).state
+    finished = UprisingRulesEngine().apply(
+        influenced, DomainAction(action_id="finish_agent_turn", actor=0)
+    ).state
+    decision = finished.decision_stack[-1].decision
+
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_desert_tactics_trash_of_eliminate_allies_joins_the_combat_allowance() -> None:
+    # Eliminate Allies: "When this card is trashed: 2 troops" [Eliminate
+    # Allies card]. Desert Tactics is a Combat space (``combat=True``,
+    # [Board Guide p. 1]), and "그 turn에 어떤 출처에서 recruit했든 새
+    # troop은 Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137). ``apply_desert_tactics_action`` reads
+    # its box context before the trash and writes it back through
+    # ``advance_after_effect`` -- the stale-context trap that used to
+    # silently drop this credit before ``keep_trash_recruits`` was added
+    # here (review round 2).
+    eliminate_allies = "imperium:eliminate_allies:0"
+    fremen_card = _instance("diplomacy")
+    state = GameState(
+        config=RulesetConfig(bloodlines=True),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(
+            PlayerState(player_id=0, hand=(fremen_card, eliminate_allies)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "desert_tactics")).state
+    action = next(
+        candidate
+        for candidate in legal_desert_tactics_actions(placed, 0)
+        if candidate.action_id == "trash_card_for_desert_tactics"
+        and dict(candidate.arguments)["card_id"] == eliminate_allies
+    )
+
+    trashed = apply_desert_tactics_action(placed, action).state
+    assert trashed.players[0].troops_garrison == 3 + 2
+    assert dict(trashed.decision_stack[-1].context)["troops_recruited"] == 2
+
+    recruited = _resolve_board(trashed, "troops")
+    assert recruited.players[0].troops_garrison == 3 + 2 + 1
+    assert dict(recruited.decision_stack[-1].context)["troops_recruited"] == 3
+    assert {
+        dict(deploy.arguments)["count"]
+        for deploy in legal_combat_deployments(recruited, 0)
+    } == {1, 2, 3, 4, 5}
+
+
+_CONFIRM = DomainAction(action_id="resolve_imperial_privilege_without_recall", actor=0)
+
+
+def _imperial_privilege_state(
+    *,
+    intrigue_cards: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+    other_agent_space: str | None = None,
+) -> GameState:
+    state = _state("dagger", Resources(solari=3))
+    owner = replace(
+        state.players[0],
+        influence=Influence(emperor=2),
+        intrigue_cards=intrigue_cards,
+    )
+    if other_agent_space is not None:
+        owner = replace(
+            owner,
+            agents_available=1,
+            agent_locations=(other_agent_space,),
+        )
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        intrigue_deck=intrigue_deck,
+    )
+    return apply_agent_action(state, _action_to(state, "imperial_privilege")).state
+
+
+def test_imperial_privilege_requires_emperor_influence_and_pays_exact_solari_cost() -> (
+    None
+):
+    unqualified = _state("dagger", Resources(solari=3))
+    unqualified = replace(
+        unqualified,
+        players=(
+            replace(unqualified.players[0], influence=Influence(emperor=1)),
+            *unqualified.players[1:],
+        ),
+    )
+    assert not any(
+        dict(action.arguments).get("space_id") == "imperial_privilege"
+        for action in legal_agent_actions(unqualified, 0)
+    )
+
+    placed = _imperial_privilege_state()
+
+    assert placed.players[0].resources.solari == 0
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    assert context["space_id"] == "imperial_privilege"
+
+
+def test_imperial_privilege_offers_every_held_intrigue_trash_without_a_refusal() -> (
+    None
+):
+    # The Intrigue trade is an arrow cost, optional [Main p. 20]: since the
+    # user ruling of 2026-10-14 (OQ-095 (2)) it offers no refusal and is
+    # offered beside the mandatory recall -- here its confirm, with no other
+    # Agent out -- instead of gating it (before codec v146
+    # ``decline_imperial_privilege_intrigue`` came first).
+    state = _imperial_privilege_state(
+        intrigue_cards=("intrigue:one", "intrigue:two"),
+    )
+    actions = legal_imperial_privilege_actions(state, 0)
+
+    assert actions[-1] == _CONFIRM
+    trash_actions = actions[:-1]
+    assert all(
+        action.action_id == "trash_intrigue_for_imperial_privilege"
+        for action in trash_actions
+    )
+    assert {dict(action.arguments)["card_id"] for action in trash_actions} == {
+        "intrigue:one",
+        "intrigue:two",
+    }
+
+
+def test_imperial_privilege_with_no_held_intrigue_offers_only_the_recall_step() -> (
+    None
+):
+    # Nothing to trade: no row stands for the trade at all (OQ-095 (2), user
+    # ruling 2026-10-14), and the turn end lapses its icon.
+    state = _imperial_privilege_state()
+
+    assert tuple(
+        action.action_id for action in legal_imperial_privilege_actions(state, 0)
+    ) == ("resolve_imperial_privilege_without_recall",)
+
+
+def test_imperial_privilege_trashes_an_intrigue_then_offers_the_other_agent() -> (
+    None
+):
+    # The space prints the Trash-an-Intrigue-card icon -> Intrigue card:
+    # "Trash an Intrigue card of your choice from your hand" [Main p. 20].
+    # The Board Space Guide words it "discard" [Board Guide p. 2]. The action
+    # stays a trash, but Intrigue cards have no trash pile: the card joins
+    # the shared Intrigue discard (OQ-061, user ruling 2026-10-04).
+    state = _imperial_privilege_state(
+        intrigue_cards=("intrigue:held",),
+        intrigue_deck=("intrigue:replacement",),
+        other_agent_space="arrakeen",
+    )
+    action = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    result = apply_imperial_privilege_action(state, action)
+    resolved = result.state
+    owner = resolved.players[0]
+    context = dict(resolved.decision_stack[-1].context)
+
+    assert owner.intrigue_cards == ("intrigue:replacement",)
+    assert resolved.intrigue_discard == ("intrigue:held",)
+    assert resolved.intrigue_deck == ()
+    assert context["pending_board_effect"] is True
+    assert context["pending_board_icons"] == "imperial_privilege,cards"
+    assert any(event.kind == "intrigue_card_trashed" for event in result.events)
+    assert not any(event.kind == "intrigue_card_discarded" for event in result.events)
+
+    recall_actions = legal_imperial_privilege_actions(resolved, 0)
+    assert tuple(action.action_id for action in recall_actions) == (
+        "recall_agent_for_imperial_privilege",
+    )
+    assert dict(recall_actions[0].arguments) == {"space_id": "arrakeen"}
+
+
+# The user ruling that splits Imperial Privilege's second sentence, "Recall
+# one of your other Agents from the board, and draw a card" [Board Guide p. 2]
+# [Main p. 20], into two steps: "4번은 소환과 뽑기가 당연히 두 단계로
+# 나눠야지. 이건 정말 기본적인 원칙인데" (user ruling 2026-10-10, OQ-027 (d)).
+# OQ-023 already rules the recall and the draw are "별개의 효과". The draw is
+# the space's own ``cards`` icon, ordered freely with the Intrigue slot and
+# the recall ("You may carry out all these effects in any order" [Main p. 9]).
+# Since the user ruling of 2026-10-14 (OQ-095 (2)) the optional Intrigue
+# trade is its own ``imperial_privilege_intrigue`` icon offered beside the
+# recall, without a refusal, and the turn end lapses it when unused; before
+# codec v146 it shared the recall's icon and came first.
+_IP_RULING = "user ruling 2026-10-10, OQ-027 (d)"
+
+_DRAW = DomainAction(
+    action_id="resolve_board_effect", actor=0, arguments=(("effect", "cards"),)
+)
+
+
+def _with_deck(state: GameState, *cards: str) -> GameState:
+    owner = replace(state.players[0], deck=cards)
+    return replace(state, players=(owner, *state.players[1:]))
+
+
+def test_imperial_privilege_recall_returns_the_agent_and_draws_nothing() -> None:
+    # The recall only recalls; the card is drawn by the space's own icon
+    # (_IP_RULING).
+    drawn = _instance("reconnaissance")
+    state = _with_deck(_imperial_privilege_state(other_agent_space="arrakeen"), drawn)
+    assert board_icons_for(state, 0, "imperial_privilege", 0) == (
+        "imperial_privilege_intrigue",
+        "imperial_privilege",
+        "cards",
+    )
+    recall = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "recall_agent_for_imperial_privilege"
+    )
+
+    result = apply_imperial_privilege_action(state, recall)
+    resolved_owner = result.state.players[0]
+
+    assert "arrakeen" not in resolved_owner.agent_locations
+    assert resolved_owner.agents_available == 1
+    assert resolved_owner.hand == ()
+    assert resolved_owner.deck == (drawn,)
+    assert [event.kind for event in result.events] == [
+        "agent_recalled",
+        "board_effect_resolved",
+    ]
+    assert dict(result.events[-1].payload) == {
+        "action_id": "recall_agent_for_imperial_privilege",
+        "effect": "imperial_privilege",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    # The draw still waits, and with it the turn end.
+    assert legal_imperial_privilege_actions(result.state, 0) == ()
+    assert legal_board_effect_actions(result.state, 0) == (_DRAW,)
+    assert not legal_agent_turn_finish_actions(result.state, 0)
+
+    drew = resolve_board_effect(result.state, _DRAW)
+    assert drew.state.players[0].hand == (drawn,)
+    assert dict(drew.events[-1].payload) == {
+        "effect": "cards",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    decision = _finish_open_turn(drew.state).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+@pytest.mark.parametrize("order", list(permutations(("draw", "trade", "recall"))))
+def test_imperial_privilege_draw_and_recall_resolve_in_any_order(
+    order: tuple[str, ...],
+) -> None:
+    # _IP_RULING: the pieces are independent, each resolved once; the card is
+    # drawn exactly once whatever the order, and the turn end waits until the
+    # draw and the recall have resolved. The optional Intrigue trade may come
+    # anywhere, before or after the recall, and holds no end back (OQ-095
+    # (2), user ruling 2026-10-14).
+    drawn, second = _instance("reconnaissance"), _instance("diplomacy")
+    state = _with_deck(
+        _imperial_privilege_state(
+            intrigue_cards=("intrigue:held",),
+            intrigue_deck=("intrigue:replacement",),
+            other_agent_space="arrakeen",
+        ),
+        drawn,
+        second,
+    )
+    steps = {
+        "draw": _DRAW,
+        "trade": DomainAction(
+            action_id="trash_intrigue_for_imperial_privilege",
+            actor=0,
+            arguments=(("card_id", "intrigue:held"),),
+        ),
+        "recall": DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    }
+    engine = UprisingRulesEngine()
+    for done, step in enumerate(order):
+        settled = {"draw", "recall"} <= set(order[:done])
+        assert bool(legal_agent_turn_finish_actions(state, 0)) is settled
+        assert (_DRAW in engine.whole_actions(state, 0)) is ("draw" not in order[:done])
+        state = apply_whole(engine, state, steps[step]).state
+        assert state.players[0].hand == (
+            (drawn,) if "draw" in order[: done + 1] else ()
+        )
+
+    owner = state.players[0]
+    assert owner.hand == (drawn,)
+    assert owner.deck == (second,)
+    assert owner.agent_locations == ("imperial_privilege",)
+    assert owner.intrigue_cards == ("intrigue:replacement",)
+    legal = engine.whole_actions(state, 0)
+    assert _DRAW not in legal
+    assert not any("imperial_privilege" in action.action_id for action in legal)
+    assert legal_agent_turn_finish_actions(state, 0)
+
+
+def test_imperial_privilege_unused_trade_lapses_at_the_turn_end() -> None:
+    # The trade left unused does not hold the end back; the owner's press
+    # lapses it with a ``board_effect_lapsed`` event and the Intrigue card
+    # stays in hand (OQ-095 (2), user ruling 2026-10-14).
+    state = _with_deck(
+        _imperial_privilege_state(
+            intrigue_cards=("intrigue:held",), other_agent_space="arrakeen"
+        ),
+        _instance("reconnaissance"),
+    )
+    state = resolve_board_effect(state, _DRAW).state
+    state = apply_imperial_privilege_action(
+        state,
+        DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    ).state
+    assert legal_imperial_privilege_actions(state, 0) == (
+        DomainAction(
+            action_id="trash_intrigue_for_imperial_privilege",
+            actor=0,
+            arguments=(("card_id", "intrigue:held"),),
+        ),
+    )
+    assert legal_agent_turn_finish_actions(state, 0)
+
+    result = finish_agent_turn_result(state)
+
+    assert result.state.players[0].intrigue_cards == ("intrigue:held",)
+    lapsed = [event for event in result.events if event.kind == "board_effect_lapsed"]
+    assert [dict(event.payload) for event in lapsed] == [
+        {
+            "effect": "imperial_privilege_intrigue",
+            "player": 0,
+            "space_id": "imperial_privilege",
+        }
+    ]
+    decision = result.state.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_imperial_privilege_turn_end_waits_for_the_recall_after_the_draw() -> None:
+    # The draw alone does not settle the space: the mandatory recall still
+    # blocks finish_agent_turn; the optional trade, with nothing to trade
+    # here, does not (OQ-095 (2), user ruling 2026-10-14).
+    state = _with_deck(
+        _imperial_privilege_state(other_agent_space="arrakeen"),
+        _instance("reconnaissance"),
+    )
+    drew = resolve_board_effect(state, _DRAW).state
+    recall = DomainAction(
+        action_id="recall_agent_for_imperial_privilege",
+        actor=0,
+        arguments=(("space_id", "arrakeen"),),
+    )
+
+    assert dict(drew.decision_stack[-1].context)["pending_board_effect"] is True
+    assert not legal_agent_turn_finish_actions(drew, 0)
+    assert legal_imperial_privilege_actions(drew, 0) == (recall,)
+    recalled = apply_imperial_privilege_action(drew, recall).state
+    assert legal_agent_turn_finish_actions(recalled, 0)
+    assert legal_board_effect_actions(recalled, 0) == ()
+
+
+def test_imperial_privilege_confirms_the_skipped_recall_without_another_agent() -> None:
+    # OQ-023 (decided): with no other deployed Agent only the recall is
+    # skipped; the card draw is a separate printed effect and still resolves
+    # [Board Guide p. 2]. User ruling 2026-09-30 ("결정 창 없이 자동으로
+    # 넘어가는 곳도 모두 결정 창을 연다"): the owner confirms the skip
+    # instead of the engine resolving it unasked. Since _IP_RULING the
+    # confirm only confirms: the draw is the space's own icon and waits for
+    # its own action. The Intrigue deck holds a card so the slot's draw needs
+    # no reshuffle of the trashed one (OQ-061).
+    state = _imperial_privilege_state(
+        intrigue_cards=("intrigue:held",), intrigue_deck=("intrigue:replacement",)
+    )
+    drawn = _instance("reconnaissance")
+    state = _with_deck(state, drawn)
+    action = next(
+        candidate
+        for candidate in legal_imperial_privilege_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    traded = apply_imperial_privilege_action(state, action)
+
+    assert imperial_privilege_recall_targets(traded.state, 0) == ()
+    assert legal_imperial_privilege_actions(traded.state, 0) == (_CONFIRM,)
+    assert drawn not in traded.state.players[0].hand
+    assert dict(traded.state.decision_stack[-1].context)["pending_board_effect"]
+    assert not legal_agent_turn_finish_actions(traded.state, 0)
+    assert not any(
+        event.kind == "imperial_privilege_recall_skipped" for event in traded.events
+    )
+
+    result = apply_imperial_privilege_action(traded.state, _CONFIRM)
+    resolved = result.state
+
+    assert legal_imperial_privilege_actions(resolved, 0) == ()
+    assert imperial_privilege_recall_targets(resolved, 0) is None
+    # The confirm draws nothing; the card still waits for its own icon.
+    assert drawn not in resolved.players[0].hand
+    assert resolved.players[0].deck == (drawn,)
+    assert [event.kind for event in result.events] == [
+        "imperial_privilege_recall_skipped",
+        "board_effect_resolved",
+    ]
+    assert dict(result.events[-1].payload) == {
+        "action_id": "resolve_imperial_privilege_without_recall",
+        "effect": "imperial_privilege",
+        "player": 0,
+        "space_id": "imperial_privilege",
+    }
+    assert legal_board_effect_actions(resolved, 0) == (_DRAW,)
+    assert not legal_agent_turn_finish_actions(resolved, 0)
+
+    drew = resolve_board_effect(resolved, _DRAW).state
+    assert drew.players[0].hand == (drawn,)
+    decision = _finish_open_turn(drew).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_imperial_privilege_recall_is_confirmed_only_without_a_target() -> None:
+    # The confirm is offered if and only if the recall has no target: with
+    # another Agent on the board only the recall is offered. The recall is
+    # judged from the start: the optional trade no longer comes first (OQ-095
+    # (2), user ruling 2026-10-14).
+    declined = _imperial_privilege_state(other_agent_space="arrakeen")
+
+    assert imperial_privilege_recall_targets(declined, 0) == ("arrakeen",)
+    assert legal_imperial_privilege_actions(declined, 0) == (
+        DomainAction(
+            action_id="recall_agent_for_imperial_privilege",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    )
+    with pytest.raises(ValueError, match="not a legal Imperial Privilege"):
+        apply_imperial_privilege_action(declined, _CONFIRM)
+    # Another seat never sees the owner's recall.
+    assert imperial_privilege_recall_targets(declined, 1) is None
+
+
+def test_imperial_privilege_recall_that_lost_its_target_turns_into_the_confirm() -> (
+    None
+):
+    # OQ-023 (decided): the recall's target is judged when it resolves. The
+    # target may vanish before then (a freely ordered recall of the same
+    # turn); the provider then offers the confirm, so the decision is never
+    # left without a legal action (the 2026-09-06 self-play deadlock) and no
+    # engine hook skips it unasked. Since the user ruling of 2026-10-14
+    # (OQ-095 (2)) no Intrigue slot is declined first.
+    declined = _imperial_privilege_state(other_agent_space="arrakeen")
+    drawn = _instance("reconnaissance")
+    owner = replace(
+        declined.players[0],
+        deck=(drawn,),
+        agents_available=1,
+        agent_locations=("imperial_privilege",),
+    )
+    lost = replace(declined, players=(owner, *declined.players[1:]))
+
+    assert legal_imperial_privilege_actions(lost, 0) == (_CONFIRM,)
+    result = apply_imperial_privilege_action(lost, _CONFIRM)
+
+    kinds = [event.kind for event in result.events]
+    assert kinds == ["imperial_privilege_recall_skipped", "board_effect_resolved"]
+    assert drawn not in result.state.players[0].hand
+    drew = resolve_board_effect(result.state, _DRAW).state
+    assert drawn in drew.players[0].hand
+    decision = _finish_open_turn(drew).decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 1
+
+
+def test_steersman_recall_after_imperial_privilege_slot_offers_the_confirm() -> None:
+    # The self-play reproduction: Steersman visits Imperial Privilege while
+    # another Agent is still on the board (the optional Intrigue trade no
+    # longer needs declining first, OQ-095 (2), user ruling 2026-10-14), then
+    # the Agent box's recall brings that Agent home. OQ-023 judges the
+    # recall target at resolution time, so the recall turns into the confirm
+    # (user ruling 2026-09-30) instead of leaving a decision with no legal
+    # action; nothing resolves before the owner presses it.
+    steersman = next(
+        instance
+        for instance in imperium_deck_instance_ids(False)
+        if ":steersman:" in instance
+    )
+    deck = tuple(starting_deck_instance_ids(0)[:2])
+    owner = PlayerState(
+        player_id=0,
+        hand=(steersman,),
+        deck=deck,
+        resources=Resources(solari=3),
+        influence=Influence(emperor=2),
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    declined = apply_placement(
+        engine, state, _action_to(state, "imperial_privilege")
+    ).state
+    assert any(
+        action.action_id == "recall_agent_for_imperial_privilege"
+        for action in engine.whole_actions(declined, 0)
+    )
+
+    transition = apply_whole(engine, 
+        declined,
+        DomainAction(
+            action_id="recall_agent_for_agent_card",
+            actor=0,
+            arguments=(("space_id", "arrakeen"),),
+        ),
+    )
+
+    recalled = transition.state
+    assert recalled.players[0].agent_locations == ("imperial_privilege",)
+    assert not any(
+        event.kind == "imperial_privilege_recall_skipped" for event in transition.events
+    )
+    context = dict(recalled.decision_stack[-1].context)
+    assert context["pending_board_effect"] is True
+    legal = engine.whole_actions(recalled, 0)
+    assert _CONFIRM in legal
+    assert not any(
+        action.action_id == "recall_agent_for_imperial_privilege" for action in legal
+    )
+    decision = recalled.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    # Steersman's own card icon is still the owner's to resolve too.
+    assert decision.owner == 0
+
+    confirmed = apply_whole(engine, recalled, _CONFIRM)
+    assert any(
+        event.kind == "imperial_privilege_recall_skipped" for event in confirmed.events
+    )
+    # The space's draw is still its own pending icon (_IP_RULING), beside the
+    # unused optional trade (nothing to trade here).
+    assert (
+        dict(confirmed.state.decision_stack[-1].context)["pending_board_icons"]
+        == "imperial_privilege_intrigue,cards"
+    )
+    assert deck[0] not in confirmed.state.players[0].hand
+    drew = apply_whole(engine, confirmed.state, _DRAW).state
+    assert dict(drew.decision_stack[-1].context)["pending_board_icons"] == (
+        "imperial_privilege_intrigue"
+    )
+    assert deck[0] in drew.players[0].hand
+
+
+def test_reverend_mother_never_repeats_imperial_privilege() -> None:
+    # Reverend Mother's paid repeat re-queues every printed icon of the
+    # visit, but only "on a Bene Gesserit or Fremen board space" [Reverend
+    # Mother Jessica card] (rules/agent_turn.py); Imperial Privilege is a
+    # Landsraad space with no Faction [Board Guide p. 2], so the split
+    # pieces are never armed a second time.
+    state = _imperial_privilege_state(other_agent_space="arrakeen")
+    unplaced = _state("dagger", Resources(solari=3))
+    jessica = replace(
+        unplaced.players[0],
+        influence=Influence(emperor=2),
+        leader_face_id="reverend_mother_jessica",
+        resources=Resources(solari=3, water=1),
+    )
+    unplaced = replace(unplaced, players=(jessica, *unplaced.players[1:]))
+    placed = apply_agent_action(
+        unplaced, _action_to(unplaced, "imperial_privilege")
+    ).state
+    context = dict(placed.decision_stack[-1].context)
+    assert context["pending_board_icons"] == (
+        "imperial_privilege_intrigue,imperial_privilege,cards"
+    )
+    assert context["pending_leader_board_repeat"] is False
+    assert dict(state.decision_stack[-1].context)["pending_leader_board_repeat"] is (
+        False
+    )
+
+
+def test_imperial_privilege_reshuffle_includes_the_trashed_intrigue() -> None:
+    # The slot-1 draw goes through the reshuffle-safe path [FAQ p. 2], just
+    # like Assembly Hall's Intrigue draw (mirrors
+    # test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision
+    # in test_intrigue.py).
+    discard = ("intrigue:cunning", "intrigue:devour")
+    state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
+    state = replace(state, intrigue_discard=discard)
+    engine = UprisingRulesEngine()
+    action = next(
+        candidate
+        for candidate in engine.whole_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    pending = apply_whole(engine, state, action)
+    decision = pending.next_decision
+
+    assert isinstance(decision, ChanceDecision)
+    # Intrigue cards have no trash pile (OQ-061, user ruling 2026-10-04): the
+    # trashed card joins the discard before the draw, so the reshuffle takes
+    # it with the rest ("shuffle the discarded Intrigue cards to form a new
+    # deck" [FAQ p. 2]).
+    assert decision.options == (*discard, "intrigue:held")
+    assert pending.state.pending_intrigue_draws == ()
+
+    outcome = ChanceResolver(seed=5).resolve(decision)
+    resolved = apply_whole(engine, pending.state, outcome)
+
+    # The empty deck did not crash the draw: the reshuffle completed and the
+    # owed card was delivered from the freshly shuffled deck.
+    assert len(resolved.state.players[0].intrigue_cards) == 1
+    assert resolved.state.intrigue_discard == ()
+    # Three cards were reshuffled, the trashed one included, and one drawn.
+    assert len(resolved.state.intrigue_deck) == 2
+
+
+def test_imperial_privilege_may_draw_back_the_card_it_just_trashed() -> None:
+    # With both Intrigue piles empty the trashed card is the whole discard,
+    # so the draw reshuffles it alone and hands it straight back; nothing is
+    # short (OQ-061, user ruling 2026-10-04, following the Steam app).
+    state = _imperial_privilege_state(intrigue_cards=("intrigue:held",))
+    assert state.intrigue_deck == ()
+    assert state.intrigue_discard == ()
+    engine = UprisingRulesEngine()
+    action = next(
+        candidate
+        for candidate in engine.whole_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    pending = apply_whole(engine, state, action)
+    decision = pending.next_decision
+
+    assert any(event.kind == "intrigue_card_trashed" for event in pending.events)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == ("intrigue:held",)
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
+
+    assert resolved.state.players[0].intrigue_cards == ("intrigue:held",)
+    assert resolved.state.intrigue_deck == ()
+    assert resolved.state.intrigue_discard == ()
+    assert not any(
+        event.kind == "intrigue_draw_short"
+        for event in (*pending.events, *resolved.events)
+    )
+
+
+def test_imperial_privilege_never_draws_back_a_trashed_twisted_card() -> None:
+    # A trashed Twisted card joins the shared discard (OQ-061) but is never
+    # shuffled into the deck (OQ-097, user ruling 2026-10-04, "다른 사람이
+    # twisted 카드를 뽑는 일은 없도록"): with both piles empty it is not
+    # handed back, and the draw falls short.
+    twisted = "intrigue:twisted_withdrawn:0"
+    state = _imperial_privilege_state(intrigue_cards=(twisted,))
+    assert state.intrigue_deck == ()
+    assert state.intrigue_discard == ()
+    engine = UprisingRulesEngine()
+    action = next(
+        candidate
+        for candidate in engine.whole_actions(state, 0)
+        if candidate.action_id == "trash_intrigue_for_imperial_privilege"
+    )
+
+    trashed = apply_whole(engine, state, action)
+
+    assert not isinstance(trashed.next_decision, ChanceDecision)
+    assert trashed.state.players[0].intrigue_cards == ()
+    assert trashed.state.intrigue_deck == ()
+    assert trashed.state.intrigue_discard == (twisted,)
+    assert [
+        dict(event.payload)
+        for event in trashed.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+    # With another discarded card, that one is shuffled and drawn instead.
+    other = replace(state, intrigue_discard=("intrigue:cunning",))
+    pending = apply_whole(engine, other, action)
+    decision = pending.next_decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == ("intrigue:cunning",)
+    resolved = apply_whole(
+        engine, pending.state, ChanceResolver(seed=5).resolve(decision)
+    )
+    assert resolved.state.players[0].intrigue_cards == ("intrigue:cunning",)
+    assert resolved.state.intrigue_discard == (twisted,)
+
+
+def _hagga_basin_state(*, wall_present: bool) -> GameState:
+    state = _state("dune_the_desert_planet")
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("siege_of_arrakeen",),
+        shield_wall_present=wall_present,
+        maker_bonus_spice=(
+            ("deep_desert", 0),
+            ("hagga_basin", 3),
+            ("imperial_basin", 0),
+        ),
+    )
+    return apply_agent_action(state, _action_to(state, "hagga_basin")).state
+
+
+def test_shield_wall_removes_sandworm_choice_from_protected_conflict() -> None:
+    state = _hagga_basin_state(wall_present=True)
+
+    assert tuple(
+        action.action_id for action in legal_maker_space_actions(state, 0)
+    ) == ("harvest_maker_spice",)
+
+
+def test_maker_space_can_summon_worm_and_collect_bonus_after_detonation() -> None:
+    state = _hagga_basin_state(wall_present=False)
+    actions = legal_maker_space_actions(state, 0)
+    summon = next(
+        action for action in actions if action.action_id == "summon_maker_sandworms"
+    )
+
+    resolved = apply_maker_space_action(state, summon).state
+
+    assert resolved.players[0].sandworms_conflict == 1
+    assert resolved.players[0].resources.spice == 3
+    assert dict(resolved.maker_bonus_spice)["hagga_basin"] == 0
+    assert (
+        dict(resolved.decision_stack[-1].context)["pending_combat_deployment"] is True
+    )
+
+
+def test_maker_spice_choice_collects_base_and_accumulated_spice() -> None:
+    state = _hagga_basin_state(wall_present=True)
+    harvest = legal_maker_space_actions(state, 0)[0]
+
+    resolved = apply_maker_space_action(state, harvest).state
+
+    assert resolved.players[0].resources.spice == 5
+    assert resolved.players[0].sandworms_conflict == 0
+    assert dict(resolved.maker_bonus_spice)["hagga_basin"] == 0
+
+
+def test_deep_desert_summons_two_sandworms() -> None:
+    state = _state("dune_the_desert_planet", Resources(water=3))
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("propaganda",),
+        maker_bonus_spice=(
+            ("deep_desert", 2),
+            ("hagga_basin", 0),
+            ("imperial_basin", 0),
+        ),
+    )
+    state = apply_agent_action(state, _action_to(state, "deep_desert")).state
+    summon = next(
+        action
+        for action in legal_maker_space_actions(state, 0)
+        if action.action_id == "summon_maker_sandworms"
+    )
+
+    resolved = apply_maker_space_action(state, summon).state
+
+    assert resolved.players[0].sandworms_conflict == 2
+    assert resolved.players[0].resources.spice == 2
+    assert dict(resolved.maker_bonus_spice)["deep_desert"] == 0
+
+
+def test_imperial_basin_collects_spice_without_a_sandworm_choice() -> None:
+    state = _state("dune_the_desert_planet")
+    owner = replace(state.players[0], maker_hooks=True)
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        current_conflict_ids=("propaganda",),
+        maker_bonus_spice=(
+            ("deep_desert", 0),
+            ("hagga_basin", 0),
+            ("imperial_basin", 2),
+        ),
+    )
+    state = apply_agent_action(state, _action_to(state, "imperial_basin")).state
+
+    actions = legal_maker_space_actions(state, 0)
+    resolved = apply_maker_space_action(state, actions[0]).state
+
+    assert tuple(action.action_id for action in actions) == ("harvest_maker_spice",)
+    assert resolved.players[0].resources.spice == 3
+    assert dict(resolved.maker_bonus_spice)["imperial_basin"] == 0
+    assert (
+        dict(resolved.decision_stack[-1].context)["pending_combat_deployment"] is True
+    )
+
+
+def _secrets_state(
+    *,
+    seat1_intrigue: tuple[str, ...] = (),
+    seat1_faceup: tuple[str, ...] = (),
+    seat2_intrigue: tuple[str, ...] = (),
+    seat3_intrigue: tuple[str, ...] = (),
+    intrigue_deck: tuple[str, ...] = (),
+    intrigue_discard: tuple[str, ...] = (),
+) -> GameState:
+    state = _state("diplomacy")
+    seat1 = replace(
+        state.players[1], intrigue_cards=seat1_intrigue, intrigue_faceup=seat1_faceup
+    )
+    seat2 = replace(state.players[2], intrigue_cards=seat2_intrigue)
+    seat3 = replace(state.players[3], intrigue_cards=seat3_intrigue)
+    state = replace(
+        state,
+        players=(state.players[0], seat1, seat2, seat3),
+        intrigue_deck=intrigue_deck,
+        intrigue_discard=intrigue_discard,
+    )
+    return apply_agent_action(state, _action_to(state, "secrets")).state
+
+
+def test_secrets_no_qualifying_opponent_only_draws_intrigue() -> None:
+    # With every opponent below 4 held Intrigue cards [Board Guide p. 2], the
+    # Bene Gesserit Influence stays pending on the generic faction-visit path
+    # and no random-steal frame is pushed.
+    placed = _secrets_state(intrigue_deck=("intrigue:drawn",))
+    assert dict(placed.decision_stack[-1].context)["board_icons"] == "intrigue"
+
+    resolved = _resolve_board(placed, "intrigue")
+
+    assert resolved.players[0].intrigue_cards == ("intrigue:drawn",)
+    assert not any(frame.kind == "secrets_steal" for frame in resolved.decision_stack)
+    top = resolved.decision_stack[-1]
+    assert top.kind == "agent_effects"
+    assert dict(top.context)["pending_faction_influence"] is True
+
+
+def test_secrets_one_qualifying_opponent_pushes_a_steal_frame() -> None:
+    victim_cards = ("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d")
+    placed = _secrets_state(seat1_intrigue=victim_cards)
+
+    resolved = _resolve_board(placed, "intrigue")
+    top = resolved.decision_stack[-1]
+
+    assert top.kind == "secrets_steal"
+    decision = top.decision
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == victim_cards
+    assert decision.count == 1
+    assert dict(top.context) == {"thief": 0, "victim": 1}
+
+    outcome = ChanceResolver(seed=3).resolve(decision)
+    result = apply_secrets_steal(resolved, outcome)
+    applied = result.state
+    stolen = outcome.values[0]
+
+    assert applied.players[1].intrigue_cards == tuple(
+        card for card in victim_cards if card != stolen
+    )
+    assert applied.players[0].intrigue_cards == (stolen,)
+    assert applied.decision_stack[-1].kind != "secrets_steal"
+    # The theft is public but the stolen identity stays between thief and
+    # victim: Intrigue is hidden from opponents until played [Main p. 7]
+    # (OQ-010 ruling 3 for the event log).
+    public, identity = result.events
+    assert public.kind == "intrigue_card_stolen"
+    assert public.visible_to is None
+    assert dict(public.payload) == {"player": 0, "victim": 1}
+    assert identity.kind == "intrigue_card_stolen_identity"
+    assert identity.visible_to == (0, 1)
+    assert dict(identity.payload) == {"card_id": stolen, "player": 0, "victim": 1}
+
+
+def test_secrets_two_qualifying_opponents_resolve_clockwise_from_the_thief() -> None:
+    seat1_cards = ("intrigue:s1a", "intrigue:s1b", "intrigue:s1c", "intrigue:s1d")
+    seat2_cards = ("intrigue:s2a", "intrigue:s2b", "intrigue:s2c", "intrigue:s2d")
+    placed = _secrets_state(seat1_intrigue=seat1_cards, seat2_intrigue=seat2_cards)
+
+    resolved = _resolve_board(placed, "intrigue")
+    steal_frames = [
+        frame for frame in resolved.decision_stack if frame.kind == "secrets_steal"
+    ]
+    assert len(steal_frames) == 2
+
+    # The seat immediately clockwise after the thief resolves first.
+    top = resolved.decision_stack[-1]
+    assert dict(top.context)["victim"] == 1
+    assert isinstance(top.decision, ChanceDecision)
+    assert top.decision.options == seat1_cards
+
+    outcome1 = ChanceResolver(seed=1).resolve(top.decision)
+    after_seat1 = apply_secrets_steal(resolved, outcome1).state
+    next_top = after_seat1.decision_stack[-1]
+
+    assert next_top.kind == "secrets_steal"
+    assert dict(next_top.context)["victim"] == 2
+    assert isinstance(next_top.decision, ChanceDecision)
+    assert next_top.decision.options == seat2_cards
+
+    outcome2 = ChanceResolver(seed=2).resolve(next_top.decision)
+    final = apply_secrets_steal(after_seat1, outcome2).state
+
+    assert final.players[1].intrigue_cards == tuple(
+        card for card in seat1_cards if card != outcome1.values[0]
+    )
+    assert final.players[2].intrigue_cards == tuple(
+        card for card in seat2_cards if card != outcome2.values[0]
+    )
+    assert final.players[0].intrigue_cards == (outcome1.values[0], outcome2.values[0])
+    assert final.decision_stack[-1].kind != "secrets_steal"
+
+
+def test_secrets_below_threshold_opponent_is_not_a_victim() -> None:
+    placed = _secrets_state(
+        seat1_intrigue=("intrigue:x", "intrigue:y", "intrigue:z"),
+        seat2_intrigue=("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d"),
+        seat3_intrigue=("intrigue:e", "intrigue:f", "intrigue:g", "intrigue:h"),
+    )
+
+    resolved = _resolve_board(placed, "intrigue")
+    victims = {
+        dict(frame.context)["victim"]
+        for frame in resolved.decision_stack
+        if frame.kind == "secrets_steal"
+    }
+
+    assert victims == {2, 3}
+
+
+def test_secrets_faceup_intrigue_does_not_count_toward_the_threshold() -> None:
+    # Face-up trigger cards sit in a separate public zone and are played, not
+    # held [Main p. 7], so they never count toward the 4-card threshold.
+    placed = _secrets_state(
+        seat1_intrigue=("intrigue:x", "intrigue:y", "intrigue:z"),
+        seat1_faceup=("intrigue:trigger_a", "intrigue:trigger_b"),
+    )
+
+    resolved = _resolve_board(placed, "intrigue")
+
+    assert not any(frame.kind == "secrets_steal" for frame in resolved.decision_stack)
+
+
+def test_secrets_reshuffle_resolves_before_the_steal_frame() -> None:
+    # Secrets' generic Intrigue draw still goes through the queued
+    # reshuffle-safe path [FAQ p. 2]. The printed order draws the Intrigue
+    # card first, so the reshuffle chance must resolve before the random
+    # steal frames (mirrors
+    # test_owed_intrigue_draws_reshuffle_the_discard_before_the_next_decision
+    # in test_intrigue.py).
+    victim_cards = ("intrigue:a", "intrigue:b", "intrigue:c", "intrigue:d")
+    state = _state("diplomacy")
+    victim = replace(state.players[1], intrigue_cards=victim_cards)
+    state = replace(
+        state,
+        players=(state.players[0], victim, *state.players[2:]),
+        intrigue_discard=("intrigue:cunning", "intrigue:devour"),
+    )
+    engine = UprisingRulesEngine()
+    to_secrets = next(
+        action
+        for action in executable_placements(state, 0)
+        if dict(action.arguments)["space_id"] == "secrets"
+    )
+    placed = apply_placement(engine, state, to_secrets).state
+
+    pending = apply_whole(engine, placed, _board_action(placed, "intrigue"))
+    decision = pending.next_decision
+
+    assert isinstance(decision, ChanceDecision)
+    assert "intrigue_shuffle" in decision.decision_id
+    assert pending.state.pending_intrigue_draws == ()
+
+    outcome = ChanceResolver(seed=7).resolve(decision)
+    resolved = apply_whole(engine, pending.state, outcome)
+    next_top = resolved.state.decision_stack[-1]
+
+    assert next_top.kind == "secrets_steal"
+    assert isinstance(next_top.decision, ChanceDecision)
+    assert "secrets:steal:1" in next_top.decision.decision_id
+    assert next_top.decision.options == victim_cards
+
+
+# The display catalog renders board-space effect text from the same static
+# table the engine executes, so the full printed domain is pinned here: every
+# manifest space x cost option x ruleset maps to an exact effect tuple, or to
+# None where the automatic-effects channel does not cover the space (spaces
+# resolved entirely through choice frames, or a not-yet-implemented effect).
+# Choice-driven spaces with an automatic icon (Espionage's draw, Desert
+# Tactics' troop, Shipping's Solari, Imperial Privilege's draw since the user
+# ruling of 2026-10-10) list just that icon (OQ-027).
+_BASE_EFFECT_TABLE: dict[str, dict[int, tuple[object, ...] | None]] = {
+    "dutiful_service": {0: (GainResources(solari=2),)},
+    "sardaukar": {0: (DrawIntrigueCards(1), RecruitTroops(4))},
+    "deliver_supplies": {0: (GainResources(water=1),)},
+    "heighliner": {0: (RecruitTroops(5),)},
+    "espionage": {0: (DrawPersonalCards(1),)},
+    "secrets": {0: (DrawIntrigueCards(1),)},
+    "desert_tactics": {0: (RecruitTroops(1),)},
+    "fremkit": {0: (DrawPersonalCards(1),)},
+    "assembly_hall": {0: (DrawIntrigueCards(1),)},
+    "gather_support": {
+        0: (RecruitTroops(2),),
+        1: (RecruitTroops(2), GainResources(water=1)),
+    },
+    "high_council": {0: ()},
+    "imperial_privilege": {0: (DrawPersonalCards(1),)},
+    "swordmaster": {0: (), 1: ()},
+    "arrakeen": {0: (RecruitTroops(1), DrawPersonalCards(1))},
+    "research_station": {0: (RecruitTroops(2), DrawPersonalCards(2))},
+    "sietch_tabr": {0: None},
+    "tuek_sietch": {0: None},
+    "spice_refinery": {
+        0: (GainResources(solari=2),),
+        1: (GainResources(solari=4),),
+    },
+    "accept_contract": {0: (DrawPersonalCards(1), GainResources(solari=2))},
+    "deep_desert": {0: None},
+    "hagga_basin": {0: None},
+    "imperial_basin": {0: None},
+    "shipping": {0: (GainResources(solari=5),)},
+}
+_CHOAM_EFFECT_OVERRIDES: dict[str, dict[int, tuple[object, ...] | None]] = {
+    "dutiful_service": {0: ()},
+    "accept_contract": {0: (DrawPersonalCards(1),)},
+}
+
+# Every printed icon of every space option, in printed order, as the keys of
+# the actions that resolve them (OQ-027): automatic keys take the generic
+# ``resolve_board_effect`` action, the rest the space's dedicated choices.
+_BASE_ICON_TABLE: dict[str, dict[int, str]] = {
+    "dutiful_service": {0: "resources"},
+    "sardaukar": {0: "intrigue,troops"},
+    "deliver_supplies": {0: "resources"},
+    "heighliner": {0: "troops"},
+    "espionage": {0: "cards,spy"},
+    "secrets": {0: "intrigue"},
+    "desert_tactics": {0: "troops,trash"},
+    "fremkit": {0: "cards"},
+    "assembly_hall": {0: "intrigue"},
+    "gather_support": {0: "troops", 1: "troops,resources"},
+    "high_council": {0: "high_council"},
+    # The optional Intrigue trade is its own icon beside the recall (OQ-095
+    # (2), user ruling 2026-10-14; codec v146).
+    "imperial_privilege": {0: "imperial_privilege_intrigue,imperial_privilege,cards"},
+    "swordmaster": {0: "swordmaster", 1: "swordmaster"},
+    "arrakeen": {0: "troops,cards"},
+    "research_station": {0: "troops,cards"},
+    "sietch_tabr": {0: "sietch_tabr"},
+    "tuek_sietch": {0: "tuek_sietch"},
+    "spice_refinery": {0: "resources", 1: "resources"},
+    "accept_contract": {0: "cards,resources"},
+    "deep_desert": {0: "maker"},
+    "hagga_basin": {0: "maker"},
+    "imperial_basin": {0: "maker"},
+    "shipping": {0: "resources,influence"},
+}
+_CHOAM_ICON_OVERRIDES: dict[str, dict[int, str]] = {
+    "dutiful_service": {0: "contract"},
+    "accept_contract": {0: "cards,contract"},
+}
+_CHOICE_ICONS = frozenset(
+    {
+        "spy",
+        "trash",
+        "influence",
+        "sietch_tabr",
+        "maker",
+        "imperial_privilege_intrigue",
+        "imperial_privilege",
+        "tuek_sietch",
+    }
+)
+
+
+def test_board_icons_pin_every_printed_space_option() -> None:
+    manifest_domain = {
+        (space.space_id, option)
+        for space in BOARD_SPACES
+        for option in range(max(1, len(space.cost_options)))
+    }
+    pinned_domain = {
+        (space_id, option)
+        for space_id, options in _BASE_ICON_TABLE.items()
+        for option in options
+    }
+    assert pinned_domain == manifest_domain
+    assert set(AUTOMATIC_BOARD_ICONS).isdisjoint(_CHOICE_ICONS)
+
+    for choam_module in (False, True):
+        state = GameState(
+            config=RulesetConfig(choam_module=choam_module),
+            seed=1,
+            players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+        )
+        for space_id, option in manifest_domain:
+            expected = _BASE_ICON_TABLE[space_id][option]
+            if choam_module and space_id in _CHOAM_ICON_OVERRIDES:
+                expected = _CHOAM_ICON_OVERRIDES[space_id][option]
+            icons = board_icons_for(state, 0, space_id, option)
+            assert ",".join(icons) == expected, (space_id, option, choam_module)
+            assert all(
+                icon in AUTOMATIC_BOARD_ICONS or icon in _CHOICE_ICONS for icon in icons
+            ), (space_id, option)
+
+    # A seated Councilor turns High Council into its three revisit icons.
+    member = replace(state.players[0], high_council=True)
+    member_state = replace(state, players=(member, *state.players[1:]))
+    assert board_icons_for(member_state, 0, "high_council", 0) == (
+        "resources",
+        "intrigue",
+        "troops",
+    )
+
+
+def test_static_board_effects_pins_the_full_printed_domain() -> None:
+    manifest_domain = {
+        (space.space_id, option)
+        for space in BOARD_SPACES
+        for option in range(max(1, len(space.cost_options)))
+    }
+    pinned_domain = {
+        (space_id, option)
+        for space_id, options in _BASE_EFFECT_TABLE.items()
+        for option in options
+    }
+    assert pinned_domain == manifest_domain
+
+    for choam_module in (False, True):
+        for space_id, option in manifest_domain:
+            expected = _BASE_EFFECT_TABLE[space_id][option]
+            if choam_module and space_id in _CHOAM_EFFECT_OVERRIDES:
+                expected = _CHOAM_EFFECT_OVERRIDES[space_id][option]
+            try:
+                actual: tuple[object, ...] | None = static_board_effects(
+                    space_id,
+                    option,
+                    choam_module=choam_module,
+                )
+            except NotImplementedError:
+                actual = None
+            assert actual == expected, (space_id, option, choam_module)
+
+
+def test_unimplemented_board_spaces_are_exactly_pinned() -> None:
+    base_hidden: set[str] = set()
+    for choam_module, expected_hidden in (
+        (False, base_hidden),
+        (True, base_hidden),
+    ):
+        state = GameState(
+            config=RulesetConfig(choam_module=choam_module),
+            seed=1,
+            players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+        )
+        hidden = {
+            space.space_id
+            for space in BOARD_SPACES
+            if not all(
+                board_effect_is_implemented(state, space.space_id, option)
+                for option in range(max(1, len(space.cost_options)))
+            )
+        }
+        assert hidden == expected_hidden, choam_module
+        assert not hidden & CHOICE_DRIVEN_SPACE_IDS
+
+
+def test_board_effects_for_delegates_to_the_static_table() -> None:
+    for choam_module in (False, True):
+        state = GameState(
+            config=RulesetConfig(choam_module=choam_module),
+            seed=1,
+            players=tuple(PlayerState(player_id=seat) for seat in range(4)),
+        )
+        assert board_effects_for(state, "accept_contract", 0) == static_board_effects(
+            "accept_contract",
+            0,
+            choam_module=choam_module,
+        )

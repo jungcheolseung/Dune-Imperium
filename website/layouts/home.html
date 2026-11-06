@@ -1,0 +1,38 @@
+{{ define "main" }}
+<section class="hero">
+  <div class="wrap hero-layout">
+    <div class="hero-copy">
+      <p class="eyebrow">{{ .Params.hero.eyebrow }}</p>
+      <h1>{{ .Params.hero.title }}</h1>
+      <p class="hero-intro">{{ .Params.hero.introduction }}</p>
+      <div class="actions"><a class="button primary" href="{{ (site.GetPage "/downloads").RelPermalink }}">{{ .Params.hero.primary }} <span aria-hidden="true">↗</span></a><a class="button hero-secondary" href="{{ (site.GetPage "/guides/joining").RelPermalink }}">{{ .Params.hero.secondary }} <span aria-hidden="true">→</span></a></div>
+      <p class="hero-note">{{ i18n "heroNote" }}</p>
+    </div>
+    <figure class="table-figure">
+      <div class="figure-heading">{{ i18n "seatExample" }}</div>
+      <img src="{{ printf "images/table-diagram%s.svg" (cond (eq .Language.Name "en") "-en" "") | relURL }}" width="520" height="370" alt="{{ i18n "seatAlt" }}">
+      <figcaption>{{ i18n "seatCaption" }}</figcaption>
+    </figure>
+  </div>
+  <div class="wrap hero-facts"><span>{{ i18n "baseGame" }}</span><span>{{ i18n "multiplayer" }}</span><span>{{ i18n "supportedLanguages" }}</span></div>
+</section>
+<section class="section journal-home">
+  <div class="wrap">
+    <div class="section-heading"><div><h2>{{ i18n "devlog" }}</h2><p>{{ i18n "journalIntro" }}</p></div><a class="text-link" href="{{ (site.GetPage "/devlog").RelPermalink }}">{{ i18n "allJournal" }} <span aria-hidden="true">→</span></a></div>
+    {{ partial "journal-list.html" (first 3 (where site.RegularPages "Section" "devlog").ByDate.Reverse) }}
+  </div>
+</section>
+<section class="section play-section">
+  <div class="wrap">
+    <div class="section-heading"><div><h2>{{ .Params.play.title }}</h2></div><p>{{ .Params.play.introduction }}</p></div>
+    <div class="play-grid">{{ range .Params.features }}<article class="play-item"><span class="item-number">{{ .number }}</span><h3>{{ .title }}</h3><p>{{ .text }}</p><a class="text-link" href="{{ (site.GetPage .page).RelPermalink }}">{{ .link }} <span aria-hidden="true">↗</span></a></article>{{ end }}</div>
+  </div>
+</section>
+<section class="section stories-section">
+  <div class="wrap"><div class="section-heading"><div><h2>{{ i18n "posts" }}</h2><p>{{ i18n "postsIntro" }}</p></div><a class="text-link" href="{{ (site.GetPage "/posts").RelPermalink }}">{{ i18n "allPosts" }} <span aria-hidden="true">→</span></a></div>
+    <div class="story-grid">{{ range first 3 (where site.RegularPages "Section" "posts").ByDate.Reverse }}{{ partial "card.html" . }}{{ end }}</div>
+  </div>
+</section>
+<section class="update-section"><div class="wrap update-strip"><div><p class="eyebrow">{{ i18n "latestUpdate" }}</p>{{ range first 1 (where site.RegularPages "Section" "updates").ByDate.Reverse }}<h2><a href="{{ .RelPermalink }}">{{ .Title }} <span aria-hidden="true">↗</span></a></h2><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format (i18n "dateFormat") }}</time>{{ end }}</div><a class="text-link" href="{{ (site.GetPage "/help").RelPermalink }}">{{ i18n "help" }} <span aria-hidden="true">↗</span></a></div></section>
+<div class="wrap home-note prose">{{ .Content }}</div>
+{{ end }}

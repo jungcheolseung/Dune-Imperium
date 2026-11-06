@@ -1,0 +1,401 @@
+"""CLI for the M10 training loop (requires the ``train`` extra)."""
+
+import argparse
+from collections.abc import Sequence
+from pathlib import Path
+
+from dune_imperium.training.learner import LearnerConfig
+from dune_imperium.training.loop import IterationRecord, TrainConfig, train
+from dune_imperium.training.network import DEFAULT_HIDDEN
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="dune-imperium-train",
+        description=(
+            "Train a masked policy/value network by self-play: collect seeded "
+            "games, update, checkpoint, and periodically evaluate against a "
+            "baseline with the tournament tool."
+        ),
+    )
+    parser.add_argument("--out", type=Path, required=True, help="output directory")
+    parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--games-per-iteration", type=int, default=32)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="cpu, mps, cuda, or auto (default: cpu)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="worker processes for self-play collection (default: 1)",
+    )
+    parser.add_argument("--choam", action="store_true", help="use the CHOAM ruleset")
+    parser.add_argument(
+        "--promo-cards",
+        action="store_true",
+        help=(
+            "shuffle the promo cards into their decks: the three Uprising "
+            "promos (Arrakis Revolt, The Beast's Spoils, Pivotal Gambit), "
+            "Ruthless Leadership with --bloodlines, and Piter, Genius Advisor "
+            "into the Tleilaxu deck with --immortality"
+        ),
+    )
+    parser.add_argument(
+        "--bloodlines",
+        action="store_true",
+        help="play with the Bloodlines expansion (docs/rules/bloodlines.md)",
+    )
+    parser.add_argument(
+        "--tech-module",
+        action="store_true",
+        help="add the Bloodlines Tech Module (requires --bloodlines)",
+    )
+    parser.add_argument(
+        "--immortality",
+        action="store_true",
+        help="play with the Immortality expansion (docs/rules/immortality.md)",
+    )
+    parser.add_argument(
+        "--go-to-11",
+        action="store_true",
+        help="start every Score marker at 0 (requires --immortality)",
+    )
+    parser.add_argument(
+        "--epic",
+        action="store_true",
+        help="play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md)",
+    )
+    parser.add_argument(
+        "--arrakeen-scouts",
+        action="store_true",
+        help="play with the Arrakeen Scouts module (docs/rules/arrakeen-scouts.md)",
+    )
+    parser.add_argument(
+        "--leader-draft",
+        action="store_true",
+        help=(
+            "use the OQ-007 six-Leader draft setup, so the learner also learns "
+            "the picks (cannot be combined with --rotate-leaders)"
+        ),
+    )
+    parser.add_argument(
+        "--rotate-leaders",
+        action="store_true",
+        help=(
+            "deal each training game a random four-Leader roster instead of "
+            "the engine's fixed four"
+        ),
+    )
+    parser.add_argument(
+        "--hidden",
+        default=",".join(str(width) for width in DEFAULT_HIDDEN),
+        help="comma-separated hidden widths (default: 512,512)",
+    )
+    parser.add_argument(
+        "--arch",
+        choices=("mlp", "entity"),
+        default="mlp",
+        help=(
+            "the network a fresh run builds: the flat MLP (default) or the "
+            "entity network (docs/entity-network-plan.md); a resumed run keeps "
+            "the checkpoint's"
+        ),
+    )
+    parser.add_argument("--learning-rate", type=float, default=3.0e-4)
+    parser.add_argument("--entropy", type=float, default=0.01)
+    parser.add_argument("--value-coefficient", type=float, default=0.5)
+    parser.add_argument("--minibatch", type=int, default=4096)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="passes over each collected batch (default: 1); use several only "
+        "with --clip",
+    )
+    parser.add_argument(
+        "--clip",
+        type=float,
+        default=None,
+        help="PPO clip range, e.g. 0.2 (default: off, plain REINFORCE)",
+    )
+    parser.add_argument(
+        "--opponent",
+        default=None,
+        help=(
+            "baseline kind for the other three seats during collection "
+            "(default: pure self-play)"
+        ),
+    )
+    parser.add_argument(
+        "--learner-seats",
+        type=int,
+        default=1,
+        help=(
+            "seats the learner holds at each table when --opponent is set "
+            "(1-3, default 1); the rest are the opponent"
+        ),
+    )
+    parser.add_argument(
+        "--opponent-games",
+        type=int,
+        default=None,
+        help=(
+            "games per iteration seated against --opponent, spread evenly; "
+            "the rest are pure self-play (default: every game)"
+        ),
+    )
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument(
+        "--score-rewards",
+        action="store_true",
+        help=(
+            "pay each seat its own final Victory Points / 10 instead of "
+            "winner-take-all during collection (an experiment arm; exclusive "
+            "with --rank-rewards); the environment and the tournament's win "
+            "criterion are unchanged"
+        ),
+    )
+    parser.add_argument(
+        "--family-atomics",
+        choices=("network", "app"),
+        default="network",
+        help=(
+            "who spends the Family Atomics token for the network seats during "
+            "collection: the policy (default), or the app AI's rule (the token "
+            "is then withheld from the policy, so the value head learns "
+            "positions that still hold it)"
+        ),
+    )
+    parser.add_argument(
+        "--rank-rewards",
+        action="store_true",
+        help=(
+            "pay the finishing order (1, 1/3, -1/3, -1 at four players) "
+            "instead of winner-take-all (+1 / -1/3) during collection; the "
+            "environment and the tournament's win criterion are unchanged"
+        ),
+    )
+    parser.add_argument(
+        "--step-penalty",
+        type=float,
+        default=0.0005,
+        help="learning-side cost per own decision (default: 0.0005; 0 disables)",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=4_000,
+        help="decisions per training game before truncation (default: 4000)",
+    )
+    parser.add_argument(
+        "--eval-every",
+        type=int,
+        default=0,
+        help="evaluate the latest checkpoint every N iterations (0: never)",
+    )
+    parser.add_argument(
+        "--eval-games",
+        type=int,
+        default=10,
+        help="evaluation seeds; each plays the four seat rotations (default: 10)",
+    )
+    parser.add_argument("--eval-opponent", default="heuristic")
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1,
+        help="keep a numbered checkpoint every N iterations (default: 1); "
+        "latest.pt is always rewritten",
+    )
+    parser.add_argument(
+        "--resume", type=Path, default=None, help="checkpoint to continue from"
+    )
+    parser.add_argument(
+        "--retarget",
+        action="store_true",
+        help=(
+            "let --resume load a checkpoint trained on another ruleset: its "
+            "policy head moves onto this run's catalog by template identity"
+        ),
+    )
+    parser.add_argument(
+        "--kickstart-teacher",
+        type=Path,
+        default=None,
+        help=(
+            "kickstarting: an older-codec MLP checkpoint (read through "
+            "training.older_teacher) whose distribution over each learner "
+            "step's legal actions the update pulls toward"
+        ),
+    )
+    parser.add_argument(
+        "--kickstart-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "weight of KL(teacher || learner) at this run's first iteration "
+            "(default: 0, off); it falls linearly to 0 over "
+            "--kickstart-iterations"
+        ),
+    )
+    parser.add_argument(
+        "--kickstart-iterations",
+        type=int,
+        default=0,
+        help="iterations over which the kickstart weight falls to 0",
+    )
+    # Stage 3 of docs/entity-self-play-plan.md (training.loop's docstring).
+    parser.add_argument(
+        "--init", type=Path, help="start from this file at iteration 0 (not --resume)"
+    )
+    parser.add_argument(
+        "--mix", help="opponent mix as shares, e.g. self=5,past=3,x=1,app=1"
+    )
+    parser.add_argument("--x-opponent", help="the mix's x tables' opponent kind")
+    parser.add_argument("--app-opponent", default="app_ai")
+    parser.add_argument("--past-every", type=int, default=200)
+    parser.add_argument("--past-keep", type=int, default=8)
+    parser.add_argument(
+        "--dealt-share",
+        type=float,
+        default=0.0,
+        help="share of the mix's games whose Leaders are dealt, not drafted",
+    )
+    parser.add_argument(
+        "--reward-step",
+        type=float,
+        help="graded reward: 2nd -1/3+s, 3rd -1/3, 4th -1/3-s (the user's 1/6)",
+    )
+    parser.add_argument(
+        "--critic", type=Path, help="a file whose value is every step's baseline"
+    )
+    parser.add_argument(
+        "--round-targets",
+        action="store_true",
+        help="aim a step at the lambda-return from its next round start",
+    )
+    parser.add_argument("--lam", type=float, default=0.8)
+    parser.add_argument(
+        "--round-baseline",
+        action="store_true",
+        help="measure a step against the critic's value of its last round start",
+    )
+    parser.add_argument(
+        "--freeze-value",
+        action="store_true",
+        help="leave the value branch (or value head) untrained",
+    )
+    return parser
+
+
+def _print(record: IterationRecord) -> None:
+    evaluation = (
+        f" eval win {record.eval_win_rate:.1%} rank {record.eval_mean_rank:.2f}"
+        if record.eval_win_rate is not None and record.eval_mean_rank is not None
+        else ""
+    )
+    if record.opponent_win_rate is not None:
+        evaluation = f" vs opponent {record.opponent_win_rate:.1%}" + evaluation
+    if record.table_win_rates:
+        tables = ", ".join(
+            f"{kind.rsplit('/', 1)[-1]} {rate:.0%}"
+            for kind, rate in record.table_win_rates.items()
+        )
+        evaluation = f" tables [{tables}]" + evaluation
+    if record.eval_failures:
+        evaluation += f" ({record.eval_failures} eval matches FAILED)"
+    kickstart = (
+        f"kickstart {record.update.kickstart_kl:.4f} "
+        f"x{record.update.kickstart_weight:.3f} "
+        if record.update.kickstart_weight
+        else ""
+    )
+    print(
+        f"iter {record.iteration}: {record.games} games, {record.learner_steps} "
+        f"learner steps, win {record.learner_win_rate:.1%}, reward "
+        f"{record.learner_mean_reward:+.3f}, rounds {record.mean_rounds:.1f}, "
+        f"policy {record.update.policy_loss:+.4f} value {record.update.value_loss:.4f} "
+        f"entropy {record.update.entropy:.3f} {kickstart}"
+        f"ev {record.update.explained_variance:+.2f}, "
+        f"{record.decisions_per_second:,.0f} dec/s, update {record.update_seconds:.1f}s"
+        f"{evaluation}"
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_parser()
+    arguments = parser.parse_args(argv)
+    try:
+        hidden = tuple(int(width) for width in arguments.hidden.split(",") if width)
+        config = TrainConfig(
+            out_dir=arguments.out,
+            iterations=arguments.iterations,
+            games_per_iteration=arguments.games_per_iteration,
+            seed=arguments.seed,
+            device=arguments.device,
+            workers=arguments.workers,
+            choam_module=arguments.choam,
+            promo_cards=arguments.promo_cards,
+            bloodlines=arguments.bloodlines,
+            tech_module=arguments.tech_module,
+            immortality=arguments.immortality,
+            go_to_11=arguments.go_to_11,
+            epic_game=arguments.epic,
+            arrakeen_scouts=arguments.arrakeen_scouts,
+            leader_draft=arguments.leader_draft,
+            rotate_leaders=arguments.rotate_leaders,
+            hidden=hidden,
+            arch=arguments.arch,
+            learner=LearnerConfig(
+                learning_rate=arguments.learning_rate,
+                value_coefficient=arguments.value_coefficient,
+                entropy_coefficient=arguments.entropy,
+                minibatch_size=arguments.minibatch,
+                epochs=arguments.epochs,
+                clip_ratio=arguments.clip,
+            ),
+            opponent=arguments.opponent,
+            learner_seats=arguments.learner_seats,
+            opponent_games=arguments.opponent_games,
+            temperature=arguments.temperature,
+            rank_rewards=arguments.rank_rewards,
+            score_rewards=arguments.score_rewards,
+            family_atomics=arguments.family_atomics,
+            step_penalty=arguments.step_penalty,
+            max_steps=arguments.max_steps,
+            eval_every=arguments.eval_every,
+            eval_games=arguments.eval_games,
+            eval_opponent=arguments.eval_opponent,
+            checkpoint_every=arguments.checkpoint_every,
+            resume=arguments.resume,
+            retarget=arguments.retarget,
+            kickstart_teacher=arguments.kickstart_teacher,
+            kickstart_weight=arguments.kickstart_weight,
+            kickstart_iterations=arguments.kickstart_iterations,
+            init=arguments.init,
+            mix=arguments.mix,
+            x_opponent=arguments.x_opponent,
+            app_opponent=arguments.app_opponent,
+            past_every=arguments.past_every,
+            past_keep=arguments.past_keep,
+            dealt_share=arguments.dealt_share,
+            reward_step=arguments.reward_step,
+            critic=arguments.critic,
+            round_targets=arguments.round_targets,
+            round_baseline=arguments.round_baseline,
+            lam=arguments.lam,
+            freeze_value=arguments.freeze_value,
+        )
+    except ValueError as error:
+        parser.error(str(error))
+    result = train(config, progress=_print)
+    print(f"latest checkpoint: {result.latest_checkpoint}; log: {result.log_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

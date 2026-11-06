@@ -1,0 +1,2157 @@
+"""Tests for Bloodlines Sardaukar Commanders and their Skills.
+
+Rule source: ``docs/rules/bloodlines.md`` section 3 [Bloodlines pp. 3-4] and
+the Skill tile faces. A Commander is bought without a Skill while no face-up
+Skill is choosable (OQ-031, user decision).
+"""
+
+from dataclasses import replace
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters.observation_encoding import (
+    OBSERVATION_SIZE,
+    encode_player_view,
+)
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_SETUP_SPACE_IDS,
+    SKILL_FACE_UP,
+    skill_for_instance,
+    skill_tile_instance_ids,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.registry.conflicts import CONFLICTS
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+    RuleResult,
+    observe_state,
+)
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
+from dune_imperium.rules.combat import finish_combat, offer_conflict_end_triggers
+from dune_imperium.rules.combat_deployment import (
+    apply_combat_deployment,
+    apply_commander_deployment,
+    apply_commander_withdrawal,
+    apply_troop_withdrawal,
+    grant_combat_icon,
+    legal_combat_deployments,
+    legal_commander_deployments,
+    legal_commander_withdrawals,
+    reconcile_deployment_after_retreat,
+)
+from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.influence import gain_faction_influence
+from dune_imperium.rules.reveal_turn import (
+    apply_reveal_deployment,
+    apply_reveal_gain,
+    begin_reveal_turn,
+    legal_reveal_deployments,
+    legal_reveal_gain_actions,
+)
+from dune_imperium.rules.sardaukar import (
+    apply_commander_recruit,
+    apply_sardaukar_commander_action,
+    apply_skill_choice,
+    apply_skill_trash,
+    begin_skill_choice,
+    legal_commander_recruit_actions,
+    legal_sardaukar_commander_actions,
+    legal_skill_choice_actions,
+    legal_skill_trash_actions,
+)
+from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
+from dune_imperium.rules.strength import refresh_pre_reveal_strength
+from dune_imperium.rules.units import retreat_units
+from dune_imperium.simulation.sweep import run_checked_game
+
+BLOODLINES = RulesetConfig(bloodlines=True)
+LEADERS = (
+    "feyd_rautha_harkonnen",
+    "gurney_halleck",
+    "lady_amber_metulli",
+    "lady_jessica",
+)
+SKILLS = skill_tile_instance_ids()
+
+
+def _skill(skill_id: str, copy: int = 0) -> str:
+    return f"skill:{skill_id}:{copy}"
+
+
+def _turn_state(
+    owner: PlayerState,
+    *,
+    spaces: tuple[str, ...] = COMMANDER_SETUP_SPACE_IDS,
+    face_up: tuple[str, ...] = tuple(SKILLS[:4]),
+    stack: tuple[str, ...] = tuple(SKILLS[4:]),
+    others: tuple[PlayerState, ...] | None = None,
+) -> GameState:
+    held = set(owner.skill_ids)
+    face_up = tuple(skill for skill in face_up if skill not in held)
+    stack = tuple(
+        skill for skill in stack if skill not in held and skill not in face_up
+    )
+    return GameState(
+        config=BLOODLINES,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            owner,
+            *(others or tuple(PlayerState(player_id=seat) for seat in range(1, 4))),
+        ),
+        sardaukar_commander_space_ids=spaces,
+        sardaukar_commanders_bank=1,
+        skill_face_up=face_up,
+        skill_stack=stack,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+
+
+def _owner(**overrides: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": 0,
+        "hand": starting_deck_instance_ids(0),
+        "resources": Resources(solari=4, water=2),
+    }
+    values.update(overrides)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def _agent_action_to(state: GameState, space_id: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+    )
+
+
+def _visit(state: GameState, space_id: str) -> GameState:
+    state = apply_agent_action(state, _agent_action_to(state, space_id)).state
+    for action in legal_board_effect_actions(state, 0):
+        state = resolve_board_effect(state, action).state
+    return state
+
+
+def _commander_actions(state: GameState) -> dict[str, DomainAction]:
+    return {
+        f"{action.action_id}:{dict(action.arguments).get('skill_id', '')}": action
+        for action in legal_sardaukar_commander_actions(state, 0)
+    }
+
+
+# --- setup -----------------------------------------------------------------
+
+
+def test_setup_places_six_commanders_and_deals_four_skills() -> None:
+    state = create_initial_state(BLOODLINES, seed=3, leader_ids=LEADERS).state
+
+    assert state.sardaukar_commander_space_ids == COMMANDER_SETUP_SPACE_IDS
+    assert state.sardaukar_commanders_bank == 1
+    assert len(state.skill_face_up) == SKILL_FACE_UP
+    assert len(state.skill_stack) == len(SKILLS) - SKILL_FACE_UP
+    assert set(state.skill_face_up) | set(state.skill_stack) == set(SKILLS)
+    assert all(player.commanders_total == 0 for player in state.players)
+
+
+def test_setup_without_bloodlines_has_no_commanders() -> None:
+    state = create_initial_state(RulesetConfig(), seed=3, leader_ids=LEADERS).state
+
+    assert state.sardaukar_commander_space_ids == ()
+    assert state.skill_face_up == () and state.skill_stack == ()
+    with pytest.raises(ValueError, match="require the Bloodlines expansion"):
+        replace(state, sardaukar_commanders_bank=1)
+
+
+def test_draft_setup_deals_the_skills_too() -> None:
+    state = create_draft_initial_state(
+        RulesetConfig(bloodlines=True, leader_draft=True), seed=5
+    ).state
+
+    assert state.sardaukar_commander_space_ids == COMMANDER_SETUP_SPACE_IDS
+    assert len(state.skill_face_up) == SKILL_FACE_UP
+
+
+# --- acquiring from a board space -------------------------------------------
+
+
+def test_visiting_a_commander_space_offers_the_purchase_with_face_up_skills() -> None:
+    state = _turn_state(_owner())
+    state = _visit(state, "dutiful_service")
+
+    actions = _commander_actions(state)
+    # Buying is optional [Bloodlines p. 4]: no refusal row, the turn end
+    # lapses an unused offer (OQ-095 (2), user ruling 2026-10-14; codec v146).
+    assert "decline_sardaukar_commander:" not in actions
+    offered = {key.split(":")[1] for key in actions if key.startswith("acquire")}
+    assert offered == {
+        skill_for_instance(skill).skill_id for skill in state.skill_face_up
+    }
+
+    bought = apply_sardaukar_commander_action(
+        state, actions["acquire_sardaukar_commander:canny"]
+    )
+    owner = bought.state.players[0]
+    assert owner.resources.solari == 4 + 2 - 2
+    assert owner.commanders_garrison == 1
+    assert owner.skill_ids == (_skill("canny"),)
+    assert "dutiful_service" not in bought.state.sardaukar_commander_space_ids
+    assert len(bought.state.skill_face_up) == SKILL_FACE_UP
+    assert _skill("canny") not in bought.state.skill_face_up
+    assert len(bought.state.skill_stack) == len(SKILLS) - SKILL_FACE_UP - 1
+    kinds = [event.kind for event in bought.events]
+    assert kinds[:3] == [
+        "sardaukar_commander_acquired",
+        "skill_gained",
+        "skill_revealed",
+    ]
+    # The offer is spent; the Emperor Influence of the space is still pending.
+    assert legal_sardaukar_commander_actions(bought.state, 0) == ()
+    assert bought.state.decision_stack[-1].kind == "agent_effects"
+
+
+def test_a_first_high_council_visit_may_buy_its_commander() -> None:
+    # "During one of your turns, if you send an Agent to a board space that
+    # has a Sardaukar Commander, you may spend 2 Solari to acquire and then
+    # immediately recruit that Sardaukar Commander" [Bloodlines p. 4]; setup
+    # puts one on High Council [Bloodlines p. 3], and taking the seat on the
+    # same visit does not hide it.
+    state = _turn_state(_owner(resources=Resources(solari=7, water=2)))
+    placed = apply_agent_action(state, _agent_action_to(state, "high_council")).state
+    assert dict(placed.decision_stack[-1].context)["pending_board_icons"] == (
+        "high_council,sardaukar_commander"
+    )
+    state = _visit(state, "high_council")
+    assert state.players[0].high_council
+    bought = apply_sardaukar_commander_action(
+        state, _commander_actions(state)["acquire_sardaukar_commander:canny"]
+    )
+    owner = bought.state.players[0]
+    assert owner.resources.solari == 0
+    assert owner.commanders_garrison == 1
+    assert "high_council" not in bought.state.sardaukar_commander_space_ids
+
+
+def test_a_held_skill_cannot_be_chosen_again() -> None:
+    owner = _owner(skill_ids=(_skill("canny"),), commanders_supply=1)
+    state = _turn_state(owner, face_up=(_skill("canny", 1), *SKILLS[2:5]))
+    state = _visit(state, "dutiful_service")
+
+    offered = {
+        key.split(":")[1] for key in _commander_actions(state) if "acquire" in key
+    }
+    assert "canny" not in offered
+    assert offered == {"charismatic", "desperate"}
+
+
+def test_without_a_choosable_skill_the_commander_is_bought_without_one() -> None:
+    # OQ-031 (user decision 2026-09-07): the Commander still comes, the
+    # Skill does not.
+    owner = _owner(skill_ids=(_skill("canny"), _skill("charismatic")))
+    state = _turn_state(
+        owner,
+        face_up=(_skill("canny", 1), _skill("charismatic", 1)),
+        stack=(),
+    )
+    state = _visit(state, "dutiful_service")
+
+    assert set(_commander_actions(state)) == {"acquire_sardaukar_commander:"}
+    with pytest.raises(ValueError, match="not a legal Sardaukar Commander choice"):
+        apply_sardaukar_commander_action(
+            state,
+            DomainAction("acquire_sardaukar_commander", 0, (("skill_id", "canny"),)),
+        )
+    bought = apply_sardaukar_commander_action(
+        state, DomainAction(action_id="acquire_sardaukar_commander", actor=0)
+    )
+    owner = bought.state.players[0]
+    assert owner.commanders_garrison == 1
+    assert owner.resources.solari == state.players[0].resources.solari - 2
+    assert len(owner.skill_ids) == 2
+    assert bought.state.skill_face_up == state.skill_face_up
+    assert [event.kind for event in bought.events] == ["sardaukar_commander_acquired"]
+
+
+def test_without_two_solari_nothing_is_offered_and_the_turn_end_lapses_it() -> None:
+    # Before codec v146 only ``decline_sardaukar_commander`` was offered and
+    # the turn waited on it; since the user ruling of 2026-10-14 (OQ-095
+    # (2)) the optional purchase offers nothing it cannot pay, holds no turn
+    # end back, and the owner's press lapses it. The Commander stays.
+    state = _turn_state(_owner(resources=Resources(solari=1, water=1)))
+    state = _visit(state, "deliver_supplies")
+
+    assert set(_commander_actions(state)) == set()
+    engine = UprisingRulesEngine()
+    while steps := [
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id
+        in ("resolve_faction_influence", "resolve_agent_card_effect")
+    ]:
+        state = apply_whole(engine, state, steps[0]).state
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in engine.whole_actions(state, 0)
+    finished = apply_whole(engine, state, finish)
+    assert [
+        dict(event.payload)
+        for event in finished.events
+        if event.kind == "board_effect_lapsed"
+    ] == [
+        {"effect": "sardaukar_commander", "player": 0, "space_id": "deliver_supplies"}
+    ]
+    assert "sardaukar_commander_declined" not in {
+        event.kind for event in finished.events
+    }
+    assert "deliver_supplies" in finished.state.sardaukar_commander_space_ids
+
+
+def test_a_space_without_a_commander_offers_nothing() -> None:
+    state = _turn_state(_owner(), spaces=())
+    state = _visit(state, "dutiful_service")
+
+    assert legal_sardaukar_commander_actions(state, 0) == ()
+
+
+# --- recruiting from the supply ---------------------------------------------
+
+
+def test_paid_recruit_from_supply_once_per_turn() -> None:
+    state = _turn_state(
+        _owner(commanders_supply=2, resources=Resources(solari=6, water=2))
+    )
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    recruited = apply_commander_recruit(state, recruit).state
+    owner = recruited.players[0]
+    assert owner.commanders_supply == 1
+    assert owner.commanders_garrison == 1
+    assert owner.resources.solari == 4
+    assert owner.commander_recruited_turn is True
+    # "you can only recruit one Sardaukar Commander from your supply each turn".
+    assert legal_commander_recruit_actions(recruited, 0) == ()
+    # Recruited this turn at a Combat space: it may join the deployment.
+    assert legal_commander_deployments(recruited, 0) != ()
+    # Finding 2's Reveal branch (``turn_owner_of(next_state) == player``)
+    # must not double-credit this Agent-turn recruit, which the in-place
+    # update already counts once -- as a Commander, never as a troop, so
+    # its deploy slot stays a Commander's (user ruling OQ-070).
+    context = dict(recruited.decision_stack[-1].context)
+    assert context["commanders_recruited"] == 1
+    assert context["troops_recruited"] == 0
+
+
+def test_paid_recruit_is_offered_in_the_reveal_turn_to_the_garrison() -> None:
+    state = _turn_state(_owner(commanders_supply=1, resources=Resources(solari=2)))
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    recruited = apply_commander_recruit(state, recruit).state
+    assert recruited.players[0].commanders_garrison == 1
+    assert recruited.players[0].commanders_conflict == 0
+    assert recruited.decision_stack[-1].kind == "reveal"
+
+
+def test_paid_recruit_in_reveal_counts_as_a_commander() -> None:
+    # Finding 2 (2026-09-26 review round 3): ``apply_commander_recruit``
+    # only credited an owned AGENT_EFFECTS frame's ``troops_recruited``; in
+    # a Reveal turn no such frame sits on top, so this once-per-turn
+    # recruit reached the garrison without ever joining the Combat
+    # 아이콘's shared deploy allowance. "Once per turn, Agent or Reveal"
+    # [Bloodlines p. 4]; "이번 turn에 recruit한 유닛 전부와 garrison에서
+    # 최대 두 개" [Bloodlines pp. 5, 12] applies to either alike
+    # (docs/rules/player-turns.md:137) [Main p. 10] [FAQ p. 4].
+    state = _turn_state(_owner(commanders_supply=1, resources=Resources(solari=2)))
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    recruited = apply_commander_recruit(state, recruit).state
+
+    assert recruited.decision_stack[-1].kind == "reveal"
+    # Counted as a Commander, apart from the troops: its slot is a
+    # Commander's (user ruling OQ-070).
+    context = dict(recruited.decision_stack[-1].context)
+    assert context["reveal_commanders_recruited"] == 1
+    assert context["reveal_troops_recruited"] == 0
+
+
+def test_paid_recruit_needs_supply_solari_and_the_option() -> None:
+    state = _turn_state(
+        _owner(commanders_supply=0, resources=Resources(solari=6, water=2))
+    )
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    assert legal_commander_recruit_actions(state, 0) == ()
+
+    state = _turn_state(
+        _owner(commanders_supply=1, resources=Resources(solari=1, water=2))
+    )
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    assert legal_commander_recruit_actions(state, 0) == ()
+
+
+# --- deployment and strength -----------------------------------------------
+
+
+def test_commanders_share_the_two_from_garrison_limit_and_count_two_strength() -> None:
+    state = _turn_state(_owner(commanders_garrison=2))
+    state = _visit(state, "arrakeen")  # one recruited troop + two from garrison
+
+    assert [
+        dict(a.arguments)["count"] for a in legal_commander_deployments(state, 0)
+    ] == [1, 2]
+    deployed = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 2),))
+    ).state
+    owner = deployed.players[0]
+    assert owner.commanders_conflict == 2 and owner.commanders_garrison == 0
+    assert owner.units_deployed_turn == 2
+    # The garrison share is used up; only the recruited troop may still go.
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(deployed, 0)
+    ] == [1]
+    assert legal_commander_deployments(deployed, 0) == ()
+    # The running strength follows at once: 2 per Commander.
+    refreshed = refresh_pre_reveal_strength(RuleResult(state=deployed)).state
+    assert refreshed.players[0].combat_strength == 4
+
+    withdrawn = apply_commander_withdrawal(
+        deployed, DomainAction("withdraw_commanders", 0, (("count", 1),))
+    ).state
+    assert withdrawn.players[0].commanders_conflict == 1
+    assert withdrawn.players[0].commanders_garrison == 1
+    assert [
+        dict(a.arguments)["count"] for a in legal_commander_withdrawals(withdrawn, 0)
+    ] == [1]
+    troop_first = apply_combat_deployment(
+        withdrawn, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    # A troop deployed this turn can be withdrawn, but not as a Commander.
+    assert [
+        dict(a.arguments)["count"] for a in legal_commander_withdrawals(troop_first, 0)
+    ] == [1]
+
+
+# --- a recruited Commander's deploy slot (OQ-070) ---------------------------
+#
+# User ruling 2026-09-26 (OQ-070), verbatim: "commander 소집했으면 커맨더를
+# 배치해야지, troop이 그 배치 몫을 차지하면 안 되지". Rules: "Combat space에
+# 들어간 turn에는 그 turn에 recruit한 troop을 원하는 수만큼 deploy하고, 그와
+# 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다. [Main p. 10]"
+# (docs/rules/player-turns.md:136); the Combat icon deploys "이번 turn에
+# recruit한 유닛 전부와 garrison에서 최대 두 개" [Bloodlines pp. 5, 12]
+# (docs/rules/bloodlines.md); a Commander is a "troop" worth 2 strength
+# [Bloodlines p. 4]. Each recruited unit reserves a slot for its own kind and
+# the garrison extra is shared: legal iff
+# max(0, t - R_t) + max(0, c - R_c) <= existing limit.
+
+
+def _counts(actions: tuple[DomainAction, ...], action_id: str) -> list[int]:
+    counts: list[int] = []
+    for action in actions:
+        if action.action_id != action_id:
+            continue
+        count = dict(action.arguments)["count"]
+        assert isinstance(count, int)
+        counts.append(count)
+    return counts
+
+
+def _recruited_commander_at_research_station(**overrides: object) -> GameState:
+    """Research Station (a Combat space, no troop icon) + a paid Commander."""
+
+    values: dict[str, object] = {
+        "commanders_supply": 1,
+        "troops_garrison": 5,
+        "troops_supply": 7,
+        "resources": Resources(solari=2, water=2),
+    }
+    values.update(overrides)
+    state = _turn_state(_owner(**values), spaces=())
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    return apply_commander_recruit(state, recruit).state
+
+
+def test_a_recruited_commanders_slot_is_not_a_garrison_troops() -> None:
+    # The reviewer's probe in an Agent turn: one Commander recruited, five
+    # troops in the garrison. Three troops used to deploy while the new
+    # Commander stayed home.
+    state = _recruited_commander_at_research_station()
+
+    assert _counts(legal_combat_deployments(state, 0), "deploy_troops") == [1, 2]
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1]
+
+    # Two garrison troops first: the Commander's own slot is still open.
+    troops = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(troops, 0) == ()
+    assert _counts(legal_commander_deployments(troops, 0), "deploy_commanders") == [1]
+    both = apply_commander_deployment(
+        troops, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    owner = both.players[0]
+    assert (owner.commanders_conflict, owner.troops_conflict) == (1, 2)
+    assert legal_combat_deployments(both, 0) == ()
+    assert legal_commander_deployments(both, 0) == ()
+
+    # The Commander first: the two garrison troops still follow it.
+    commander = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_space_commander_bought_under_a_combat_icon_keeps_its_slot() -> None:
+    # "During one of your turns, if you send an Agent to a board space that
+    # has a Sardaukar Commander, you may spend 2 Solari to acquire and then
+    # immediately recruit that Sardaukar Commander" [Bloodlines p. 4]. Every
+    # Commander setup space is a non-Combat space, so its slot matters under
+    # a Combat icon opened this turn [Bloodlines pp. 5, 12]; the bought
+    # Commander is credited as a Commander, never as a troop (OQ-070).
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, combat_icon_turn=True)
+    )
+    state = _visit(state, "dutiful_service")
+    bought = apply_sardaukar_commander_action(
+        state, _commander_actions(state)["acquire_sardaukar_commander:canny"]
+    ).state
+
+    context = dict(bought.decision_stack[-1].context)
+    assert context["commanders_recruited"] == 1
+    assert context["troops_recruited"] == 0
+    assert _counts(legal_combat_deployments(bought, 0), "deploy_troops") == [1, 2]
+    assert _counts(legal_commander_deployments(bought, 0), "deploy_commanders") == [1]
+    commander = apply_commander_deployment(
+        bought, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_commander_slot_survives_a_deployment_split_over_several_actions() -> None:
+    state = _recruited_commander_at_research_station()
+
+    one = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(one, 0), "deploy_troops") == [1]
+    two = apply_combat_deployment(
+        one, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert legal_combat_deployments(two, 0) == ()
+    # A withdrawal (OQ-029) reopens exactly the troop share it returns.
+    back = apply_troop_withdrawal(
+        two, DomainAction("withdraw_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(back, 0), "deploy_troops") == [1]
+    assert _counts(legal_commander_deployments(back, 0), "deploy_commanders") == [1]
+    commander = apply_commander_deployment(
+        back, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1]
+    # Withdrawing the Commander gives its own slot back, not a troop's.
+    withdrawn = apply_commander_withdrawal(
+        commander, DomainAction("withdraw_commanders", 0, (("count", 1),))
+    ).state
+    offered = (
+        *legal_combat_deployments(withdrawn, 0),
+        *legal_commander_deployments(withdrawn, 0),
+    )
+    assert _counts(offered, "deploy_troops") == [1]
+    assert _counts(offered, "deploy_commanders") == [1]
+
+
+def test_a_recruited_troops_slot_is_not_a_garrison_commanders() -> None:
+    # Arrakeen recruits one troop; three Commanders wait in the garrison.
+    # Only the garrison two may be Commanders -- the troop's slot is a
+    # troop's.
+    state = _turn_state(
+        _owner(commanders_garrison=3, troops_garrison=0, troops_supply=12), spaces=()
+    )
+    state = _visit(state, "arrakeen")
+    assert state.players[0].troops_garrison == 1
+
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1, 2]
+    commanders = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 2),))
+    ).state
+    assert legal_commander_deployments(commanders, 0) == ()
+    assert _counts(legal_combat_deployments(commanders, 0), "deploy_troops") == [1]
+
+
+def test_sardaukar_coordination_deploys_only_the_recruited_commander() -> None:
+    # "You may deploy any troops you recruit this turn to the Conflict"
+    # [Sardaukar Coordination card] grants no garrison extra (limit 0): the
+    # recruited Commander deploys, a garrison troop may not take its slot.
+    card = "imperium:sardaukar_coordination:0"
+    state = _turn_state(
+        _owner(
+            hand=(card,),
+            commanders_supply=1,
+            troops_garrison=3,
+            troops_supply=9,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    action = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card
+        and dict(action.arguments)["space_id"] == "dutiful_service"
+    )
+    state = apply_agent_action(state, action).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+
+    assert legal_combat_deployments(state, 0) == ()
+    assert _counts(legal_commander_deployments(state, 0), "deploy_commanders") == [1]
+
+
+def test_elite_forces_combat_icon_keeps_the_commander_slot() -> None:
+    # Elite Forces' Combat icon: "never more than two units from the
+    # garrison" [Bloodlines p. 5] at a non-Combat space, plus its troop
+    # icon; a paid Commander keeps its own slot.
+    from dune_imperium.rules.agent_effects import (
+        apply_agent_card_trash,
+        legal_agent_card_icon_actions,
+        legal_agent_card_trash_actions,
+        resolve_agent_card_icon,
+    )
+
+    card = "imperium:elite_forces:0"
+    emperor = "imperium:quash_rebellion:0"
+    state = _turn_state(
+        _owner(
+            hand=(card, emperor),
+            commanders_supply=1,
+            troops_garrison=3,
+            troops_supply=9,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    state = _visit(state, "dutiful_service")
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+    trash = next(
+        action
+        for action in legal_agent_card_trash_actions(state, 0)
+        if dict(action.arguments).get("card_id") == emperor
+    )
+    state = apply_agent_card_trash(state, trash).state
+    troop_icon = next(
+        action
+        for action in legal_agent_card_icon_actions(state, 0)
+        if dict(action.arguments)["effect"] == "troops"
+    )
+    state = resolve_agent_card_icon(state, troop_icon).state
+    assert state.players[0].troops_garrison == 4
+
+    # One recruited troop plus the garrison two; the Commander's slot is
+    # its own.
+    assert _counts(legal_combat_deployments(state, 0), "deploy_troops") == [1, 2, 3]
+    deployed = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 3),))
+    ).state
+    assert legal_combat_deployments(deployed, 0) == ()
+    assert _counts(legal_commander_deployments(deployed, 0), "deploy_commanders") == [1]
+
+
+def test_a_commander_recruited_in_the_reveal_keeps_its_slot() -> None:
+    # The reviewer's probe: Bloodlines, a Combat icon earlier this turn, five
+    # garrison troops, Reveal, recruit_sardaukar_commander. deploy_troops
+    # used to go up to three while the new Commander stayed home.
+    state = _turn_state(
+        _owner(
+            commanders_supply=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_icon_turn=True,
+            resources=Resources(solari=2),
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    (recruit,) = legal_commander_recruit_actions(state, 0)
+    state = apply_commander_recruit(state, recruit).state
+
+    offered = legal_reveal_deployments(state, 0)
+    assert _counts(offered, "deploy_troops") == [1, 2]
+    assert _counts(offered, "deploy_commanders") == [1]
+    troops = apply_reveal_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert _counts(legal_reveal_deployments(troops, 0), "deploy_troops") == []
+    assert _counts(legal_reveal_deployments(troops, 0), "deploy_commanders") == [1]
+    both = apply_reveal_deployment(
+        troops, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    owner = both.players[0]
+    assert (owner.commanders_conflict, owner.troops_conflict) == (1, 2)
+    assert legal_reveal_deployments(both, 0) == ()
+
+    # The Commander first: the Reveal keeps its Commander share apart
+    # (``reveal_commanders_deployed``), so the garrison two still follow.
+    commander = apply_reveal_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert dict(commander.decision_stack[-1].context)[
+        "reveal_commanders_deployed"
+    ] == 1
+    assert _counts(legal_reveal_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_reveal_troops_slot_is_not_a_garrison_commanders() -> None:
+    # Sardaukar Standard's own Reveal box recruits a troop [card face]; of
+    # three garrison Commanders only the garrison two may deploy.
+    card = "imperium:sardaukar_standard:0"
+    state = _turn_state(
+        _owner(
+            hand=(card,),
+            commanders_garrison=3,
+            troops_garrison=0,
+            troops_supply=12,
+            combat_icon_turn=True,
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    while gains := legal_reveal_gain_actions(state, 0):
+        state = apply_reveal_gain(state, gains[0]).state
+    assert state.players[0].troops_garrison == 1
+
+    offered = legal_reveal_deployments(state, 0)
+    assert _counts(offered, "deploy_commanders") == [1, 2]
+    assert _counts(offered, "deploy_troops") == [1]
+
+
+def _queued_bank_commander(state: GameState) -> GameState:
+    """Acquire Sardaukar Standard's bank Commander from the queued choice."""
+
+    queued = replace(
+        state,
+        pending_skill_choices=((0, "imperium:sardaukar_standard:0", "test:standard"),),
+    )
+    opened = begin_skill_choice(queued).state
+    return apply_skill_choice(opened, legal_skill_choice_actions(opened, 0)[0]).state
+
+
+def test_a_commander_recruited_before_the_placement_keeps_its_slot() -> None:
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
+        spaces=(),
+    )
+    acquired = _queued_bank_commander(state)
+    turn = acquired.decision_stack[-1]
+    assert turn.kind == "turn"
+    assert dict(turn.context)["commanders_recruited"] == 1
+    assert dict(turn.context).get("troops_recruited") in (None, 0)
+
+    placed = apply_agent_action(
+        acquired, _agent_action_to(acquired, "research_station")
+    ).state
+    assert dict(placed.decision_stack[-1].context)["commanders_recruited"] == 1
+    assert _counts(legal_combat_deployments(placed, 0), "deploy_troops") == [1, 2]
+    commander = apply_commander_deployment(
+        placed, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(commander, 0), "deploy_troops") == [1, 2]
+
+
+def test_a_commander_recruited_before_the_reveal_keeps_its_slot() -> None:
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, combat_icon_turn=True), spaces=()
+    )
+    acquired = _queued_bank_commander(state)
+    revealed = begin_reveal_turn(acquired, DomainAction("reveal_turn", 0)).state
+    context = dict(revealed.decision_stack[-1].context)
+    assert context["reveal_commanders_recruited"] == 1
+    assert context["reveal_troops_recruited"] == 0
+
+    offered = legal_reveal_deployments(revealed, 0)
+    assert _counts(offered, "deploy_troops") == [1, 2]
+    assert _counts(offered, "deploy_commanders") == [1]
+
+
+def test_a_commander_acquired_in_another_seats_turn_credits_nothing() -> None:
+    # Troops recruited during the owner's own turn "from any source" join
+    # its deployment [Main p. 10] [FAQ p. 4]; a Commander whose Skill choice
+    # resolves over another seat's turn frame must not join that seat's
+    # turn (the ``turn_owner_of`` guard in ``_acquire_bank_commander``).
+    state = _turn_state(
+        _owner(troops_garrison=5, troops_supply=7, resources=Resources(water=2)),
+        spaces=(),
+    )
+    others_turn = replace(
+        state,
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:1",
+                decision=PlayerDecision(owner=1, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    acquired = _queued_bank_commander(others_turn)
+    assert acquired.players[0].commanders_garrison == 1
+    turn = acquired.decision_stack[-1]
+    assert isinstance(turn.decision, PlayerDecision)
+    assert turn.decision.owner == 1
+    assert dict(turn.context).get("commanders_recruited") in (None, 0)
+
+
+def test_a_retreated_earlier_troop_leaves_the_commander_share_alone() -> None:
+    # "그와 별도로 garrison의 troop을 최대 두 개 더 deploy할 수 있다"
+    # [Main p. 10] (docs/rules/player-turns.md:136) and the recruited
+    # Commander's own slot (user ruling OQ-070). A retreat of a troop that
+    # was already in the Conflict before this turn (an Intrigue retreat,
+    # Fedaykin Maneuver) used to shrink the unit total below the deployed
+    # Commander share, so the troop share read back short and three garrison
+    # troops deployed beside the recruited Commander.
+    state = _recruited_commander_at_research_station(
+        troops_garrison=5, troops_conflict=2, troops_supply=5, combat_strength=4
+    )
+    state = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    retreated = retreat_units(state, 0, "test:retreat", troops=1).state
+    retreated = reconcile_deployment_after_retreat(retreated, 0, troops=1)
+
+    context = dict(retreated.decision_stack[-1].context)
+    assert (
+        context["combat_troops_deployed"],
+        context["combat_commanders_deployed"],
+    ) == (1, 1)
+    # The withdrawal window keeps the Commander too (OQ-029).
+    assert (
+        context["combat_troops_withdrawable"],
+        context["combat_commanders_withdrawable"],
+    ) == (1, 1)
+    assert _counts(legal_combat_deployments(retreated, 0), "deploy_troops") == [1, 2]
+    troops = apply_combat_deployment(
+        retreated, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(troops, 0) == ()
+
+
+def test_a_retreated_earlier_commander_leaves_the_troop_share_alone() -> None:
+    # The mirror case: a Commander that was in the Conflict before this
+    # turn retreats after two garrison troops deployed; those two still
+    # fill the garrison extra [Main p. 10] (OQ-070).
+    state = _turn_state(
+        _owner(
+            commanders_conflict=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_strength=2,
+        ),
+        spaces=(),
+    )
+    state = apply_agent_action(state, _agent_action_to(state, "research_station")).state
+    state = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    retreated = retreat_units(state, 0, "test:retreat", troops=0, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=0, commanders=1
+    )
+
+    context = dict(retreated.decision_stack[-1].context)
+    assert context["combat_troops_deployed"] == 2
+    assert context["combat_troops_withdrawable"] == 2
+    assert legal_combat_deployments(retreated, 0) == ()
+
+
+def test_a_retreated_commander_keeps_its_deployment_used() -> None:
+    # A card retreat leaves the basic deployment allowance used: "You may
+    # deploy any or all units recruited during your current turn ..., plus
+    # up to two more units from your garrison." [Main p. 10] (OQ-029, user
+    # ruling 2026-10-04). The recruited Commander's own slot (OQ-070) stays
+    # filled once it has deployed, even after it is back in the garrison.
+    state = _recruited_commander_at_research_station()
+    state = apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    state = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 2),))
+    ).state
+    assert legal_combat_deployments(state, 0) == ()
+    assert legal_commander_deployments(state, 0) == ()
+
+    retreated = retreat_units(state, 0, "test:retreat", troops=0, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=0, commanders=1
+    )
+    assert retreated.players[0].commanders_garrison == 1
+    assert legal_commander_deployments(retreated, 0) == ()
+    assert legal_combat_deployments(retreated, 0) == ()
+    assert legal_commander_withdrawals(retreated, 0) == ()
+
+    # A withdrawal undoes one garrison troop's deployment: its place among
+    # the garrison two opens again, for either kind of unit.
+    back = apply_troop_withdrawal(
+        retreated, DomainAction("withdraw_troops", 0, (("count", 1),))
+    ).state
+    assert _counts(legal_combat_deployments(back, 0), "deploy_troops") == [1]
+    assert _counts(legal_commander_deployments(back, 0), "deploy_commanders") == [1]
+
+
+def test_a_card_retreat_in_a_combat_icon_reveal_reopens_nothing() -> None:
+    # The Reveal turn's Combat-icon deployment counts what it deployed
+    # (``reveal_units_deployed``) and a card retreat never lowers it, the
+    # same as an Agent turn's (OQ-029, user ruling 2026-10-04).
+    state = _turn_state(
+        _owner(
+            commanders_garrison=1,
+            troops_garrison=5,
+            troops_supply=7,
+            combat_icon_turn=True,
+        ),
+        spaces=(),
+    )
+    state = begin_reveal_turn(state, DomainAction("reveal_turn", 0)).state
+    state = apply_reveal_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", 1),))
+    ).state
+    state = apply_reveal_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    assert legal_reveal_deployments(state, 0) == ()
+
+    retreated = retreat_units(state, 0, "test:retreat", troops=1, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(
+        retreated, 0, troops=1, commanders=1
+    )
+    owner = retreated.players[0]
+    assert (owner.troops_garrison, owner.commanders_garrison) == (5, 1)
+    assert dict(retreated.decision_stack[-1].context)["reveal_units_deployed"] == 2
+    assert legal_reveal_deployments(retreated, 0) == ()
+
+
+def _seat_with_skills(**overrides: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": 0,
+        "commanders_conflict": 1,
+        "troops_supply": 8,
+        "troops_conflict": 1,
+        "agent_locations": ("high_council",),
+        "agents_available": 1,
+        "combat_strength": 4,
+    }
+    values.update(overrides)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def test_skill_strength_follows_its_conditions_while_a_commander_fights() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(_skill("canny"), _skill("fierce"), _skill("loyal")),
+        influence=Influence(emperor=3),
+    )
+    state = _turn_state(owner)
+    refreshed = refresh_pre_reveal_strength(RuleResult(state=state)).state
+    # troop 2 + Commander 2 + Canny 2 (Agent on High Council, Landsraad)
+    # + Fierce 1 + Loyal 2 (Emperor Influence 3).
+    assert refreshed.players[0].combat_strength == 9
+    assert refreshed.players[0].skill_strength_applied == 5
+
+    # An opponent's sandworm arrives: Fierce adds one more.
+    opponent = replace(refreshed.players[1], sandworms_conflict=1)
+    with_worm = replace(
+        refreshed, players=(refreshed.players[0], opponent, *refreshed.players[2:])
+    )
+    assert (
+        refresh_pre_reveal_strength(RuleResult(state=with_worm))
+        .state.players[0]
+        .combat_strength
+        == 10
+    )
+
+    # Without a Commander in the Conflict no Skill is active.
+    no_commander = replace(
+        refreshed,
+        players=(
+            replace(refreshed.players[0], commanders_conflict=0, commanders_garrison=1),
+            *refreshed.players[1:],
+        ),
+    )
+    assert (
+        refresh_pre_reveal_strength(RuleResult(state=no_commander))
+        .state.players[0]
+        .combat_strength
+        == 2
+    )
+
+
+# "Conflict의 troop 하나는 strength 2 … 이번 Reveal turn에 공개한 sword 하나는
+# strength 1을 제공한다." and "Conflict에 유닛이 하나도 없으면 sword가 있어도
+# strength는 0이다." [Main p. 12] (docs/rules/combat-and-round-end.md:9-10);
+# "Commander를 모두 retreat시키면 … Skill의 추가 strength(예: Canny)를 받지
+# 못한다." [Bloodlines p. 4] (docs/rules/bloodlines.md:61); a Skill's
+# condition is judged again after every step (OQ-032). A Skill share that
+# changed during the Reveal once moved combat_strength but not the Reveal's
+# running total, so units leaving and coming back brought the old share
+# back (engine audit 2026-10-22, R3).
+
+AMBER_ENGINE = UprisingRulesEngine(
+    leader_ids=(
+        "lady_amber_metulli",
+        "gurney_halleck",
+        "feyd_rautha_harkonnen",
+        "lady_jessica",
+    )
+)
+
+
+def _amber_reveal(skill: str, **overrides: object) -> GameState:
+    """Lady Amber's Reveal with a Combat icon, her Agent on High Council."""
+
+    values: dict[str, object] = {
+        "leader_id": "lady_amber_metulli",
+        "skill_ids": (_skill(skill),),
+        "troops_garrison": 3,
+        "resources": Resources(water=1),
+        "hand": starting_deck_instance_ids(0)[:5],
+    }
+    values.update(overrides)
+    owner = _seat_with_skills(**values)
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    return refresh_pre_reveal_strength(
+        RuleResult(state=grant_combat_icon(state, 0))
+    ).state
+
+
+def _step(state: GameState, label: str, wanted: object) -> GameState:
+    actions = AMBER_ENGINE.legal_actions(state, 0)
+    chosen = [action for action in actions if action == wanted]
+    assert chosen, (label, actions)
+    return AMBER_ENGINE.apply(state, chosen[0], legal_actions=actions).state
+
+
+def _reveal_total(state: GameState) -> int:
+    frame = next(f for f in reversed(state.decision_stack) if f.kind == "reveal")
+    total = dict(frame.context)["strength"]
+    assert isinstance(total, int)
+    return total
+
+
+def test_canny_lost_mid_reveal_does_not_return_with_a_new_troop() -> None:
+    # One troop in, the Commander in the garrison; Shadout Mapes retreats.
+    state = _amber_reveal(
+        "canny",
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=(*starting_deck_instance_ids(0)[:4], "imperium:shadout_mapes:0"),
+    )
+    swords = state.players[0].combat_strength - 2
+    state = _step(
+        state,
+        "deploy the Commander",
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    )
+    # troop 2 + Commander 2 + Canny 2 + swords.
+    assert state.players[0].combat_strength == 6 + swords
+    assert _reveal_total(state) == 6 + swords
+    state = _step(
+        state,
+        "Desert Scouts retreats the troop",
+        DomainAction(
+            "retreat",
+            0,
+            (
+                ("option", "troop"),
+                ("printed", "lady_amber_metulli"),
+                ("source", "leader"),
+            ),
+        ),
+    )
+    retreat = next(
+        action
+        for action in AMBER_ENGINE.legal_actions(state, 0)
+        if "retreat" in action.action_id and "shadout" in str(action.arguments)
+    )
+    state = _step(state, "Shadout Mapes retreats the Commander", retreat)
+    assert state.players[0].units_in_conflict == 0
+    assert state.players[0].combat_strength == 0
+    assert _reveal_total(state) == 0
+
+    state = _step(
+        state, "deploy a troop", DomainAction("deploy_troops", 0, (("count", 1),))
+    )
+
+    # troop 2 + swords; no Commander, so no Canny.
+    assert state.players[0].combat_strength == 2 + swords
+    assert _reveal_total(state) == 2 + swords
+
+
+def test_loyal_gained_mid_reveal_counts_once_when_the_commander_returns() -> None:
+    def redeployed(state: GameState) -> PlayerState:
+        state = _step(
+            state,
+            "Desert Scouts retreats the Commander",
+            DomainAction(
+                "retreat",
+                0,
+                (
+                    ("option", "commander"),
+                    ("printed", "lady_amber_metulli"),
+                    ("source", "leader"),
+                ),
+            ),
+        )
+        assert state.players[0].combat_strength == 0
+        state = _step(
+            state,
+            "redeploy the Commander",
+            DomainAction("deploy_commanders", 0, (("count", 1),)),
+        )
+        assert _reveal_total(state) == state.players[0].combat_strength
+        return state.players[0]
+
+    rising = _amber_reveal(
+        "loyal", troops_conflict=0, troops_supply=9, influence=Influence(emperor=2)
+    )
+    rising = gain_faction_influence(
+        rising, 0, Faction.EMPEROR, 1, event_prefix="test"
+    ).state
+    rising = refresh_pre_reveal_strength(RuleResult(state=rising)).state
+    steady = _amber_reveal(
+        "loyal", troops_conflict=0, troops_supply=9, influence=Influence(emperor=3)
+    )
+
+    # Emperor 3 either way: Commander 2 + Loyal 2 + swords, whatever the
+    # moment the Influence arrived.
+    assert redeployed(rising).combat_strength == redeployed(steady).combat_strength
+    assert redeployed(steady).skill_strength_applied == 2
+
+
+def test_reveal_bonuses_pay_once_and_keep_the_skill_strength() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(
+            _skill("charismatic"),
+            _skill("driven"),
+            _skill("hardy"),
+            _skill("canny"),
+        ),
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    assert state.players[0].combat_strength == 6  # 2 + 2 + Canny 2
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    bonus_events = [
+        event for event in result.events if event.kind == "skill_reveal_bonus"
+    ]
+    assert len(bonus_events) == 3
+    # Driven's spice and Hardy's troop are the owner's own Reveal actions
+    # (OQ-045); Charismatic's Persuasion is totalled at once. Hardy prints
+    # "Reveal Turn: [troop]" -- a recruit, not water [Hardy Skill tile].
+    taken = result.state
+    while gains := legal_reveal_gain_actions(taken, 0):
+        taken = apply_reveal_gain(taken, gains[0]).state
+    revealed = taken.players[0]
+    context = dict(taken.decision_stack[0].context)
+    assert revealed.resources.spice == 1 and revealed.resources.water == 1
+    assert revealed.troops_garrison == state.players[0].troops_garrison + 1
+    sword_strength = context["sword_strength"]
+    assert isinstance(sword_strength, int)
+    assert context["persuasion"] == revealed_persuasion_without_skill(state) + 1
+    assert revealed.combat_strength == 6 + sword_strength
+    assert context["strength"] == revealed.combat_strength
+
+
+def revealed_persuasion_without_skill(state: GameState) -> int:
+    plain = replace(
+        state,
+        players=(replace(state.players[0], skill_ids=()), *state.players[1:]),
+        skill_stack=(*state.skill_stack, _skill("charismatic")),
+    )
+    result = begin_reveal_turn(plain, DomainAction(action_id="reveal_turn", actor=0))
+    persuasion = dict(result.state.decision_stack[0].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    return persuasion
+
+
+def test_hardy_recruits_one_troop_in_the_reveal_turn() -> None:
+    # Hardy's tile prints "Reveal Turn: [troop]" -- the grey cube is the troop
+    # icon, "Troop. Recruit one troop" [Main p. 20] [Hardy Skill tile]. The
+    # recruit is the owner's own Reveal action like any other (OQ-045).
+    owner = _seat_with_skills(
+        skill_ids=(_skill("hardy"),),
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    (bonus,) = [e for e in result.events if e.kind == "skill_reveal_bonus"]
+    assert dict(bonus.payload)["troops"] == 1
+    assert "water" not in dict(bonus.payload)
+
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_gain,
+        legal_reveal_gain_actions,
+    )
+
+    gains = legal_reveal_gain_actions(result.state, 0)
+    assert [action.action_id for action in gains] == ["recruit_reveal_troops"]
+    recruited = apply_reveal_gain(result.state, gains[0])
+    seat = recruited.state.players[0]
+    assert seat.resources.water == 1
+    assert seat.troops_garrison == owner.troops_garrison + 1
+    assert seat.troops_supply == owner.troops_supply - 1
+    assert legal_reveal_gain_actions(recruited.state, 0) == ()
+
+    # With an empty supply the troop is lost (OQ-030), not turned into water.
+    drained = replace(
+        owner,
+        troops_supply=0,
+        troops_garrison=owner.troops_garrison + owner.troops_supply,
+    )
+    empty = replace(state, players=(drained, *state.players[1:]))
+    started = begin_reveal_turn(empty, DomainAction(action_id="reveal_turn", actor=0))
+    (recruit,) = legal_reveal_gain_actions(started.state, 0)
+    short = apply_reveal_gain(started.state, recruit)
+    assert short.state.players[0].troops_garrison == drained.troops_garrison
+    assert short.state.players[0].resources.water == 1
+    assert any(event.kind == "troops_recruit_short" for event in short.events)
+
+
+def test_reveal_bonuses_need_a_commander_in_the_conflict() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(_skill("driven"),),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        hand=starting_deck_instance_ids(0)[:5],
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    result = begin_reveal_turn(state, DomainAction(action_id="reveal_turn", actor=0))
+    assert result.state.players[0].resources.spice == 0
+    assert not [event for event in result.events if event.kind == "skill_reveal_bonus"]
+
+
+def test_a_commander_deployed_during_the_reveal_pays_the_reveal_bonuses() -> None:
+    # "While you have any number of Sardaukar Commanders in the Conflict, the
+    # effects of all your Sardaukar Commander Skills are active. Each one
+    # either gives you a bonus when taking your Reveal turn ... Each one
+    # works only once each round" [Bloodlines p. 4]; Charismatic "Reveal
+    # Turn: [1 Persuasion]", Driven "Reveal Turn: [1 spice]" [Skill tile
+    # faces]. A Commander deployed with a Combat icon during the Reveal
+    # [Bloodlines p. 5] switches them on then, and the bonus is paid late
+    # like any late-met Reveal gain (OQ-028 (c)) -- once.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import (
+        legal_reveal_gain_actions,
+        reveal_pending_gains,
+    )
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(persuasion, int)
+    assert legal_reveal_gain_actions(revealed, 0) == ()
+    opened = grant_combat_icon(revealed, 0)
+
+    engine = UprisingRulesEngine()
+    deploy = DomainAction("deploy_commanders", 0, (("count", 1),))
+    result = apply_whole(engine, opened, deploy)
+    deployed = result.state
+    context = dict(deployed.decision_stack[-1].context)
+    assert deployed.players[0].commanders_conflict == 1
+    assert context["persuasion"] == persuasion + 1
+    assert context["persuasion_generated"] == persuasion + 1
+    assert ("resources", "0/1/0", "skill:driven") in reveal_pending_gains(context)
+    assert {
+        dict(event.payload)["skill_id"]
+        for event in result.events
+        if event.kind == "skill_reveal_bonus"
+    } == {"charismatic", "driven"}
+
+    # Once each round: taking the spice (another transition) pays nothing more.
+    (gain,) = legal_reveal_gain_actions(deployed, 0)
+    taken = apply_whole(engine, deployed, gain).state
+    assert taken.players[0].resources.spice == 1
+    assert dict(taken.decision_stack[-1].context)["persuasion"] == persuasion + 1
+    assert legal_reveal_gain_actions(taken, 0) == ()
+
+
+def test_a_commander_deployed_during_the_reveal_pays_hardys_troop() -> None:
+    # Hardy prints "Reveal Turn: [troop]" [Hardy Skill tile] (a recruit, not
+    # water); a Commander deployed with a Combat icon during the Reveal
+    # switches it on then [Bloodlines pp. 4, 5] and the recruit waits for the
+    # owner's order like the Reveal-start one (OQ-028 (c), OQ-045).
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import (
+        legal_reveal_gain_actions,
+        reveal_pending_gains,
+    )
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("hardy"),),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert legal_reveal_gain_actions(revealed, 0) == ()
+    engine = UprisingRulesEngine()
+    result = apply_whole(engine, 
+        grant_combat_icon(revealed, 0),
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    )
+    deployed = result.state
+    context = dict(deployed.decision_stack[-1].context)
+    assert ("troops", "1", "skill:hardy") in reveal_pending_gains(context)
+    (bonus,) = (e for e in result.events if e.kind == "skill_reveal_bonus")
+    assert dict(bonus.payload)["troops"] == 1
+    assert "water" not in dict(bonus.payload)
+    supply = deployed.players[0].troops_supply
+    (recruit,) = legal_reveal_gain_actions(deployed, 0)
+    recruited = apply_whole(engine, deployed, recruit).state
+    assert recruited.players[0].troops_supply == supply - 1
+    assert recruited.players[0].resources.water == 1
+
+
+def test_reveal_bonuses_paid_at_the_start_are_not_paid_again_late() -> None:
+    # A Commander already in the Conflict paid the bonuses when the Reveal
+    # began [Bloodlines p. 4]; a second Commander deployed later adds none.
+    from dune_imperium.rules.combat_deployment import grant_combat_icon
+    from dune_imperium.rules.reveal_turn import legal_reveal_gain_actions
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("charismatic"), _skill("driven")),
+        commanders_garrison=1,
+        hand=starting_deck_instance_ids(0)[:5],
+        resources=Resources(solari=0, spice=0, water=1),
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    revealed = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    persuasion = dict(revealed.decision_stack[-1].context)["persuasion"]
+    engine = UprisingRulesEngine()
+    deployed = apply_whole(engine, 
+        grant_combat_icon(revealed, 0),
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    ).state
+    assert deployed.players[0].commanders_conflict == 2
+    assert dict(deployed.decision_stack[-1].context)["persuasion"] == persuasion
+    assert len(legal_reveal_gain_actions(deployed, 0)) == 1  # Driven's, from start
+
+
+def test_desperate_trashes_for_three_swords_during_the_reveal() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(_skill("desperate"),), hand=starting_deck_instance_ids(0)[:5]
+    )
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    before = state.players[0].combat_strength
+
+    (trash,) = legal_skill_trash_actions(state, 0)
+    assert dict(trash.arguments) == {"skill_id": "desperate"}
+    result = apply_skill_trash(state, trash)
+    owner = result.state.players[0]
+    assert owner.skill_ids == ()
+    assert result.state.skill_trash == (_skill("desperate"),)
+    assert owner.combat_strength == before + 3
+    assert dict(result.state.decision_stack[0].context)["strength"] == before + 3
+    assert legal_skill_trash_actions(result.state, 0) == ()
+
+
+def test_desperate_needs_a_commander_in_the_conflict() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(_skill("desperate"),),
+        commanders_conflict=0,
+        commanders_garrison=1,
+        hand=starting_deck_instance_ids(0)[:5],
+    )
+    state = begin_reveal_turn(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert legal_skill_trash_actions(state, 0) == ()
+
+
+def test_the_conflict_end_step_returns_commanders_to_the_supply() -> None:
+    conflict_id = CONFLICTS[0].card.card_id
+    owner = _seat_with_skills(
+        skill_ids=(_skill("canny"),),
+        has_revealed=True,
+        skill_strength_applied=2,
+        combat_strength=6,
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+
+    # The Commanders and troops go back to the supply as the Conflict-end
+    # step opens, before the cleanup [Main p. 14] [Bloodlines p. 4]; the
+    # strength still stands until then.
+    offered = offer_conflict_end_triggers(state).state
+    returned = offered.players[0]
+    assert returned.commanders_conflict == 0
+    assert returned.commanders_supply == 1
+    assert returned.troops_conflict == 0
+    assert returned.combat_strength == 6
+    assert returned.skill_strength_applied == 2
+
+    cleaned = finish_combat(offered).state.players[0]
+    assert cleaned.commanders_conflict == 0
+    assert cleaned.commanders_supply == 1
+    assert cleaned.troops_conflict == 0
+    assert cleaned.combat_strength == 0
+    assert cleaned.skill_strength_applied == 0
+    assert cleaned.skill_ids == (_skill("canny"),)
+
+
+def _frozen_strength_state(conflict_id: str) -> GameState:
+    """Seat 0 wins the Conflict with 10: troops 4, a sandworm 3, a Commander
+    2 and Fierce's 1; seat 1 stands at 9, so the win depends on Fierce's
+    share staying counted after the Commander goes back."""
+
+    owner = _seat_with_skills(
+        skill_ids=(_skill("fierce"),),
+        troops_supply=8,
+        troops_garrison=2,
+        troops_conflict=2,
+        sandworms_conflict=1,
+        has_revealed=True,
+        combat_strength=10,
+        skill_strength_applied=1,
+        intrigue_cards=("intrigue:backed_by_choam:0",),
+    )
+    rival = PlayerState(
+        player_id=1,
+        troops_supply=8,
+        troops_conflict=1,
+        has_revealed=True,
+        combat_strength=9,
+    )
+    base = _turn_state(
+        owner,
+        others=(
+            rival,
+            *(PlayerState(player_id=seat, has_revealed=True) for seat in (2, 3)),
+        ),
+    )
+    return replace(
+        base,
+        config=RulesetConfig(bloodlines=True, immortality=True),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=(conflict_id,),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+    )
+
+
+def test_the_strengths_stand_while_the_conflict_end_windows_are_offered() -> None:
+    # "Once all rewards have been given, each player takes their troops from
+    # the Conflict" [Main p. 14] and the Combat markers return to 0 only
+    # with the rest of the cleanup. Fierce adds 1 strength "while a Commander
+    # is in the Conflict" [Bloodlines p. 4]; the winner takes the Conflict
+    # card before the troops go back (OQ-108, user decision 2026-10-18), but
+    # the strengths still stand through the windows: a sandworm keeps the seat
+    # in the Conflict, so a refresh would drop Fierce's share with the
+    # Commander's return (10 became 9) while the windows are answered.
+    conflict_id = CONFLICTS[0].card.card_id
+    state = _frozen_strength_state(conflict_id)
+
+    offered = offer_conflict_end_triggers(state)
+
+    assert offered.state.combat_end_triggers_offered
+    assert offered.state.decision_stack  # seat 0's window is open
+    # The Conflict card went to the 10 over the 9 as the step opened.
+    assert [event.kind for event in offered.events].count("conflict_won") == 1
+    assert offered.state.players[0].won_conflict_ids == (conflict_id,)
+    assert offered.state.current_conflict_ids == ()
+    seat = offered.state.players[0]
+    assert (seat.commanders_conflict, seat.troops_conflict) == (0, 0)
+    assert seat.sandworms_conflict == 1
+    refreshed = refresh_pre_reveal_strength(offered).state
+    assert refreshed.players[0].combat_strength == 10
+    assert refreshed.players[0].skill_strength_applied == 1
+    assert refreshed.players[1].combat_strength == 9
+    # What the freeze prevents: the same refresh before the windows were
+    # offered would drop Fierce's share with the Commander and read 9.
+    unfrozen = replace(offered.state, combat_end_triggers_offered=False)
+    assert refresh_pre_reveal_strength(RuleResult(state=unfrozen)).state.players[
+        0
+    ].combat_strength == 9
+
+    # The window is answered through the engine, which refreshes the
+    # strengths after every step; the card stays seat 0's, awarded once, and
+    # the cleanup zeroes the markers.
+    engine = UprisingRulesEngine()
+    transition = apply_whole(engine, 
+        refreshed, DomainAction(action_id="decline_conflict_end_intrigue", actor=0)
+    )
+    assert [event.kind for event in transition.events].count("conflict_won") == 0
+    declined = transition.state
+    assert declined.phase is not GamePhase.COMBAT
+    winner = declined.players[0]
+    assert winner.won_conflict_ids == (conflict_id,)
+    assert declined.current_conflict_ids == ()
+    assert all(player.combat_strength == 0 for player in declined.players)
+    assert winner.skill_strength_applied == 0
+
+
+# --- a Commander a resolved condition read stays (OQ-029 (3)) ---------------
+#
+# User ruling 2026-11-01 (OQ-029 (3)), verbatim: "교전칸에서 사다우카 커맨더
+# 배치 후 그 책략으로 스파이스2를 받았으면 사다우카 커맨더 배치 취소를 못 하게
+# 해야 맞는 것 같은데" -- a 4-player game where seat 3 deployed a Commander,
+# took Seize Production's "If you have one or more Sardaukar Commanders in
+# the Conflict: 2 spice" and was still offered the Commander back.
+
+SEIZE_PRODUCTION = "intrigue:seize_production:0"
+
+
+def _withdrawals(state: GameState) -> dict[str, list[int]]:
+    rows = UprisingRulesEngine().legal_actions(state, 0)
+    return {
+        action_id: _counts(rows, action_id)
+        for action_id in ("withdraw_troops", "withdraw_commanders")
+    }
+
+
+def _seize_production_turn(commanders: int, **overrides: object) -> GameState:
+    """Arrakeen (one troop recruited) with the troop and ``commanders``
+    garrison Commanders deployed this turn, Seize Production in hand."""
+
+    owner = _owner(
+        commanders_garrison=2, intrigue_cards=(SEIZE_PRODUCTION,), **overrides
+    )
+    state = _visit(_turn_state(owner), "arrakeen")
+    state = apply_combat_deployment(
+        state, DomainAction("deploy_troops", 0, (("count", 1),))
+    ).state
+    return apply_commander_deployment(
+        state, DomainAction("deploy_commanders", 0, (("count", commanders),))
+    ).state
+
+
+def _seize(state: GameState, option: int) -> GameState:
+    action = DomainAction(
+        "play_intrigue", 0, (("card_id", SEIZE_PRODUCTION), ("option", option))
+    )
+    return apply_whole(UprisingRulesEngine(), state, action).state
+
+
+def test_seize_production_keeps_the_commander_its_spice_read() -> None:
+    state = _seize_production_turn(commanders=1)
+    assert _withdrawals(state) == {
+        "withdraw_troops": [1],
+        "withdraw_commanders": [1],
+    }
+
+    played = _seize(state, 1)
+    assert played.players[0].resources.spice == 2
+    # The Commander the spice read stays; the troop it never read may go.
+    assert _withdrawals(played) == {
+        "withdraw_troops": [1],
+        "withdraw_commanders": [],
+    }
+
+
+def test_a_second_commander_may_still_go_back_after_seize_production() -> None:
+    state = _seize(_seize_production_turn(commanders=2), 1)
+    assert _withdrawals(state)["withdraw_commanders"] == [1]
+
+    back = apply_commander_withdrawal(
+        state, DomainAction("withdraw_commanders", 0, (("count", 1),))
+    ).state
+    assert back.players[0].commanders_conflict == 1
+    assert _withdrawals(back)["withdraw_commanders"] == []
+
+
+def test_seize_production_s_solari_option_reads_no_commander() -> None:
+    state = _seize(_seize_production_turn(commanders=1), 0)
+    assert state.players[0].resources.solari == 6
+    assert _withdrawals(state)["withdraw_commanders"] == [1]
+
+
+def test_a_retreat_that_breaks_the_commander_floor_frees_only_other_kinds() -> None:
+    # A card retreat took the Commander the spice read: the condition is
+    # already false and no withdrawal made it so. The floor holds only the
+    # units its condition counts (OQ-029 (3)): a troop's withdrawal never
+    # changes "one or more Sardaukar Commanders in the Conflict", so the troop
+    # may still go back (independent review, 2026-11-01).
+    played = _seize(_seize_production_turn(commanders=1), 1)
+    retreated = retreat_units(played, 0, "test:retreat", troops=0, commanders=1).state
+    retreated = reconcile_deployment_after_retreat(retreated, 0, troops=0, commanders=1)
+    assert retreated.players[0].commanders_conflict == 0
+    assert _withdrawals(retreated) == {
+        "withdraw_troops": [1],
+        "withdraw_commanders": [],
+    }
+
+
+def test_a_commander_from_an_earlier_turn_meets_seize_production_s_condition() -> None:
+    # The condition reads every Commander in the Conflict: one sent in an
+    # earlier turn holds it, so this turn's own may still go back.
+    state = _seize(_seize_production_turn(commanders=1, commanders_conflict=1), 1)
+    assert state.players[0].commanders_conflict == 2
+    assert _withdrawals(state)["withdraw_commanders"] == [1]
+
+
+# --- state invariants -------------------------------------------------------
+
+
+def test_two_copies_of_one_skill_cannot_be_held() -> None:
+    with pytest.raises(ValueError, match="two copies of one Skill"):
+        PlayerState(player_id=0, skill_ids=(_skill("canny"), _skill("canny", 1)))
+
+
+def test_a_skill_tile_cannot_be_in_two_zones() -> None:
+    with pytest.raises(ValueError, match="two zones"):
+        GameState(
+            config=BLOODLINES,
+            seed=1,
+            players=(
+                _owner(skill_ids=(_skill("fierce"),)),
+                *(PlayerState(player_id=seat) for seat in range(1, 4)),
+            ),
+            skill_face_up=(_skill("fierce"),),
+        )
+
+
+# --- observation, codec, soak ----------------------------------------------
+
+
+def test_observation_shows_face_up_skills_but_hides_the_stack_order() -> None:
+    state = create_initial_state(BLOODLINES, seed=3, leader_ids=LEADERS).state
+    view = observe_state(state, 0)
+
+    assert view.skill_face_up == state.skill_face_up
+    assert view.skill_stack_size == len(state.skill_stack)
+    assert not hasattr(view, "skill_stack")
+    assert view.sardaukar_commander_space_ids == COMMANDER_SETUP_SPACE_IDS
+    assert view.players[0].commanders_supply == 0
+    assert len(encode_player_view(view)) == OBSERVATION_SIZE
+
+
+def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
+    base = ActionCodec(RulesetConfig())
+    codec = ActionCodec(BLOODLINES)
+    # v97 Occupation's Reveal bundle; v100 skip + Change Allegiances' third option.
+    # v103 separate lines. v106: trash_intrigue_for_agent_card joins one
+    # template per Intrigue instance (+40), and Branching Path's corrected
+    # City icon shifts its agent_turn space coverage by +1 (see
+    # test_action_codec.test_catalog_is_fixed_and_versioned_for_a_ruleset).
+    # v107: +27, the generic Spy placement frame in every catalog.
+    # v108 (2026-09-26 card-transcription audit, net per catalog without
+    # Bloodlines): Maker Keeper's single City icon and Undercover Asset's
+    # missing Spy icon [card faces] drop 36 agent_turn placements; a Conflict
+    # reward Spy may recall first or decline [Main pp. 11, 20] (+13 recalls,
+    # +1 decline) and so may a Leader Spy (+1); Covert Operation's two Reveal
+    # Spies (+1 resume) and Unswerving Loyalty's Fremen Bond troop move (+1
+    # resume, and Shadout Mapes' deploy/retreat/decline join every catalog,
+    # +3).
+    # decline_acquisition_spy: an acquisition-bonus Spy may pass up the
+    # recall-first without a Spy in supply [Main pp. 11, 20] (+1).
+    # v110: an Agent-box Spy may pass up the recall-first too, when the box
+    # resolves (decline_agent_card_spy, +1).
+    # v125 (L2): Imperial Privilege's recall with no target is confirmed
+    # (resolve_imperial_privilege_without_recall, +1).
+    # v125 (L2): a Conflict reward Influence choice with every eligible
+    # Faction at the top is confirmed
+    # (resolve_combat_influence_without_faction, +1).
+    # v129 (OQ-016, user ruling 2026-10-03): Distraction plays once its
+    # deployment condition holds and places its Spy through the Intrigue
+    # choice, so decline_intrigue_trigger and the 13 + 13 place/recall
+    # trigger templates leave every catalog (-27).
+    # v130 (OQ-005, user ruling 2026-10-04): flip_battle_card gains one
+    # template per Objective, which counts as a won Conflict card (+4).
+    # v131 (user ruling 2026-10-04, overriding OQ-057 (15)): the owner's
+    # waiting Emperor track Spy is opened by place_track_spy (+1).
+    # v134: finish_leader_draft confirms the last pick (+1).
+    assert base.size == (
+        4354 + 12 + 1 + 1 + 2 + 1 + 40 + 1 + 27 - 36 + 15 + 5 + 1 + 1 + 1 + 1 - 27 + 4
+        + 1
+        + 1  # v134: finish_leader_draft
+        + 1  # v137: the cards_second icon key
+        + 1  # v137: the research icon key
+        + 1  # v137: the return_self icon key
+        + 1  # v137: the Intrigue Influence confirm
+        + 1  # v137: Tactical Option retreats 0
+        + 1  # v137: an "up to" deploy of 0
+        + 1  # v142: draw_owed_intrigue (OQ-106)
+        + 140  # v147: the ``source``-named Reveal choice rows
+        - 2  # v149 cleanup-2f: four refusals out, two confirms in
+        # v150 (stage B1): the base catalog's 1,763 ``agent_turn`` rows
+        # become 129 card and space picks.
+        - 1763
+        + 129
+        # v150 (stage B2, OQ-112): ``resolve_combat_reward_icon``, a row per
+        # icon a Conflict reward prints (14 without Bloodlines' Deep Cover
+        # Spy).
+        + 14
+        # v150 (stage B3a, OQ-111): the Agent-effect frame's effect and target
+        # rows replace the whole templates of the ids in
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are (see test_action_codec.test_catalog_is_fixed...): 792 leave and
+        # 964 rows join.
+        - 792
+        + 964
+        # v150 (stage B3b-2, OQ-111): the Reveal frame's effect and target
+        # rows replace the whole templates of the ids it adds to
+        # ``effect_steps.STEP_SPECS`` that no other frame still offers as they
+        # are: 146 leave and 28 rows join.
+        - 146
+        + 28
+        # v150 (stage B3c-1, OQ-111): the turn frame and the Combat, Conflict-end
+        # and Endgame Intrigue windows offer a card play as their effect row
+        # (``play``, ``match``) and the card's rows: the whole templates of
+        # ``play_intrigue`` (54) and ``match_endgame_wild_icon`` (19) leave and
+        # 26 rows join.
+        - 73
+        + 26
+        # v150 (stage B3d-1): the windows that offer several effects at once
+        # offer effect rows: 228 whole templates leave and 68 rows join.
+        - 228
+        + 68
+        # v150 (stage B3d-2a): the windows opened for one effect offer it by
+        # its target rows: 1,466 whole templates leave and 54 rows join.
+        - 1466
+        + 54
+        # v150 (stage B3d-3): every refusal and empty confirmation is a
+        # ``decline`` / ``confirm_empty`` row naming the effect it answers: 37
+        # whole templates leave (five of them ids no handler ever answered)
+        # and 100 rows join.
+        - 37
+        + 100
+        # v150 (stage B3d-4): the turn's owed draws and Emperor track Spy go
+        # by their effect rows: draw_owed_intrigue and place_track_spy leave
+        # (2) and four rows join.
+        - 2
+        + 4
+        # v150 (stage B3e-1): a Reveal gain by the entity that printed it
+        # (see test_action_codec.test_catalog_is_fixed...): 13 whole
+        # templates leave and 16 rows join.
+        - 13
+        + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
+    )
+
+    # Stage B3a: the Commander's acquisition at the Sardaukar space is an
+    # effect row naming the space and icon, then the Skill as its target row.
+    acquire_commander = steps_for(
+        DomainAction("acquire_sardaukar_commander", 2, (("skill_id", "loyal"),)),
+        "sardaukar",
+    )
+    assert [row.action_id for row in acquire_commander] == ["acquire", "choose_skill"]
+    # Stage B3b-2: the Reveal frame offers a Skill's trash and Lady Amber's
+    # Commander retreat as effect rows (the Skill row names the Commander).
+    trash_skill = steps_for(
+        DomainAction("trash_skill_for_strength", 0, (("skill_id", "desperate"),))
+    )
+    retreat_commander = steps_for(
+        DomainAction("retreat_leader_commander", 3), "lady_amber_metulli"
+    )
+    # Stage B3d-2a: the Intrigue windows' unit counts and the Conflict card of
+    # a flip are target rows (``choose_count`` with its Commanders,
+    # ``choose_conflict_card``), and the Reveal frame's retreat names its card.
+    deploy_intrigue = steps_for(
+        DomainAction("deploy_intrigue_troops", 0, (("commanders", 1), ("count", 1))),
+        effect_row=False,
+    )
+    retreat_intrigue = steps_for(
+        DomainAction("retreat_intrigue_troops", 0, (("commanders", 2), ("count", 5))),
+        effect_row=False,
+    )
+    flip_battle = steps_for(
+        DomainAction("flip_battle_card", 0, (("card_id", "skirmish_wild"),)),
+        effect_row=False,
+    )
+    # v147: the retreat names its card (``source``).
+    retreat_for_reveal = steps_for(
+        DomainAction(
+            "retreat_two_troops_for_reveal",
+            0,
+            (("commanders", 2), ("source", "chani_clever_tactician")),
+        )
+    )
+    # Stage B3d-4: the turn offers the recruit as its effect row, not the
+    # bare ``recruit_sardaukar_commander`` template.
+    recruit_commander = DomainAction(
+        "recruit",
+        3,
+        (("printed", "sardaukar_commander"), ("source", "commander")),
+    )
+    actions = (
+        *acquire_commander,
+        recruit_commander,
+        *trash_skill,
+        DomainAction("deploy_commanders", 0, (("count", 7),)),
+        DomainAction("withdraw_commanders", 1, (("count", 1),)),
+        *retreat_intrigue,
+        *deploy_intrigue,
+        *retreat_for_reveal,
+        *retreat_commander,
+        *flip_battle,
+    )
+    for action in actions:
+        assert codec.decode(codec.encode(action), action.actor) == action
+        with pytest.raises(ValueError):
+            base.encode(action)
+
+
+def test_every_reachable_unit_retreat_is_encodable() -> None:
+    # A Commander is its own component, not one of the twelve troops
+    # [Bloodlines p. 4], so a seat's units in the Conflict reach 12 + 7 and
+    # Tactical Option retreats "any number" of them (RetreatTroops(1, None)).
+    # The catalog stopped at the troop total, so a 2026-09-10 collection run
+    # reached retreat_intrigue_troops(commanders=1, count=13) -- legal for the
+    # engine, unencodable for the codec.
+    from dune_imperium.adapters.action_codec import (
+        MAX_COMMANDER_DEPLOYMENT,
+        MAX_DEPLOYMENT_COUNT,
+    )
+    from dune_imperium.rules.units import unit_count_arguments
+
+    codec = ActionCodec(BLOODLINES)
+    reachable = unit_count_arguments(
+        minimum=1,
+        maximum=None,
+        troops=MAX_DEPLOYMENT_COUNT,
+        commanders=MAX_COMMANDER_DEPLOYMENT,
+    )
+
+    counts = [dict(arguments)["count"] for arguments in reachable]
+    assert max(counts) == MAX_DEPLOYMENT_COUNT + MAX_COMMANDER_DEPLOYMENT
+    for arguments in reachable:
+        # Stage B3d-2a: the window's retreat is its count row.
+        whole = DomainAction("retreat_intrigue_troops", 0, arguments)
+        (action,) = steps_for(whole, effect_row=False)
+        assert codec.decode(codec.encode(action), 0) == action
+
+
+@pytest.mark.parametrize("game_seed", [11, 12, 13])
+def test_random_bloodlines_games_finish_under_every_check(game_seed: int) -> None:
+    report = run_checked_game(
+        BLOODLINES,
+        game_seed=game_seed,
+        policy_seed=900_000 + game_seed,
+        privacy_interval=10,
+        soundness_interval=10,
+        engine=UprisingRulesEngine(leader_ids=LEADERS),
+    )
+    assert report.ruleset == "uprising-4p-base+bloodlines"
+    assert report.rounds >= 1 and 0 <= report.winner < 4
+
+
+def test_heuristic_bloodlines_game_buys_commanders() -> None:
+    report = run_checked_game(
+        RulesetConfig(bloodlines=True, choam_module=True),
+        game_seed=21,
+        policy_seed=900_021,
+        privacy_interval=0,
+        policy="heuristic",
+        engine=UprisingRulesEngine(leader_ids=LEADERS),
+    )
+    assert report.ruleset == "uprising-4p-choam+bloodlines"
+    assert report.rounds >= 1
+
+
+# --- Commanders as troops in existing effects (slice 3) ---------------------
+
+
+def test_intrigue_retreat_offers_the_commander_share() -> None:
+    from dune_imperium.rules.combat import begin_combat_intrigue
+    from dune_imperium.rules.intrigue import (
+        apply_intrigue_choice,
+        apply_intrigue_play,
+        legal_intrigue_choice_actions,
+        legal_intrigue_play_actions,
+    )
+
+    card = "intrigue:go_to_ground:0"
+    owner = _seat_with_skills(
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+        has_revealed=True,
+        intrigue_cards=(card,),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    opened = begin_combat_intrigue(state).state
+    play = next(
+        action
+        for action in legal_intrigue_play_actions(opened, 0)
+        if dict(action.arguments).get("card_id") == card
+    )
+    playing = apply_intrigue_play(opened, play).state
+
+    retreats = legal_intrigue_choice_actions(playing, 0)
+    assert {
+        (dict(a.arguments).get("count"), dict(a.arguments).get("commanders"))
+        for a in retreats
+    } == {
+        (1, None),
+        (1, 1),
+        (2, 1),
+    }
+    both = next(
+        a for a in retreats if dict(a.arguments) == {"commanders": 1, "count": 2}
+    )
+    done = apply_intrigue_choice(playing, both).state.players[0]
+    assert done.troops_conflict == 0 and done.commanders_conflict == 0
+    assert done.commanders_garrison == 1 and done.troops_garrison == 4
+    assert done.combat_strength == 0
+
+
+def test_reveal_two_troop_retreat_may_include_commanders() -> None:
+    from dune_imperium.content.registry.imperium import imperium_deck_instance_ids
+    from dune_imperium.rules.reveal_turn import (
+        apply_reveal_troop_retreat,
+        legal_reveal_troop_retreat_actions,
+    )
+
+    chani = next(
+        instance_id
+        for instance_id in imperium_deck_instance_ids(False)
+        if ":chani_clever_tactician:" in instance_id
+    )
+    owner = _seat_with_skills(
+        hand=(chani,),
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    actions = legal_reveal_troop_retreat_actions(revealed, 0)
+    # One troop and one Commander: only the mixed pair reaches two units. The
+    # effect is a "may" [FAQ p. 3], so no refusal is offered beside it.
+    assert [dict(a.arguments) for a in actions] == [
+        {"commanders": 1, "source": "chani_clever_tactician"}
+    ]
+    offered = {a.action_id for a in UprisingRulesEngine().legal_actions(revealed, 0)}
+    assert "decline_reveal_troop_retreat" not in offered
+    assert "finish_reveal" in offered
+    result = apply_reveal_troop_retreat(revealed, actions[0]).state.players[0]
+    assert result.troops_conflict == 0 and result.commanders_conflict == 0
+    assert result.commanders_garrison == 1
+    assert result.combat_strength == 0
+
+
+def test_desert_scouts_may_retreat_a_commander() -> None:
+    from dune_imperium.rules.leader_abilities import (
+        apply_leader_reveal_action,
+        legal_leader_reveal_actions,
+    )
+
+    owner = _seat_with_skills(
+        leader_id="lady_amber_metulli",
+        hand=starting_deck_instance_ids(0)[:1],
+        commanders_conflict=1,
+        troops_conflict=1,
+        troops_supply=8,
+        agent_locations=(),
+        agents_available=2,
+        combat_strength=4,
+    )
+    revealed = begin_reveal_turn(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    actions = legal_leader_reveal_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "retreat_leader_troop",
+        "retreat_leader_commander",
+    ]
+    result = apply_leader_reveal_action(revealed, actions[1]).state.players[0]
+    assert result.commanders_conflict == 0 and result.commanders_garrison == 1
+    assert result.troops_conflict == 1
+    sword_strength = dict(revealed.decision_stack[-1].context)["sword_strength"]
+    assert isinstance(sword_strength, int)
+    assert result.combat_strength == 2 + sword_strength
+
+
+# --- wild battle icons (Bloodlines Conflicts) ------------------------------
+
+
+def test_a_won_wild_conflict_is_not_matched_on_arrival() -> None:
+    owner = _seat_with_skills(
+        skill_ids=(),
+        commanders_conflict=0,
+        troops_conflict=1,
+        troops_supply=11,
+        troops_garrison=0,
+        agent_locations=(),
+        agents_available=2,
+        has_revealed=True,
+        combat_strength=2,
+        objective_ids=("propaganda",),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.COMBAT,
+        first_player=0,
+        current_conflict_ids=("skirmish_wild",),
+        combat_intrigue_complete=True,
+        combat_rewards_resolved=True,
+        decision_stack=(),
+        players=(
+            owner,
+            *(
+                replace(seat, has_revealed=True)
+                for seat in _turn_state(owner).players[1:]
+            ),
+        ),
+    )
+    winner = finish_combat(offer_conflict_end_triggers(state).state).state.players[0]
+    assert winner.won_conflict_ids == ("skirmish_wild",)
+    # Wild icons are matched during the Endgame only [Main p. 20] [Bloodlines p. 5].
+    assert winner.face_down_battle_card_ids == ()
+    assert winner.victory_points == 1
+
+
+def test_two_wild_icons_pair_with_each_other_in_the_endgame() -> None:
+    from dune_imperium.rules.endgame import (
+        apply_endgame_intrigue_action,
+        begin_endgame_intrigue,
+        legal_endgame_intrigue_actions,
+    )
+
+    owner = PlayerState(
+        player_id=0,
+        objective_ids=("propaganda",),
+        won_conflict_ids=("storms_in_the_south", "skirmish_wild"),
+    )
+    state = replace(
+        _turn_state(owner),
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        decision_stack=(),
+    )
+    opened = begin_endgame_intrigue(state).state
+    pairs = {
+        (dict(a.arguments)["wild_card_id"], dict(a.arguments)["matching_card_id"])
+        for a in legal_endgame_intrigue_actions(opened, 0)
+        if a.action_id == "match_endgame_wild_icon"
+    }
+    assert pairs == {
+        ("propaganda", "skirmish_wild"),
+        ("propaganda", "storms_in_the_south"),
+        ("skirmish_wild", "storms_in_the_south"),
+    }
+    match = DomainAction(
+        "match_endgame_wild_icon",
+        0,
+        (("matching_card_id", "storms_in_the_south"), ("wild_card_id", "propaganda")),
+    )
+    # Stage B3c-1: the Endgame window offers the match as its effect row and
+    # the two cards' target rows (``effect_steps.steps_for``).
+    codec = ActionCodec(BLOODLINES)
+    rows = steps_for(match)
+    assert [row.action_id for row in rows] == [
+        "match",
+        "choose_conflict_card",
+        "choose_conflict_card",
+    ]
+    for row in rows:
+        assert codec.decode(codec.encode(row), 0) == row
+    result = apply_endgame_intrigue_action(opened, match).state.players[0]
+    assert result.victory_points == 2
+    assert set(result.face_down_battle_card_ids) == {
+        "propaganda",
+        "storms_in_the_south",
+    }
+    # The third wild has no partner left.
+    assert [
+        a.action_id
+        for a in legal_endgame_intrigue_actions(
+            replace(opened, players=(result, *opened.players[1:])), 0
+        )
+    ] == ["pass_endgame_intrigue"]

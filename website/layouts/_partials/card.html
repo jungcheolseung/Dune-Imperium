@@ -1,0 +1,9 @@
+<article class="story-card">
+  <div class="card-meta">
+    {{ with .GetTerms "categories" }}{{ range . }}<a class="tag" href="{{ .RelPermalink }}">{{ partial "term-label.html" .LinkTitle }}</a>{{ end }}{{ else }}<span class="tag">{{ if eq .Section "updates" }}{{ i18n "updates" }}{{ else }}{{ i18n "guide" }}{{ end }}</span>{{ end }}
+    {{ if in (slice "posts" "updates") .Section }}<time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format (i18n "dateFormat") }}</time>{{ end }}
+  </div>
+  <h3><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+  <p>{{ .Description }}</p>
+  <a class="text-link" href="{{ .RelPermalink }}">{{ i18n "read" }} <span aria-hidden="true">↗</span><span class="sr-only">: {{ .Title }}</span></a>
+</article>

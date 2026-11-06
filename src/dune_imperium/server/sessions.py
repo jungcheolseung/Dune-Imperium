@@ -1,0 +1,4023 @@
+"""In-memory game sessions for the M11 local play server.
+
+A session drives one game exclusively through the engine's public contract
+(``reset``/``current_decision``/``legal_actions``/``apply``/``observe``) plus
+the seeded ``ChanceResolver`` of the runner pattern; no rule logic lives
+here. Humans only ever receive their own serialized ``PlayerView`` and their
+own legal actions — both can carry private card identities, so AI seats
+refuse them — keeping ``core.observation`` the single visibility authority.
+
+Chance decisions and AI seats advance automatically after game creation and
+after every human action, so a session always rests on a human decision, on
+the finished game, or on a background seat that is thinking. A search seat
+(``is_background_agent_kind``) takes about a second and a half a decision,
+so instead of answering inside the request that handed it the decision, the
+session marks it ``thinking`` and the game's worker thread answers it off
+the lock, one step at a time, ringing the doorbell after each. In a paced
+game (``pacing``) every AI seat answers that way, each answer applied once
+the tables have had the time to show what came before; in an instant game
+every other AI seat answers inside the request as before.
+
+Every applied step is recorded replay-style; saving serializes that record
+(``persistence``), and loading replays it against fresh seeded chance and
+agent streams so a loaded game continues exactly like the unsaved session
+would have. A search seat retraces its recorded answers on a load rather
+than searching them again; ``restore_game`` says what that checks, and
+where a load may not reproduce the game.
+
+Who may do what is judged here too (``access``, M14). An open manager — the
+default, the local server — trusts every caller as before. A remote manager
+reads or acts for a human seat only for the client holding the token minted
+when that seat was claimed, keeps host operations (creating, listing,
+saving, loading and deleting games, releasing seats) behind the admin key,
+and keeps the game seed out of every summary until the game has finished:
+the engine is deterministic, so the seed plus the public actions would
+spell out every hidden deck order.
+
+Every change rings a doorbell (M14 slice 3): listeners get a small payload
+of public fields, built under the session lock but delivered after it is
+released, so a listener may read the session again. The payload says *that*
+something changed and carries nothing a seat could not see; a client that
+hears it fetches its own snapshot through the judged calls above. Open
+event streams register as connections, which is all presence is: a human
+seat is online while some connection holds its current token.
+"""
+
+import itertools
+import logging
+import os
+import random
+import re
+import threading
+import time
+import uuid
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass, field, replace
+from enum import StrEnum
+from pathlib import Path
+from typing import Final
+
+from dune_imperium.agents import Agent, ReplayableAgent, StateAgent, make_agent
+from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
+from dune_imperium.agents.registry import (
+    CHECKPOINT_PREFIX,
+    OLDER_PREFIX,
+    SEARCH_OPTION_SEPARATOR,
+    SEARCH_PREFIX,
+    SEARCH_VALUE_SEPARATOR,
+    is_agent_kind,
+    is_background_agent_kind,
+    parse_search_kind,
+)
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.registry.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.registry.intrigue import is_twisted_intrigue
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import PlayerView, disclose_hidden_zones
+from dune_imperium.core.replay import ReplayStep
+from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
+from dune_imperium.display import (
+    agent_box_headers,
+    agent_box_of_rows,
+    agent_box_row_title,
+    agent_placements,
+    effect_action_text,
+    effect_action_text_ko,
+    reveal_choice_headers,
+    reveal_choice_of_rows,
+)
+from dune_imperium.display.scouts import pending_subcommittee_lines, scouts_choice_lines
+from dune_imperium.display.unavailable import unavailable_choices
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import (
+    HEIGHLINER_SPACE_IDS,
+    agent_card_pick,
+    agent_space_pick_actions,
+)
+from dune_imperium.rules.effect_steps import first_step, picked_rows
+from dune_imperium.rules.endgame import final_standings
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue import plays_turn_start_option
+from dune_imperium.rules.sardaukar import commander_cost
+from dune_imperium.server.access import (
+    ANONYMOUS,
+    AccessMode,
+    Credentials,
+    admin_session_matches,
+    admin_session_token,
+    new_token,
+    token_matches,
+)
+from dune_imperium.server.forfeits import (
+    LAPSING_TURN_ENDS,
+    forfeited_effects,
+    lapsed_effects,
+)
+from dune_imperium.server.pacing import (
+    AI_PACES,
+    MAX_WAIT_SECONDS,
+    PACE_SCALE,
+    TURN_BANNER_SECONDS,
+    cue_seconds,
+)
+from dune_imperium.server.persistence import (
+    JsonObject as JsonObject,
+)
+from dune_imperium.server.persistence import (
+    JsonValue as JsonValue,
+)
+from dune_imperium.server.persistence import (
+    SavedClock,
+    SavedHandOver,
+    SaveError,
+    build_save_document,
+    parse_save_document,
+    read_saved_clock,
+)
+from dune_imperium.server.play_clock import PlayClock
+from dune_imperium.server.seat_kinds import seat_kind_allowed
+from dune_imperium.server.session_log import (
+    EFFECT_PICKED_EVENT,
+    SEALED_ACTION_IDS,
+    SEALED_REVEAL_EVENTS,
+    SEALED_SHOWN_KEYS,
+    LogEntry,
+    LoggedStep,
+    LoggedUndo,
+    live_steps,
+    log_step,
+    mark_undone,
+    reveals_hidden_information,
+    undo_history,
+    undo_window,
+)
+from dune_imperium.server.turn_cards import turn_cards
+from dune_imperium.server.turn_end import (
+    EXPLICIT_TURN_ENDS,
+    HELD_IN_TURN,
+    TURN_PASS_EVENTS,
+    TURN_TAKING_EVENTS,
+    agent_turn_end_ready,
+    answers_another_unit,
+    at_turn_start,
+    finishing_seat,
+    own_unit_outside_turns,
+    turn_start_seat,
+    unit_over,
+    unit_seat,
+)
+from dune_imperium.server.vp_ledger import (
+    VpLedger,
+    extend_ledger,
+    ledger_json,
+    start_ledger,
+)
+
+_LOGGER: Final = logging.getLogger(__name__)
+
+HUMAN_SEAT: Final = "human"
+# The bare kind the browser sends for the server's own search AI: the
+# manager seats ``search:<its checkpoint>`` with ``SERVER_SEARCH_OPTIONS``
+# there (``create_game``), so a save records the very file and options the
+# seat played with.
+SEARCH_SEAT: Final = "search"
+# E1's flip margin: the network's first candidate stays unless another one's
+# mean is better by more than 0.01. It passed both of its 400-game tests
+# (handoff "학습·AI" E1, 2026-10-23). A save seated before it keeps
+# ``search:<path>`` and plays on without it.
+SERVER_SEARCH_OPTIONS: Final = f"{SEARCH_OPTION_SEPARATOR}flip=0.01"
+# The search options a table seat may carry: the flip margin, and Agent
+# turns' extended worlds where a host turns them on (``search_turn_extend``,
+# the user's choice of 2026-11-04 to put choice quality before time,
+# checkpoints/2026-11-04/turn-worlds-pilot). The others (``value``,
+# ``prior``, ``halving``, ``turn_worlds``) stay measurement tools.
+_TABLE_SEARCH_OPTIONS: Final = frozenset({"flip_margin", "turn_extend"})
+# The search AI's own worlds (``NetworkSearchAgent``'s ``DEFAULT_ROLLOUTS``,
+# not imported: this module runs without torch); an extension adds to them,
+# up to a bound that keeps a hand-written save or flag from stalling every
+# Agent turn (each draws all its worlds first).
+SEARCH_ROLLOUTS: Final = 8
+SEARCH_TURN_EXTEND_MAX: Final = 64
+# The banner prompt once nothing mandatory is left in an Agent turn
+# (``agent_turn_end_ready``); its Korean twin is in static/prompts_ko.js.
+AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
+# The banner prompt while the turn's Agent card is picked and waits for its
+# space (stage B1, OQ-111); the turn frame keeps its own prompt. That a card
+# was picked is public (the log shows the pick, sealed), which card is not.
+AGENT_SPACE_PROMPT: Final = "Choose a space for the Agent"
+# The rows that pay for a Sardaukar Commander: a visited space's Commander
+# and the once-per-turn recruit from the supply [Bloodlines p. 4]. Each row
+# carries what it costs the seat now (``_serialize_action`` ``solari_cost``).
+COMMANDER_PAYMENTS: Final = frozenset(
+    {"acquire_sardaukar_commander", "recruit_sardaukar_commander"}
+)
+# Every other seat names an agent of the evaluation registry
+# (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
+# ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
+# decision, standard library only), ``random``, ``heuristic``, the
+# determinized-search ``rollout`` or ``rollout_strong``, a trained policy
+# ``checkpoint:<path>``, or that same policy with search around it,
+# ``search:<path>``.
+# Search and app AI agents receive the authoritative state like the
+# tournament runner does; their contract keeps them from reading hidden zones.
+# Restore regenerates every AI step (an app AI's memory with it), so any change
+# to an agent's behaviour, an app_ai code or data update included, can make
+# saves and autosaves with that seat kind unloadable. A search seat only
+# retraces its recorded answers (``ReplayableAgent``): it checks that each was
+# among the network's shortlist and moves its RNG on, without the playouts.
+# Which shortlisted candidate a searched decision chose is taken on trust, so
+# a change to the search that would choose another one does not fail a load.
+# One gap is known: a search that failed and fell back to the greedy network
+# (``_background_answer``, which logs a warning naming the game and step) is
+# retraced as if it had searched, so a load of that game from that step on
+# may play on differently from the saved session, or refuse the save.
+# Matches the sweep's policy seed convention so one game seed names one game.
+_DEFAULT_POLICY_OFFSET: Final = 700_000
+_MAX_AUTO_STEPS: Final = 30_000
+# The Conflict-end window's "쓰지 않음" (``_auto_decline_locked``).
+_CONFLICT_END_DECLINE: Final = "decline_conflict_end_intrigue"
+# Names are shown to every player at the table; the limit keeps them on one
+# line of a seat panel.
+PLAYER_NAME_MAX_LENGTH: Final = 20
+
+# A doorbell listener gets the game ID and the public payload, or ``None``
+# once the game is gone. It runs on the thread that made the change (a
+# background seat's step: the game's AI worker), after the session lock was
+# released.
+type ChangeListener = Callable[[str, JsonObject | None], None]
+# A hand-over listener gets the ID of a game whose turn has just passed on
+# (or which has just finished). Same thread, same moment: after the lock.
+type HandOverListener = Callable[[str], None]
+
+
+class SessionError(ValueError):
+    """Base error for invalid game-session requests."""
+
+
+class UnknownGameError(SessionError):
+    """Raised when no session exists for a game ID."""
+
+
+class SeatAccessError(SessionError):
+    """Raised when a request touches a seat it may not read or act for."""
+
+
+class AdminAccessError(SessionError):
+    """Raised when a host-only operation comes without the admin key."""
+
+
+class SeatTakenError(SessionError):
+    """Raised when a claim loses to the client that already holds the seat."""
+
+
+class GameNotStartedError(SessionError):
+    """Raised when a room that draws its seats at the start has not started:
+    nobody reads or acts for a seat before the seats are drawn
+    (``GameSessionManager.start_game``)."""
+
+
+class StaleRevisionError(SessionError):
+    """Raised when an action targets an outdated state revision."""
+
+
+@dataclass
+class GameSession:
+    """One running game and everything needed to advance it."""
+
+    game_id: str
+    config: RulesetConfig
+    game_seed: int
+    policy_seed: int
+    seats: tuple[str, ...]
+    engine: UprisingRulesEngine
+    state: GameState
+    chance: ChanceResolver
+    agents: dict[int, Agent]
+    steps: list[ReplayStep] = field(default_factory=list)
+    # Append-only session log: every applied step (undone ones included)
+    # and every undo marker; ``steps`` is its live projection.
+    log: list[LogEntry] = field(default_factory=list)
+    # How many undos happened. Revisions count applied steps, so after an
+    # undo and a different choice the same revision names a different
+    # state; a client that also sends this generation number can never act
+    # on a state that has been taken back under it.
+    undo_count: int = 0
+    # Human seat whose unit has ended: the session waits for that seat to
+    # press "턴 종료" (``confirm_turn``) before anything else happens, the
+    # chance outcomes after the unit included, so its steps can still be
+    # taken back until then. A seat never passes a turn without pressing
+    # once, and never presses twice (``turn_end``); a unit outside the
+    # turns with nothing left to take back is not held at all.
+    awaiting_confirmation: int | None = None
+    # How many live steps a turn end has sealed, by that press or by an
+    # explicit turn-end action. The log alone closes a seat's undo window
+    # at the next chance outcome or other seat's step; when the next seat
+    # is a human who has not moved yet there is no such step, and without
+    # this floor the seat that ended its turn could still pull it back
+    # from under them.
+    undo_floor: int = 0
+    # Human seat -> index of the step that opened its current unit: the
+    # first step it took in a unit of its own since it last pressed. Only a
+    # seat with an open unit has a turn end to press; a seat back at the
+    # start of its turn with its unit still open has finished one turn and
+    # stands at the next (``_unit_ended_locked``). What a seat does at its
+    # turn start before taking the turn (a Plot Intrigue) opens nothing.
+    open_units: dict[int, int] = field(default_factory=dict)
+    # Remote access (M14): the token minted when a human seat was claimed
+    # and the name its player gave; both stay empty on an open server.
+    # Like everything above they change only under ``lock``.
+    seat_tokens: dict[int, str] = field(default_factory=dict)
+    seat_names: dict[int, str] = field(default_factory=dict)
+    # A remote room that draws its human seats at the start (user decision
+    # 2026-10-25, play feedback): until a seated player presses "게임 시작"
+    # with every human seat taken, a claim only holds a place in the room,
+    # nobody reads or acts for a seat, and the game does not advance (no AI
+    # step, no clock). ``start_game`` then deals the claims out to the human
+    # seats at random and starts the game.
+    awaiting_start: bool = False
+    # Doorbell sequence (M14 slice 3): bumped by every rung change so a
+    # listener can drop a payload that arrives after a newer one.
+    event_seq: int = 0
+    # Open event streams: connection ID -> the seat tokens it presented.
+    # A seat is online while one of them still matches the seat's token.
+    connections: dict[int, frozenset[str]] = field(default_factory=dict)
+    # Background seat (``is_background_agent_kind``) that owns the pending
+    # decision while the game's worker computes its answer, or None. Set by
+    # ``_advance_locked`` instead of answering, cleared when the answer is
+    # applied or the worker's step fails (``_end_failed_ai_step``);
+    # the doorbell carries it so a table can show who is thinking.
+    thinking: int | None = None
+    # Whether the game's AI worker thread runs (``_kick_ai``). Only the
+    # worker clears it, as it decides to stop, so a game has one at most.
+    ai_worker: bool = False
+    # Set once the game is deleted: a running worker drops what it computed
+    # and stops. Like everything above these change only under ``lock``.
+    closed: bool = False
+    # How the game's AI seats pace their answers (``pacing.AI_PACES``) and
+    # the seconds of one full-length cue at that pace (the pace's scale
+    # times the manager's ``pace_unit``; 0 never waits).
+    ai_pace: str = "instant"
+    pace_seconds: float = 0.0
+    # Monotonic time until which the tables are presumed busy showing the
+    # public events logged so far (``_apply_step``), and the AI turn start
+    # whose banner the worker last waited for, keyed like the browser's
+    # turn banners ("<seat>:<step of the last turn end>").
+    cue_clock: float = 0.0
+    paced_turn: str | None = None
+    # Set to cut short the worker's wait for the tables: the game was
+    # deleted or its pace changed.
+    pace_wake: threading.Event = field(default_factory=threading.Event)
+    # The play clock (``play_clock``): game time and each seat's time
+    # holding control, settled at every transition (``_settle_clock_locked``).
+    # In an instant game ``narration_clock`` stands in for ``cue_clock``:
+    # when the tables are presumed done showing the steps so far, at the
+    # browser's own cue lengths (``cue_unit`` seconds a full-length cue),
+    # and ``narrated_turn`` the AI turn start whose banner it last counted.
+    # Neither paces anything; they only keep a human's clock from running
+    # while the tables still show the AI moves before its decision.
+    clock: PlayClock = field(init=False)
+    narration_clock: float = 0.0
+    narrated_turn: str | None = None
+    cue_unit: float = 0.0
+    # The Victory Point ledger walked so far (``vp_ledger``), kept so a
+    # second look does not replay the game again; never saved.
+    vp_ledger: VpLedger | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        self.clock = PlayClock(seats=len(self.seats))
+
+
+@dataclass(frozen=True, slots=True)
+class SeatClaim:
+    """A successful claim: the seat's token and the summary after it.
+
+    The token is the seat's whole proof of ownership, so it goes to the
+    claiming client alone (the HTTP layer sets it as an HttpOnly cookie)
+    and never appears in a summary.
+    """
+
+    token: str
+    summary: JsonObject
+
+
+class GameSessionManager:
+    """Create, look up, and advance in-memory game sessions."""
+
+    def __init__(
+        self,
+        *,
+        access: AccessMode = AccessMode.OPEN,
+        admin_key: str | None = None,
+        search_checkpoint: str | os.PathLike[str] | None = None,
+        search_turn_extend: int = 0,
+        default_ai_pace: str = "instant",
+        pace_unit: float = 1.0,
+    ) -> None:
+        """``search_checkpoint`` is the network of the server's search AI,
+        the seat kind ``search`` (``create_game``); ``None`` offers none.
+        It is resolved here, once: a symlink (``checkpoints/play/search.pt``
+        pointing at a training checkpoint) is recorded in every save as the
+        file it named when the server started, so repointing the link later
+        never changes the network an older save plays with.
+
+        ``search_turn_extend`` above 0 seats that search AI with
+        ``::turn_extend=<worlds>`` as well: an Agent turn that its first
+        worlds leave open is searched in that many (``NetworkSearchAgent``).
+        A save records the options its seats played with, so a save made
+        without them plays on without them.
+
+        ``default_ai_pace`` paces a game created without a pace and a save
+        that records none (the play server's command line passes
+        ``normal``); ``pace_unit`` scales every wait of a paced game (tests
+        pass 0 to keep the worker's answers without waiting).
+        """
+
+        if access is AccessMode.REMOTE and not admin_key:
+            raise ValueError("remote access needs an admin key")
+        if access is AccessMode.OPEN and admin_key is not None:
+            raise ValueError("an admin key only applies to remote access")
+        if default_ai_pace not in AI_PACES:
+            raise ValueError(f"unknown AI pace {default_ai_pace!r}")
+        if pace_unit < 0:
+            raise ValueError("the pace unit must not be negative")
+        if not turn_extend_allowed(search_turn_extend):
+            raise ValueError(
+                "search_turn_extend is 0 (off) or a whole number of worlds from "
+                f"{SEARCH_ROLLOUTS + 1} to {SEARCH_TURN_EXTEND_MAX}"
+            )
+        self._search_options = SERVER_SEARCH_OPTIONS + (
+            f"{SEARCH_OPTION_SEPARATOR}turn_extend={search_turn_extend}"
+            if search_turn_extend
+            else ""
+        )
+        self._default_ai_pace = default_ai_pace
+        self._pace_unit = pace_unit
+        self._access = access
+        self._admin_key = admin_key
+        self._search_checkpoint = (
+            None
+            if search_checkpoint is None
+            else Path(search_checkpoint).expanduser().resolve()
+        )
+        self._sessions: dict[str, GameSession] = {}
+        self._registry_lock = threading.Lock()
+        self._listeners: list[ChangeListener] = []
+        self._hand_over_listeners: list[HandOverListener] = []
+        self._connection_ids = itertools.count(1)
+
+    @property
+    def access(self) -> AccessMode:
+        """The access mode every request to this manager is judged under."""
+
+        return self._access
+
+    @property
+    def search_checkpoint(self) -> Path | None:
+        """The resolved network file of the ``search`` seat kind, if any."""
+
+        return self._search_checkpoint
+
+    @property
+    def search_options(self) -> str:
+        """The options the ``search`` seat kind is seated with."""
+
+        return self._search_options
+
+    @property
+    def default_ai_pace(self) -> str:
+        """The pace a new game starts with unless it asks for another."""
+
+        return self._default_ai_pace
+
+    def is_admin(self, credentials: Credentials = ANONYMOUS) -> bool:
+        """Return whether the credentials carry the host's admin key, or an
+        admin session a login with it handed out (``admin_login``).
+
+        An open server has no admin: every caller may do everything.
+        """
+
+        if self._admin_key is None:
+            return True
+        key = credentials.admin_key
+        if key is not None and token_matches(self._admin_key, (key,)):
+            return True
+        session = credentials.admin_session
+        return session is not None and admin_session_matches(self._admin_key, session)
+
+    def require_admin(self, credentials: Credentials = ANONYMOUS) -> None:
+        """Refuse a host-only operation that comes without the admin key."""
+
+        if not self.is_admin(credentials):
+            raise AdminAccessError("this operation needs the host's admin key")
+
+    def admin_login(self, key: str) -> str:
+        """Check an admin key and return an admin session for it.
+
+        The client keeps presenting the session (``admin_session_token``),
+        never the key itself.
+        """
+
+        if self._access is AccessMode.OPEN:
+            raise SessionError("an open server has no admin key to log in with")
+        self.require_admin(Credentials(admin_key=key))
+        assert self._admin_key is not None  # a remote server always has one
+        return admin_session_token(self._admin_key)
+
+    def add_change_listener(self, listener: ChangeListener) -> None:
+        """Ring ``listener`` after every change to any game of this manager.
+
+        It is called on the thread that made the change (a request's, or
+        the game's AI worker for a background seat's step), once the session
+        lock is released, with the game ID and the doorbell payload
+        (``doorbell``), or ``None`` when the game was deleted. It must not
+        raise and should return quickly; the play server's listener only
+        hands the payload to its event loop.
+        """
+
+        self._listeners.append(listener)
+
+    def add_hand_over_listener(self, listener: HandOverListener) -> None:
+        """Tell ``listener`` whenever a turn has passed on or a game has ended.
+
+        That is the moment an autosave is worth its write (M14 slice 5): the
+        game rests on a human decision (or is over), the seat that acted can
+        no longer take anything back, and what a crash would lose from here
+        is one turn. A step inside a turn, a turn end still awaiting its
+        confirmation, an undo, a claim: none of these calls it. A hand-over
+        to a background seat calls it once the turn has passed, and the
+        game's worker calls it again when it has played on to a human's
+        decision or the end.
+
+        Like a change listener it runs on the thread that made the change,
+        after the session lock was released and after the doorbell rang, so
+        it may read the session (``save_document``) without deadlocking.
+        An exception it raises is logged and goes no further: the step it
+        follows has already been applied and its player must get an answer.
+        """
+
+        self._hand_over_listeners.append(listener)
+
+    def doorbell(self, game_id: str) -> JsonObject:
+        """Return the current doorbell payload of one game without ringing.
+
+        The payload is public by construction: a revision, counters, whose
+        decision it is, and the ``players`` list every summary carries. It
+        needs no credentials beyond knowing the game ID.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return _doorbell(session, self._summary_locked(session))
+
+    def connect(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> int:
+        """Register one open event stream and return its connection ID.
+
+        A connection is what presence is made of: a human seat is online
+        while some connection presented its current token (on an open
+        server, while any connection exists). The doorbell only rings if
+        that changed somebody's ``online`` flag.
+        """
+
+        session = self._get(game_id)
+        connection_id = next(self._connection_ids)
+        with session.lock:
+            before = self._online_seats_locked(session)
+            session.connections[connection_id] = credentials.seat_tokens
+            bell = (
+                self._ring_locked(session)
+                if self._online_seats_locked(session) != before
+                else None
+            )
+        if bell is not None:
+            self._publish(game_id, bell)
+        return connection_id
+
+    def disconnect(self, game_id: str, connection_id: int) -> None:
+        """Forget one event stream; unknown games and IDs are tolerated.
+
+        A stream outlives neither its game nor a server that is shutting
+        down, and both may go first.
+        """
+
+        try:
+            session = self._get(game_id)
+        except UnknownGameError:
+            return
+        with session.lock:
+            before = self._online_seats_locked(session)
+            session.connections.pop(connection_id, None)
+            bell = (
+                self._ring_locked(session)
+                if self._online_seats_locked(session) != before
+                else None
+            )
+        if bell is not None:
+            self._publish(game_id, bell)
+
+    def create_game(
+        self,
+        seats: tuple[str, ...],
+        *,
+        base_game: str = BaseGame.UPRISING.value,
+        choam_module: bool = False,
+        leader_draft: bool = False,
+        promo_cards: bool = False,
+        bloodlines: bool = False,
+        tech_module: bool = False,
+        immortality: bool = False,
+        go_to_11: bool = False,
+        epic_game: bool = False,
+        arrakeen_scouts: bool = False,
+        first_player_seat_zero: bool = False,
+        rise_of_ix: bool = False,
+        imperium_cards: bool = False,
+        ix_tech_tiles: bool = False,
+        ix_leaders: bool = False,
+        seats_at_start: bool = False,
+        game_seed: int | None = None,
+        policy_seed: int | None = None,
+        ai_pace: str | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Start one game and advance it to the first human decision.
+
+        A background seat (``search:``) that decides before then answers on
+        the game's worker after this returns, with ``thinking`` naming it;
+        so does every AI seat of a paced game (``ai_pace``, by default the
+        manager's ``default_ai_pace``).
+
+        Each seat is ``human`` or a registry agent kind: ``app_ai``
+        (``app_ai_medium``, ``app_ai_easy``), ``heuristic``, ``random``,
+        ``rollout``, ``rollout_strong``, ``checkpoint:<path>`` or
+        ``search:<path>``; or ``search``, the server's own search AI, which
+        is seated as ``search:<path>`` of the checkpoint the manager was
+        given, with ``SERVER_SEARCH_OPTIONS`` and the host's Agent-turn
+        extension if any (``search_options``; refused when it has none).
+        The browser offers ``search`` rather than a path, and only where
+        the server has one, and seats three ``app_ai`` beside one human by
+        default on an open server.
+
+        Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
+        server open a file, and search seats spend its CPU.
+
+        ``seats_at_start`` (remote only) opens the game as a room that waits
+        for its start: the human seats are drawn when a seated player starts
+        it (``start_game``), and nothing advances before then.
+        """
+
+        self.require_admin(credentials)
+        if seats_at_start:
+            self._require_remote("drawing the seats at the start")
+            if HUMAN_SEAT not in seats:
+                raise SessionError("drawing the seats at the start needs a human seat")
+        seats = tuple(self._seat_assignment(assignment) for assignment in seats)
+        try:
+            config = RulesetConfig(
+                base_game=BaseGame(base_game),
+                choam_module=choam_module,
+                leader_draft=leader_draft,
+                promo_cards=promo_cards,
+                bloodlines=bloodlines,
+                tech_module=tech_module,
+                immortality=immortality,
+                go_to_11=go_to_11,
+                epic_game=epic_game,
+                arrakeen_scouts=arrakeen_scouts,
+                first_player_seat_zero=first_player_seat_zero,
+                rise_of_ix=rise_of_ix,
+                imperium_cards=imperium_cards,
+                ix_tech_tiles=ix_tech_tiles,
+                ix_leaders=ix_leaders,
+            )
+        except ValueError as error:
+            # RulesetConfig rejects unsupported combinations (the Tech Module
+            # without Bloodlines [Bloodlines pp. 6-7], Go to 11 without
+            # Immortality (OQ-091), a non-four-player game), and BaseGame an
+            # unknown base game.
+            # That is a bad request, not a server fault, so it must not reach
+            # the client as a bare 500.
+            raise SessionError(str(error)) from error
+        _validate_seats(seats, config)
+        if game_seed is None:
+            game_seed = random.SystemRandom().randrange(2**31)
+        if game_seed < 0:
+            raise SessionError("game seed must not be negative")
+        if policy_seed is None:
+            policy_seed = _DEFAULT_POLICY_OFFSET + game_seed
+        if policy_seed < 0:
+            raise SessionError("policy seed must not be negative")
+        pace = self._default_ai_pace if ai_pace is None else ai_pace
+        if pace not in AI_PACES:
+            raise SessionError(f"unknown AI pace {pace!r}")
+
+        engine = UprisingRulesEngine()
+        initial = _reset(engine, config, game_seed)
+        session = GameSession(
+            game_id=uuid.uuid4().hex,
+            config=config,
+            game_seed=game_seed,
+            policy_seed=policy_seed,
+            seats=tuple(seats),
+            engine=engine,
+            state=initial,
+            chance=ChanceResolver(seed=game_seed),
+            agents=_build_agents(seats, policy_seed, config),
+        )
+        with session.lock:
+            self._set_pace_locked(session, pace)
+            if seats_at_start:
+                session.awaiting_start = True
+            else:
+                self._advance_locked(session)
+                # The clock starts with the game, its Leader draft included.
+                _start_clock_locked(session)
+            summary = self._summary_locked(session)
+        with self._registry_lock:
+            self._sessions[session.game_id] = session
+        self._kick_ai(session)
+        return summary
+
+    def start_game(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Draw the human seats of a waiting room at random and start it.
+
+        Any player holding a place in the room, or the host, may start it
+        once every human seat is taken (user decision 2026-10-25: "앉은 사람
+        누구나 시작"). Each claim, its token and name together, moves to a
+        human seat drawn by the system's random source, not the game seed:
+        who sits where is a table convention, no rule (the rules do not seat
+        players; the First Player comes from the Objectives [Main p. 5]),
+        and no save records it. Then the game advances to its first human
+        decision and its clock starts, as a game created without waiting
+        does.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("starting a waiting room")
+        with session.lock:
+            if session.closed:
+                # Deleted while this request waited for the lock.
+                raise UnknownGameError(f"unknown game: {game_id}")
+            if not session.awaiting_start:
+                raise SessionError("this game is not waiting for its start")
+            holds = any(
+                token_matches(token, credentials.seat_tokens)
+                for token in session.seat_tokens.values()
+            )
+            if not holds and not self.is_admin(credentials):
+                raise SeatAccessError(
+                    "only a player in the room or the host may start the game"
+                )
+            humans = [
+                seat
+                for seat, assignment in enumerate(session.seats)
+                if assignment == HUMAN_SEAT
+            ]
+            if any(seat not in session.seat_tokens for seat in humans):
+                raise SessionError("every human seat must be taken before the start")
+            claims = [
+                (session.seat_tokens[seat], session.seat_names.get(seat))
+                for seat in humans
+            ]
+            random.SystemRandom().shuffle(claims)
+            for seat, (token, name) in zip(humans, claims, strict=True):
+                session.seat_tokens[seat] = token
+                if name is None:
+                    session.seat_names.pop(seat, None)
+                else:
+                    session.seat_names[seat] = name
+            session.awaiting_start = False
+            self._advance_locked(session)
+            _start_clock_locked(session)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
+        return summary
+
+    def _seat_assignment(self, assignment: str) -> str:
+        """Seat the server's search AI where ``search`` was asked for."""
+
+        if assignment != SEARCH_SEAT:
+            return assignment
+        if self._search_checkpoint is None:
+            raise SessionError("this server has no search AI")
+        return f"{SEARCH_PREFIX}{self._search_checkpoint}{self._search_options}"
+
+    def list_games(self, *, credentials: Credentials = ANONYMOUS) -> list[JsonObject]:
+        """Return the summary of every open session.
+
+        Host-only on a remote server, where knowing a game ID is what lets
+        a client into that game's room.
+        """
+
+        self.require_admin(credentials)
+        with self._registry_lock:
+            sessions = tuple(self._sessions.values())
+        summaries = []
+        for session in sessions:
+            with session.lock:
+                summaries.append(self._summary_locked(session))
+        return summaries
+
+    def summary(self, game_id: str) -> JsonObject:
+        """Return the public snapshot of one game."""
+
+        session = self._get(game_id)
+        with session.lock:
+            return self._summary_locked(session)
+
+    def identify(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return which seats of one game the credentials prove, and admin.
+
+        An open server answers with every human seat: there, one browser
+        plays all of them, switching to whoever owns the decision.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return self._identify_locked(session, credentials)
+
+    def snapshot(
+        self,
+        game_id: str,
+        seat: int | None = None,
+        *,
+        log_after: int = 0,
+        log_epoch: str | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Return everything one client needs to redraw, read from one state.
+
+        One request replaces the summary, view, legal-action and log calls a
+        refresh used to make in sequence (M14 slice 2): over a WAN the round
+        trips cost more than the bytes, and four separate reads could
+        straddle another seat's step. Without ``seat`` — a client that knows
+        the game but holds no seat — only ``summary`` and ``you`` come back.
+
+        ``actions`` is ``None`` unless the seat owns the pending decision.
+        ``log`` is the tail from ``log_after`` on, provided the client's
+        ``log_epoch`` still names this log; otherwise the whole log is sent
+        again (``from`` 0), because entries the client already holds have
+        changed: an undo flags earlier entries, and the end of the game
+        lifts every redaction. The client never has to know which happened.
+        """
+
+        session = self._get(game_id)
+        if seat is not None:
+            self._require_human(session, seat)
+        if log_after < 0:
+            raise SessionError("log cursor is out of range")
+        with session.lock:
+            summary = self._summary_locked(session)
+            # How long ago the clock in the summary was settled, on the
+            # server's own clock: a client adds its own elapsed time to it
+            # and never compares wall clocks (``play_clock``).
+            age = session.clock.age_ms(_monotonic())
+            you = self._identify_locked(session, credentials)
+            if seat is None:
+                return {"summary": summary, "you": you, "clock_age_ms": age}
+            self._authorize_seat_locked(session, seat, credentials)
+            state = session.state
+            view = session.engine.observe(state, seat)
+            decision = session.engine.current_decision(state)
+            actions = (
+                self._legal_actions_locked(session, seat)
+                if isinstance(decision, PlayerDecision)
+                and decision.owner == seat
+                and not self._turn_is_held_locked(session)
+                and session.awaiting_confirmation != seat
+                else None
+            )
+            entries = tuple(session.log)
+            epoch = _log_epoch(session, seat)
+        finished = _is_finished(state)
+        start = log_after if log_epoch == epoch else 0
+        if start > len(entries):
+            raise SessionError("log cursor is out of range")
+        return {
+            "summary": summary,
+            "you": you,
+            "clock_age_ms": age,
+            "view": _serialize_view(view, state, disclose=finished),
+            "actions": actions,
+            "log": {
+                "seat": seat,
+                "epoch": epoch,
+                "from": start,
+                "count": len(entries),
+                "entries": _log_entries_json(entries, seat, finished, start),
+            },
+        }
+
+    def claim_seat(
+        self,
+        game_id: str,
+        seat: int,
+        name: str,
+        *,
+        credentials: Credentials = ANONYMOUS,
+    ) -> SeatClaim:
+        """Sit down at one unclaimed human seat of a remote game.
+
+        Knowing the game ID is the ticket into the room; the first claim of
+        a seat wins and mints its token. Claiming again with that token is
+        a rename and keeps the token; anyone else gets ``SeatTakenError``
+        until the seat is released.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("claiming a seat")
+        self._require_human(session, seat)
+        cleaned = _clean_player_name(name)
+        with session.lock:
+            token = session.seat_tokens.get(seat)
+            if token is None:
+                token = new_token()
+                session.seat_tokens[seat] = token
+            elif not token_matches(token, credentials.seat_tokens):
+                raise SeatTakenError(f"seat {seat} is already taken")
+            session.seat_names[seat] = cleaned
+            claim = SeatClaim(
+                token=token, summary=self._changed_summary_locked(session)
+            )
+            bell = self._ring_locked(session, claim.summary)
+        self._publish(game_id, bell)
+        return claim
+
+    def held_seats(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> dict[str, int]:
+        """Map each seat token the credentials present to the seat it holds.
+
+        Tokens the client does not present never appear, and a token that
+        holds no seat any more is left out. The HTTP layer keeps each seat
+        cookie named after the seat its token now holds: ``start_game``
+        deals the places' tokens to other seats.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return {
+                token: seat
+                for seat, token in session.seat_tokens.items()
+                if token_matches(token, credentials.seat_tokens)
+            }
+
+    def release_seat(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Vacate one human seat: its token dies and anyone may claim it.
+
+        Only the seat's holder or the host may do this. It is how a player
+        moves to another browser, and how the host frees the seat of a
+        player who lost the cookie or left for good.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("releasing a seat")
+        self._require_human(session, seat)
+        with session.lock:
+            token = session.seat_tokens.get(seat)
+            holds = token is not None and token_matches(
+                token, credentials.seat_tokens
+            )
+            if not holds and not self.is_admin(credentials):
+                raise SeatAccessError(
+                    f"only seat {seat}'s holder or the host may release it"
+                )
+            session.seat_tokens.pop(seat, None)
+            session.seat_names.pop(seat, None)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
+
+    def view(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return the serialized ``PlayerView`` of one human seat.
+
+        Once the game has finished the payload also carries ``disclosure``
+        with every hidden zone (OQ-010 ruling 4: post-game full disclosure).
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            state = session.state
+            view = session.engine.observe(state, seat)
+        return _serialize_view(view, state, disclose=_is_finished(state))
+
+    def legal_actions(
+        self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return the indexed legal actions of one human seat."""
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            return self._legal_actions_locked(session, seat)
+
+    def apply_action(
+        self,
+        game_id: str,
+        seat: int,
+        revision: int,
+        index: int,
+        *,
+        undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Apply one indexed human action, then auto-advance the game.
+
+        ``undo_count``, when given, must equal the session's undo
+        generation as well: it protects a stale client whose revision
+        happens to match again after an undo and a different choice.
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            _require_current(session, revision, undo_count)
+            decision = session.engine.current_decision(session.state)
+            if (
+                not isinstance(decision, PlayerDecision)
+                or decision.owner != seat
+            ):
+                raise SessionError("the current decision belongs to another seat")
+            if self._turn_is_held_locked(session):
+                raise SessionError(
+                    f"seat {session.awaiting_confirmation} has not confirmed "
+                    "its turn end yet"
+                )
+            held = session.awaiting_confirmation
+            if held == seat:
+                # Its turn is over and its next one waits behind the press.
+                raise SessionError(f"seat {seat} has not confirmed its turn end yet")
+            actions = session.engine.whole_actions(session.state, seat)
+            if not 0 <= index < len(actions):
+                raise SessionError("action index is out of range")
+            action = actions[index]
+            if held is not None:
+                # An open server lets the next seat act past a pending press;
+                # that hands the held seat's turn over all the same.
+                session.open_units.pop(held, None)
+            _human_acts_locked(session)
+            before = session.state
+            # A whole action of a frame that offers its waiting effects
+            # effect first is its steps, taken one after another (stage B3).
+            for _ in range(steps_after(session.state, action)):
+                _apply_step(session, first_step(session.state, action))
+            _apply_step(session, first_step(session.state, action))
+            own_steps = len(session.steps)
+            ended = self._settle_locked(session, before, action)
+            passed = ended or _turn_passed(session, seat, own_steps)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
+        if passed:
+            self._announce_hand_over(game_id)
+        return summary
+
+    def confirm_turn(
+        self,
+        game_id: str,
+        seat: int,
+        revision: int,
+        *,
+        undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Hand the turn over: the seat pressed "턴 종료".
+
+        Every turn end of a human seat that no explicit turn-end action
+        closed waits for this (``_settle_locked``); only it lets the chance
+        stream and the other seats advance, sealing the seat's undo window.
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            _require_current(session, revision, undo_count)
+            if session.awaiting_confirmation != seat:
+                raise SessionError(f"seat {seat} has no turn end to confirm")
+            _human_acts_locked(session)
+            session.awaiting_confirmation = None
+            session.open_units.pop(seat, None)
+            session.undo_floor = len(session.steps)
+            self._advance_locked(session)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
+        # A confirmation is the hand-over itself.
+        self._announce_hand_over(game_id)
+        return summary
+
+    def undo(
+        self,
+        game_id: str,
+        seat: int,
+        revision: int,
+        steps: int = 1,
+        *,
+        undo_count: int | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Take back the seat's own latest ``steps`` steps (M11 slice 6).
+
+        The window (``undo_window``) holds only the seat's consecutive
+        latest actions and closes at any chance outcome, any other seat's
+        action, or any step that revealed hidden information — so the
+        removed steps never touched the chance or AI streams and the
+        rebuilt state is again this seat's decision. The taken-back steps
+        stay in the session log, flagged ``undone``, behind an undo marker
+        (OQ-010: what was shown stays re-checkable). A finished game takes
+        nothing back: its end disclosed every hidden zone (OQ-010 ruling 4).
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            _require_current(session, revision, undo_count)
+            if _is_finished(session.state):
+                raise SessionError("the game is over: nothing may be taken back")
+            window = _open_undo_window(session, seat)
+            if steps < 1 or steps > window:
+                raise SessionError(
+                    f"seat {seat} may take back at most {window} step(s) now"
+                )
+            keep = len(session.steps) - steps
+            rewound = _state_after(session, keep)
+            # The steps of one whole action go back together: an undo never
+            # stops between a waiting effect and its target (stage B3).
+            while picked_rows(rewound) and keep > len(session.steps) - window:
+                keep -= 1
+                rewound = _state_after(session, keep)
+            _human_acts_locked(session)
+            session.state = rewound
+            mark_undone(session.log, seat, len(session.steps) - keep)
+            del session.steps[keep:]
+            session.undo_count += 1
+            # The rewound state is again this seat's own decision.
+            session.awaiting_confirmation = None
+            # A unit whose opening step was taken back is not open any more.
+            for owner, opened in tuple(session.open_units.items()):
+                if opened >= keep:
+                    del session.open_units[owner]
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._publish(game_id, bell)
+        return summary
+
+    def log(
+        self,
+        game_id: str,
+        seat: int,
+        *,
+        after: int = 0,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Return the session log from entry ``after`` on, as ``seat`` may see it.
+
+        Each entry carries the events its step produced, filtered by
+        ``visible_to``; action arguments naming a card the seat cannot
+        identify are redacted for other seats; chance values stay hidden.
+        Once the game has finished nothing is redacted (OQ-010 ruling 4).
+        Undone steps remain, flagged, followed by their undo marker.
+        """
+
+        session = self._get(game_id)
+        self._require_human(session, seat)
+        with session.lock:
+            self._authorize_seat_locked(session, seat, credentials)
+            entries = tuple(session.log)
+            finished = _is_finished(session.state)
+        if not 0 <= after <= len(entries):
+            raise SessionError("log cursor is out of range")
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "count": len(entries),
+            "entries": _log_entries_json(entries, seat, finished, after),
+        }
+
+    def vp_ledger(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Return how every seat's Victory Points moved, step by step.
+
+        ``entries`` lists every live step that changed a seat's Victory
+        Points as ``{index, round, seat, delta, total}``, ``index`` being the
+        step's log entry (``log``), and ``start`` each seat's opening points,
+        so a seat's ``start`` plus its deltas is its points now. Steps taken
+        back never appear (``vp_ledger``, the module, says how it is walked).
+
+        It is table knowledge: the Victory Point track is on the board in
+        front of every seat, and a row names its step only by the log index
+        every seat's log already carries, never by what was done. So it is
+        the same for every seat and no seat is asked for. Who may read it
+        is the table, though, not anyone holding the room link: a remote
+        client that holds no seat gets no more than before (the summary,
+        which carries no Victory Points until the end), so before the game
+        ends a remote server serves it only to a client proving one of the
+        game's seats (``_authorize_table_locked``); once the game has
+        finished everything is public (OQ-010 ruling 4) and the room link is
+        enough, as for ``review``. Rows past a client's own log (its
+        ``count``) are a state the client has not drawn yet; a review cuts
+        the rows at its cursor's last log entry the same way.
+
+        The ledger is cached on the session and only extended by the steps
+        played since; the walk runs off the session lock, like a review's
+        replay, so a long game's first look does not hold up the table.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            self._authorize_table_locked(session, credentials)
+            live = _indexed_live_steps(session)
+            log_count = len(session.log)
+            cached = session.vp_ledger
+        if cached is None or not cached.extends(live):
+            opening = session.engine.reset(session.config, session.game_seed)
+            cached = start_ledger(opening)
+        ledger = extend_ledger(session.engine, cached, live)
+        with session.lock:
+            now = _indexed_live_steps(session)
+            kept = session.vp_ledger
+            if ledger.extends(now) and (
+                kept is None or not kept.extends(now) or kept.steps < ledger.steps
+            ):
+                session.vp_ledger = ledger
+        return {
+            "game_id": session.game_id,
+            "log_count": log_count,
+            **ledger_json(ledger),
+        }
+
+    def delete(self, game_id: str, *, credentials: Credentials = ANONYMOUS) -> None:
+        """Forget one session (host-only on a remote server).
+
+        Its AI worker, if one is thinking, finishes that decision, throws
+        the answer away and stops.
+        """
+
+        self.require_admin(credentials)
+        with self._registry_lock:
+            session = self._sessions.pop(game_id, None)
+        if session is None:
+            raise UnknownGameError(f"unknown game: {game_id}")
+        with session.lock:
+            # A worker still thinking for the game drops its answer and stops.
+            session.closed = True
+            session.pace_wake.set()
+        self._publish(game_id, None)
+
+    def set_ai_pace(
+        self, game_id: str, pace: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Change how the game's AI seats pace themselves; return the summary.
+
+        Host-only on a remote server, like the other game settings. The
+        worker's current wait ends at once, whatever the new pace: a seat
+        thinking then answers without waiting for the tables, and the next
+        AI decision waits at the new pace, or is answered inside the
+        request again when the game turned instant.
+        """
+
+        self.require_admin(credentials)
+        if pace not in AI_PACES:
+            raise SessionError(f"unknown AI pace {pace!r}")
+        session = self._get(game_id)
+        with session.lock:
+            self._set_pace_locked(session, pace)
+            session.pace_wake.set()
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        self._ring_out(game_id, bell, False)
+        return summary
+
+    def save_game(
+        self,
+        game_id: str,
+        *,
+        name: str | None = None,
+        credentials: Credentials = ANONYMOUS,
+    ) -> JsonObject:
+        """Serialize one session into a versioned save document.
+
+        Sessions only rest on a human decision, on the finished game, on
+        a background seat's pending decision, or on a human's held unit end
+        (possibly before a chance outcome, which the press resolves), so
+        the recorded steps always end on a state a load can resume from
+        (the last one thinks again).
+
+        Host-only on a remote server, like ``restore_game``: a loaded save
+        is a second session holding the same hidden state with every seat
+        unclaimed, so whoever may save and load could read every hand of
+        the game in progress off that clone.
+        """
+
+        self.require_admin(credentials)
+        return self.save_document(game_id, name=name)
+
+    def save_document(self, game_id: str, *, name: str | None = None) -> JsonObject:
+        """Serialize one session for the server's own use (the autosave).
+
+        No credentials are asked for, so this is never routed: a save
+        document spells out every hidden deck order. ``save_game`` is the
+        host's door to the same document.
+
+        A room waiting for its start has nothing to save: a save keeps no
+        wait, so its load would start the game at once without drawing the
+        seats (review finding, 2026-10-25).
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            if session.awaiting_start:
+                raise GameNotStartedError("the game has not started yet")
+            elapsed, seat_seconds = session.clock.totals(_monotonic())
+            return build_save_document(
+                config=session.config,
+                game_seed=session.game_seed,
+                policy_seed=session.policy_seed,
+                seats=session.seats,
+                steps=tuple(session.steps),
+                log=tuple(session.log),
+                expected_state_hash=canonical_state_hash(session.state),
+                source_game_id=session.game_id,
+                round_number=session.state.round_number,
+                phase=str(session.state.phase),
+                finished=session.state.phase is GamePhase.FINISHED,
+                name=name,
+                confirmation=session.awaiting_confirmation,
+                sealed_steps=session.undo_floor,
+                open_units=tuple(sorted(session.open_units.items())),
+                ai_pace=session.ai_pace,
+                clock=SavedClock(
+                    elapsed_ms=round(elapsed * 1000),
+                    seat_ms=tuple(round(seconds * 1000) for seconds in seat_seconds),
+                    known=session.clock.known,
+                ),
+            )
+
+    def restore_game(
+        self, document: object, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Rebuild a saved game as a new session and return its summary.
+
+        Host-only on a remote server (see ``save_game``). The new session
+        starts with every human seat unclaimed: a save records neither
+        tokens nor names, so the players claim their seats again.
+
+        The recorded steps replay against a fresh seeded ``ChanceResolver``
+        and fresh seeded agents: chance and AI decisions are regenerated
+        and must match the record, human actions apply as recorded. A
+        search seat retraces its recorded answers instead of searching them
+        again (``ReplayableAgent``): an answer it gives without playouts
+        (the greedy network's, a forced one) must match like any other,
+        while a searched one need only be among the candidates the network
+        shortlists, and which of them the playouts chose is taken on trust.
+        That restores every RNG stream to its saved position, so the loaded
+        game continues exactly like the unsaved session would have. A
+        divergence (an edited file, or code that no longer reproduces the
+        record) fails with the offending step index, except inside a
+        searched decision: a change to the search that would choose another
+        shortlisted candidate does not fail the load. One gap is known: a
+        search that failed and fell back to the greedy network
+        (``_background_answer`` logs a warning naming the game and step) is
+        retraced as if it had searched, so from that step on the loaded game
+        may play on differently from the saved session, or the save may be
+        refused. The final canonical state hash is verified like
+        ``replay_game`` does.
+        """
+
+        self.require_admin(credentials)
+        parsed = parse_save_document(document)
+        config = parsed.replay.ruleset
+        _validate_seats(parsed.seats, config)
+        engine = UprisingRulesEngine()
+        session = GameSession(
+            game_id=uuid.uuid4().hex,
+            config=config,
+            game_seed=parsed.replay.seed,
+            policy_seed=parsed.policy_seed,
+            seats=parsed.seats,
+            engine=engine,
+            state=_reset(engine, config, parsed.replay.seed),
+            chance=ChanceResolver(seed=parsed.replay.seed),
+            agents=_build_agents(parsed.seats, parsed.policy_seed, config),
+        )
+        with session.lock:
+            _replay_recorded_steps(session, parsed.replay.steps)
+            actual_hash = canonical_state_hash(session.state)
+            if actual_hash != parsed.replay.expected_state_hash:
+                raise SaveError(
+                    "the replayed save does not reproduce its recorded state hash"
+                )
+            if parsed.log is not None:
+                session.log = _rebuild_log(session, parsed.log)
+                session.undo_count = sum(
+                    1 for entry in session.log if isinstance(entry, LoggedUndo)
+                )
+            # Paced from here on: the replay itself shows the tables nothing.
+            self._set_pace_locked(
+                session,
+                self._default_ai_pace if parsed.ai_pace is None else parsed.ai_pace,
+            )
+            # A game saved while a human's turn end awaited its press resumes
+            # at that pause, and a turn already handed over stays handed over.
+            if parsed.hand_over is not None:
+                self._restore_hand_over_locked(session, parsed.hand_over)
+            else:
+                self._restore_legacy_hand_over_locked(session)
+            # Counting again from the saved totals: the time the game spent
+            # unloaded (the server down, the save waiting) is no play time.
+            _start_clock_locked(
+                session, read_saved_clock(document, len(parsed.seats)), restored=True
+            )
+            summary = self._summary_locked(session)
+        with self._registry_lock:
+            self._sessions[session.game_id] = session
+        # A game saved while a background seat was thinking thinks again.
+        self._kick_ai(session)
+        return summary
+
+    def review(self, game_id: str, seat: int) -> JsonObject:
+        """Return the step timeline of one finished game.
+
+        A finished game is fully disclosed (OQ-010 ruling 4): every recorded
+        action is labelled in full whoever acted, chance outcomes carry their
+        values (a shuffle's order is no longer a secret), and any configured
+        seat — human or AI — can be reviewed. ``log`` is the whole session
+        log with nothing redacted, so a client without a seat (a game of AI
+        seats only has none to take) can still show what each step did.
+        """
+
+        session = self._get(game_id)
+        self._require_seat(session, seat)
+        with session.lock:
+            _require_finished(session)
+            steps = tuple(session.steps)
+            entries = tuple(session.log)
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "step_count": len(steps),
+            "steps": _review_step_labels(steps, entries),
+            "log": _log_entries_json(entries, seat, True, 0),
+            # Where steps were taken back (M11 slice 6): the live step index
+            # the undo rewound to, who undid, and what was undone.
+            "undo_history": [
+                {
+                    "step": position,
+                    "seat": marker.seat,
+                    "count": marker.count,
+                    "undone": [_review_step_label(entry.step) for entry in undone],
+                }
+                for position, marker, undone in undo_history(session.log)
+            ],
+        }
+
+    def review_state(self, game_id: str, seat: int, step: int) -> JsonObject:
+        """Return the reviewed seat's view after the first ``step`` steps.
+
+        The payload also carries ``disclosure`` — every hidden zone at that
+        step — because the game is over (OQ-010 ruling 4).
+        """
+
+        session = self._get(game_id)
+        self._require_seat(session, seat)
+        with session.lock:
+            _require_finished(session)
+            steps = tuple(session.steps)
+        if not 0 <= step <= len(steps):
+            raise SessionError("review step is out of range")
+        engine = session.engine
+        state = _state_after(session, step)
+        return {
+            "game_id": session.game_id,
+            "seat": seat,
+            "step": step,
+            "round_number": state.round_number,
+            "phase": str(state.phase),
+            "view": _serialize_view(engine.observe(state, seat), state, disclose=True),
+        }
+
+    def _get(self, game_id: str) -> GameSession:
+        with self._registry_lock:
+            try:
+                return self._sessions[game_id]
+            except KeyError:
+                raise UnknownGameError(f"unknown game: {game_id}") from None
+
+    def _require_seat(self, session: GameSession, seat: int) -> None:
+        if not 0 <= seat < session.config.players:
+            raise SeatAccessError("seat does not identify a configured player")
+
+    def _require_human(self, session: GameSession, seat: int) -> None:
+        self._require_seat(session, seat)
+        if session.seats[seat] != HUMAN_SEAT:
+            # Views and legal actions can carry private card identities.
+            raise SeatAccessError("only a human seat may be read or acted for")
+
+    def _identify_locked(
+        self, session: GameSession, credentials: Credentials
+    ) -> JsonObject:
+        if self._access is AccessMode.OPEN:
+            seats = [
+                seat
+                for seat, assignment in enumerate(session.seats)
+                if assignment == HUMAN_SEAT
+            ]
+        else:
+            seats = sorted(
+                seat
+                for seat, token in session.seat_tokens.items()
+                if token_matches(token, credentials.seat_tokens)
+            )
+        return {
+            "game_id": session.game_id,
+            "access": str(self._access),
+            "seats": list(seats),
+            "admin": self.is_admin(credentials),
+        }
+
+    def _legal_actions_locked(self, session: GameSession, seat: int) -> JsonObject:
+        """Serialize the seat's legal actions; each one costs a dry run.
+
+        A seat whose turn end waits for its press has none, even when the
+        next decision is its own again (its next turn, or the round-1 turn
+        after its last Leader pick).
+
+        ``scouts_lines`` is every line of the seat's own Arrakeen Scouts
+        choice, a subcommittee offer or a mission's ways in, the ones it
+        cannot take now too, with the reason; an enabled line's
+        ``action_index`` is its row in ``actions`` (``display.scouts``
+        ``scouts_choice_lines``). None for any other decision. The legal
+        actions themselves are unchanged: a line the seat cannot take is
+        not among them.
+
+        ``unavailable`` is the rest of the game's choices the seat cannot
+        take now, with the reason (``display.unavailable``
+        ``unavailable_choices``): greyed-out rows for the Reveal shop, the
+        seat's own Intrigue cards and effects waiting on their condition,
+        and the table cards to dim. None when nothing is greyed out. Each
+        row describes its action without an index or a dry run; none is
+        among ``actions``, which stay exactly the engine's. The rows are
+        display only: if working them out fails, the error is logged and
+        the key is None, so the seat still gets its legal actions.
+
+        ``agent_boxes`` lists the open Agent turn's boxes while the seat
+        decides its effect frame (``display.actions.agent_box_headers``:
+        box 0 the placed card, box 1 its graft partner, each with its card
+        and whether the other box's bundled selection holds it back), and
+        each row of an Agent box carries ``box`` (0 or 1,
+        ``agent_box_of_rows``); a greyed-out row of a box carries it too
+        (``display.unavailable``). The page groups those rows under a
+        header per card (user request 2026-10-11,
+        docs/graft-boxes-plan.md 4.11). None, and no ``box`` on any row,
+        for any other decision; display only like ``unavailable``, so a
+        failure is logged and leaves them out.
+
+        ``reveal_choices`` does the same for the seat's open Reveal: every
+        choice of a revealed card waits on the Reveal frame and is offered
+        there beside the purchases and gains (codec v147, OQ-095 (7)
+        addition), and the page sets each one's rows under a header naming
+        its card and what the choice does
+        (``display.actions.reveal_choice_headers``: one entry per pending
+        choice, with whether it is optional and whether it offers a row
+        now). Each row of a pending choice carries ``reveal_choice`` (the
+        entry's ``key``, ``reveal_choice_of_rows``) and its card as
+        ``detail_title``/``detail_title_ko``, so no row needs the
+        ``source`` argument's definition id to say whose it is. None, and
+        no ``reveal_choice`` on any row, for any other decision; display
+        only, a failure is logged and leaves them out.
+
+        ``agent_placements`` lists, while the seat may pick its Agent turn's
+        card (stage B1, OQ-111), every placement those card picks lead to
+        (``_serialize_placements``): the page's staged turn works on whole
+        placements as before the split and sends the card pick and then the
+        matching space pick. Each entry's ``undoable``, shortfall and
+        previews are those of both steps together. None for any other
+        decision; display only, a failure is logged and leaves it None.
+        Once the seat holds a graft card pick (an undo back to the space
+        pick, a reload after the card pick), the placements are None and
+        its Heighliner space picks carry the ``graft_partners`` the
+        placements would (Rise of Ix with Immortality, P7g, OQ-158).
+        """
+
+        actions = (
+            ()
+            if session.awaiting_confirmation == seat
+            else session.engine.whole_actions(session.state, seat)
+        )
+        lines = scouts_choice_lines(session.state, seat, actions) if actions else None
+        unavailable: dict[str, object] | None = None
+        boxes: tuple[int | None, ...] = (None,) * len(actions)
+        headers: list[dict[str, object]] | None = None
+        choices: list[dict[str, object]] | None = None
+        choice_of: tuple[str | None, ...] = (None,) * len(actions)
+        placements: list[JsonValue] | None = None
+        if actions:
+            try:
+                listed = agent_placements(session.state, seat, actions)
+                if listed is not None:
+                    placements = _serialize_placements(session, seat, actions, listed)
+            except Exception:
+                _LOGGER.exception(
+                    "Agent placements failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+            try:
+                unavailable = unavailable_choices(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "greyed-out choices failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+            try:
+                headers = agent_box_headers(session.state, seat)
+                boxes = agent_box_of_rows(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "Agent-box groups failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+                headers, boxes = None, (None,) * len(actions)
+            try:
+                choices = reveal_choice_headers(session.state, seat)
+                choice_of = reveal_choice_of_rows(session.state, seat, actions)
+            except Exception:
+                _LOGGER.exception(
+                    "Reveal choice groups failed for game %s seat %d",
+                    session.game_id,
+                    seat,
+                )
+                choices, choice_of = None, (None,) * len(actions)
+        names = {
+            str(entry["key"]): (str(entry["name"]), str(entry["name_ko"]))
+            for entry in choices or ()
+        }
+        # A graft card pick the seat already made (an undo back to its space
+        # pick, a reload) lists no placements: its Heighliner space picks
+        # then name their partners themselves, as the placements would.
+        held = agent_card_pick(session.state, seat) if actions else None
+        names_partners = (
+            held is not None
+            and held[1]
+            and session.config.rise_of_ix
+            and session.config.immortality
+        )
+        serialized: list[JsonValue] = []
+        for index, (action, box, choice) in enumerate(
+            zip(actions, boxes, choice_of, strict=True)
+        ):
+            row = _serialize_action(index, action, session)
+            if (
+                names_partners
+                and action.action_id == "place_agent"
+                and dict(action.arguments).get("space_id") in HEIGHLINER_SPACE_IDS
+            ):
+                row["graft_partners"] = _graft_partners(
+                    session, seat, _dry_run(session, action)
+                )
+            if box is not None:
+                row["box"] = box
+            if choice is not None and choice in names:
+                row["reveal_choice"] = choice
+                if "detail_title" not in row:
+                    row["detail_title"], row["detail_title_ko"] = names[choice]
+            serialized.append(row)
+        return {
+            "game_id": session.game_id,
+            "revision": session.state.revision,
+            "seat": seat,
+            "actions": serialized,
+            "scouts_lines": None if lines is None else _jsonify(lines),
+            "unavailable": None if unavailable is None else _jsonify(unavailable),
+            "agent_boxes": None if headers is None else _jsonify(headers),
+            "reveal_choices": None if choices is None else _jsonify(choices),
+            "agent_placements": placements,
+        }
+
+    def _online_seats_locked(self, session: GameSession) -> frozenset[int]:
+        """Return the human seats some open event stream currently holds."""
+
+        humans = [
+            seat
+            for seat, assignment in enumerate(session.seats)
+            if assignment == HUMAN_SEAT
+        ]
+        if self._access is AccessMode.OPEN:
+            # One browser plays every human seat there, so presence only
+            # says whether a browser has the table open at all.
+            return frozenset(humans) if session.connections else frozenset()
+        return frozenset(
+            seat
+            for seat in humans
+            if (token := session.seat_tokens.get(seat)) is not None
+            and any(
+                token_matches(token, presented)
+                for presented in session.connections.values()
+            )
+        )
+
+    def _turn_is_held_locked(self, session: GameSession) -> bool:
+        """Whether a pending turn-end press still blocks the next seat.
+
+        The engine names the next decision owner as soon as a turn ends, but
+        the hand-over waits for the seat to press "턴 종료". On an open
+        server the one shared browser holds the table for that seat, and the
+        API has always let the next seat act regardless. Separate browsers
+        cannot mediate, so a remote server does: acting early would take
+        the turn end, and any undo left in it, out of the seat's hands.
+        """
+
+        return (
+            self._access is AccessMode.REMOTE
+            and session.awaiting_confirmation is not None
+        )
+
+    def _ring_locked(
+        self, session: GameSession, summary: JsonObject | None = None
+    ) -> JsonObject:
+        """Bump the doorbell sequence and build the payload to publish.
+
+        The caller holds the session lock and publishes after releasing it;
+        ``summary`` spares a second summary when the caller just made one
+        (``_changed_summary_locked``, which settles the clock first).
+        """
+
+        session.event_seq += 1
+        if summary is None:
+            summary = self._changed_summary_locked(session)
+        return _doorbell(session, summary)
+
+    def _changed_summary_locked(self, session: GameSession) -> JsonObject:
+        """The summary after a change: the play clock settles at it first.
+
+        Every change rings, so this is the clock's transition point; a
+        summary read between changes leaves the clock alone and so reads the
+        same (``play_clock``).
+        """
+
+        _settle_clock_locked(session)
+        return self._summary_locked(session)
+
+    def _publish(self, game_id: str, payload: JsonObject | None) -> None:
+        """Hand one payload to every listener; never call this under a lock."""
+
+        for listener in tuple(self._listeners):
+            listener(game_id, payload)
+
+    def _announce_hand_over(self, game_id: str) -> None:
+        """Tell the hand-over listeners; never call this under a lock."""
+
+        for listener in tuple(self._hand_over_listeners):
+            try:
+                listener(game_id)
+            except Exception:
+                _LOGGER.exception("a hand-over listener failed for game %s", game_id)
+
+    def _require_remote(self, operation: str) -> None:
+        if self._access is not AccessMode.REMOTE:
+            raise SessionError(f"{operation} only applies to a remote server")
+
+    def _authorize_seat_locked(
+        self, session: GameSession, seat: int, credentials: Credentials
+    ) -> None:
+        """Refuse a remote client that does not hold the seat's token.
+
+        The caller holds the session lock and has checked that the seat is
+        human. The admin key deliberately opens nothing here: the host is a
+        player too and must not reach another seat's view through the API.
+        """
+
+        if self._access is AccessMode.OPEN:
+            return
+        if session.awaiting_start:
+            # A place in a waiting room is not a seat yet (``start_game``).
+            raise GameNotStartedError("the game has not started yet")
+        token = session.seat_tokens.get(seat)
+        if token is None or not token_matches(token, credentials.seat_tokens):
+            raise SeatAccessError(f"this client does not hold seat {seat}")
+
+    def _authorize_table_locked(
+        self, session: GameSession, credentials: Credentials
+    ) -> None:
+        """Refuse a remote client that holds none of the game's seats while
+        the game runs: public table facts are for the table until the end.
+
+        Any seat's token will do, the facts being the same for every seat;
+        the admin key opens nothing, as in ``_authorize_seat_locked``. The
+        caller holds the session lock.
+        """
+
+        if self._access is AccessMode.OPEN or _is_finished(session.state):
+            return
+        if session.awaiting_start:
+            raise GameNotStartedError("the game has not started yet")
+        if not any(
+            token_matches(token, credentials.seat_tokens)
+            for token in session.seat_tokens.values()
+        ):
+            raise SeatAccessError(
+                "only a client holding a seat may read this before the game ends"
+            )
+
+    def _settle_locked(
+        self, session: GameSession, before: GameState, action: DomainAction
+    ) -> bool:
+        """After a human step: hold its turn end for the press, or play on.
+
+        One press ends every unit of a human seat, and the press is its
+        confirmation: a held unit end leaves the seat its steps to take back
+        (a unit whose last step cannot be taken back was confirmed by that
+        step, which the browser sends with "확정 ▶"). An explicit turn-end
+        action (``EXPLICIT_TURN_ENDS``) is that press itself, and so is a
+        turn-passing card (``TURN_PASS_EVENTS``, OQ-095 (6)): either seals
+        the turn and hands over at once, unless a Usurp trash's follow-up or
+        a reopen keeps the seat in the same turn. Every Agent turn ends that way
+        (``finish_agent_turn``, OQ-095); a step answering the pressed end's
+        own follow-up (a Usurp trash's Skill choice, ``finishing_seat``) is
+        still that one press and is sealed with it. Any other step that ends
+        an open unit holds the game for ``confirm_turn``, before the chance
+        outcomes that come after the unit (``_unit_ends_locked``): a
+        reshuffle in the middle of a turn is not an end, and is resolved
+        at once.
+
+        ``before`` is the state the step was taken from and the step is the
+        last live one. Returns whether the step handed the turn over.
+        """
+
+        step_index = len(session.steps) - 1
+        actor = action.actor
+        if finishing_seat(before) == actor:
+            self._seal_locked(session, actor)
+            return finishing_seat(session.state) != actor and not (
+                _agent_turn_is_open(session.state, actor)
+            )
+        if not answers_another_unit(before, actor):
+            if action.action_id in EXPLICIT_TURN_ENDS or _passed_turn(
+                session, actor, step_index
+            ):
+                self._seal_locked(session, actor)
+                # A Usurp trash's follow-up or a reopen keeps the seat inside
+                # this same turn: the hand-over comes when the turn closes.
+                return finishing_seat(session.state) != actor and not (
+                    _agent_turn_is_open(session.state, actor)
+                )
+            if actor not in session.open_units and not (
+                at_turn_start(before, actor)
+                and not _took_turn(session, actor, step_index)
+            ):
+                session.open_units[actor] = step_index
+        # The actor's own unit, or for an answer the unit it answered in,
+        # which the answer may just have closed.
+        if self._hold_unit_end_locked(session, unit_seat(before)):
+            return False
+        session.awaiting_confirmation = None
+        self._advance_locked(session)
+        return False
+
+    def _hold_unit_end_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Hold ``unit``'s end for its press if the step just applied ended it.
+
+        Returns whether the game now waits for the press. The press is the
+        seat's confirmation, before which it may take the unit's steps
+        back. A unit end with nothing left to take back (its last step drew
+        a card, or only the answer of another seat followed) confirms
+        nothing, so it is not held: the step itself was the confirmation,
+        as its "되돌리기 불가" mark said ("되돌리기 기회도 없는데, 턴 종료
+        버튼은 또 남아버려서 이상해진거네", user, 2026-10-08). Every Agent and
+        Reveal turn still ends with its own explicit press (OQ-095).
+        """
+
+        if not self._unit_ends_locked(session, unit):
+            return False
+        assert unit is not None
+        if _open_undo_window(session, unit) > 0:
+            session.awaiting_confirmation = unit
+            return True
+        session.open_units.pop(unit, None)
+        session.undo_floor = len(session.steps)
+        return False
+
+    def _unit_ends_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Whether the step just applied ended ``unit``, its own chance resolved.
+
+        A chance outcome that comes after the unit is left pending: the
+        seat presses before it, while its steps can still be taken back
+        (``turn_end.unit_over``). One inside the unit (a reshuffle in the
+        middle of an Agent turn) resolves now, and the unit can end in it.
+        """
+
+        if self._unit_ended_locked(session, unit):
+            return True
+        self._resolve_chance_locked(session)
+        return self._unit_ended_locked(session, unit)
+
+    def _seal_locked(self, session: GameSession, seat: int) -> None:
+        """The seat's one press: seal its steps and let the game play on."""
+
+        session.open_units.pop(seat, None)
+        session.awaiting_confirmation = None
+        session.undo_floor = len(session.steps)
+        self._advance_locked(session)
+
+    def _unit_ended_locked(self, session: GameSession, unit: int | None) -> bool:
+        """Whether a human seat's open unit is over now.
+
+        The unit is over when the pending decision belongs to another
+        seat's unit, or when the seat stands at the start of a turn of its
+        own: its Conflict rewards and Control defense ran into its next
+        round's turn, or every other seat has revealed and its next turn
+        follows. Any other
+        decision of the same seat continues the unit, even across a phase
+        change (a Conflict win's Intrigue trigger asked once Makers has
+        begun); another seat's answer inside it is no end either. With a
+        chance outcome pending, the unit is over once none of its decisions
+        is left below that outcome (``turn_end.unit_over``).
+        """
+
+        if (
+            unit is None
+            or session.seats[unit] != HUMAN_SEAT
+            or unit not in session.open_units
+        ):
+            return False
+        after = session.state
+        if _is_finished(after):
+            return False
+        return unit_over(after, unit)
+
+    def _resolve_chance_locked(self, session: GameSession) -> None:
+        """Resolve the chance decisions pending right now, and nothing else."""
+
+        for _ in range(_MAX_AUTO_STEPS):
+            if _is_finished(session.state):
+                return
+            decision = session.engine.current_decision(session.state)
+            if not isinstance(decision, ChanceDecision):
+                return
+            _apply_step(session, session.chance.resolve(decision))
+        raise RuntimeError("chance resolution exceeded the step limit")
+
+    def _advance_locked(self, session: GameSession) -> None:
+        """Resolve chance and AI decisions until a human must act or the end.
+
+        A background seat's decision (``is_background_agent_kind``) stops
+        the advance too, and so does every AI seat's in a paced game
+        (``_paced``): the seat is marked ``thinking`` and the caller, once
+        it has released the lock, hands it to the game's worker
+        (``_kick_ai``), which answers it and advances from there.
+
+        An AI seat's answer cannot end a human Agent or Reveal turn (both
+        end only through their owner's press, OQ-095), but the check stays
+        for any unit an answer could still close (``_agent_step_locked``).
+
+        A lone human seat's Conflict-end window with nothing to play but
+        "쓰지 않음" is answered here too (``_auto_decline_locked``).
+        """
+
+        engine = session.engine
+        for _ in range(_MAX_AUTO_STEPS):
+            if session.state.phase is GamePhase.FINISHED:
+                return
+            decision = engine.current_decision(session.state)
+            if decision is None:
+                raise RuntimeError("an unfinished game has no pending decision")
+            if isinstance(decision, ChanceDecision):
+                outcome = session.chance.resolve(decision)
+                _apply_step(session, outcome)
+                continue
+            if not isinstance(decision, PlayerDecision):
+                raise RuntimeError(f"unknown decision type: {decision!r}")
+            if session.seats[decision.owner] == HUMAN_SEAT:
+                if self._auto_decline_locked(session, decision.owner):
+                    continue
+                return
+            if not engine.legal_actions(session.state, decision.owner):
+                raise RuntimeError(
+                    f"seat {decision.owner} has no legal action to auto-play"
+                )
+            if is_background_agent_kind(session.seats[decision.owner]) or _paced(
+                session
+            ):
+                session.thinking = decision.owner
+                return
+            # The seat holds control while it computes its answer here.
+            _settle_clock_locked(session, resting=False)
+            action = _agent_action(session, decision.owner)
+            if self._agent_step_locked(session, decision.owner, action):
+                return
+        raise RuntimeError("auto-advance exceeded the step limit")
+
+    def _auto_decline_locked(self, session: GameSession, seat: int) -> bool:
+        """Decline a lone human seat's Conflict-end window it can only decline.
+
+        The window opens on public facts, for every seat with enough units
+        in the Conflict and an Intrigue card (OQ-103, user decision
+        2026-10-09: "1번은 A안으로 가자"), so most of them offer nothing but
+        "쓰지 않음". With one human seat nobody at the table reads how long
+        the game waited (the AI seats never read timing), so the server
+        answers it as the seat's own one-press decline: recorded and logged
+        like a pressed one, so a load replays it as it stands; sealed like
+        an explicit turn end, so no undo lands back on the window; opening
+        no unit and holding nothing. With two or more human seats it never
+        answers: the other players would see the game wait only when the
+        seat had something to play. Nor once the seat has played a card in
+        the window (its unit is open): that play can still be taken back,
+        and the seat's own "끝내기" press (``finish_conflict_end_intrigue``,
+        2026-10-18) is what confirms it, as a pass confirms a Combat
+        Intrigue play. Returns whether it answered.
+        """
+
+        if sum(1 for assignment in session.seats if assignment == HUMAN_SEAT) != 1:
+            return False
+        if seat in session.open_units:
+            return False
+        stack = session.state.decision_stack
+        if not stack or stack[-1].kind != FrameKind.CONFLICT_END_TRIGGER:
+            return False
+        # The rules' whole actions: the window shows its refusal as the
+        # ``decline`` row that stands for it (stage B3d-3).
+        actions = session.engine.whole_actions(session.state, seat)
+        if [action.action_id for action in actions] != [_CONFLICT_END_DECLINE]:
+            return False
+        _apply_step(session, first_step(session.state, actions[0]))
+        session.undo_floor = len(session.steps)
+        return True
+
+    def _agent_step_locked(
+        self, session: GameSession, seat: int, action: DomainAction
+    ) -> bool:
+        """Apply an AI seat's answer to the pending decision; caller holds the lock.
+
+        The one way an AI step enters the game, inside a request or on the
+        worker. An answer given inside another seat's unit may end that
+        unit; returns whether the game now waits for that human's press.
+        It never does today: the answer closes the human's undo window, so
+        its unit end has nothing left to confirm and only closes the unit
+        (``_hold_unit_end_locked``).
+        """
+
+        unit = unit_seat(session.state)
+        _apply_step(session, action)
+        return (
+            unit is not None
+            and unit != seat
+            and self._hold_unit_end_locked(session, unit)
+        )
+
+    # -- the AI worker ------------------------------------------------------
+    def _set_pace_locked(self, session: GameSession, pace: str) -> None:
+        """Set the game's AI pace; caller holds the lock."""
+
+        session.ai_pace = pace
+        session.pace_seconds = PACE_SCALE[pace] * self._pace_unit
+        session.cue_unit = self._pace_unit
+
+    def _kick_ai(self, session: GameSession) -> None:
+        """Start the game's AI worker if a background seat waits for one.
+
+        Every entry point that may leave ``thinking`` set calls this after
+        releasing the lock, and after ringing in a ``finally``, so a change
+        listener that raises cannot leave the seat unanswered; deciding
+        under the lock keeps a game to one worker. Never call it while
+        holding the lock.
+        """
+
+        with session.lock:
+            if (
+                session.closed
+                or session.awaiting_start
+                or session.thinking is None
+                or session.ai_worker
+            ):
+                return
+            session.ai_worker = True
+        worker = threading.Thread(
+            target=self._run_ai,
+            args=(session,),
+            name=f"ai-worker-{session.game_id}",
+            daemon=True,
+        )
+        try:
+            worker.start()
+        except BaseException:
+            with session.lock:
+                session.ai_worker = False
+            raise
+
+    def _run_ai(self, session: GameSession) -> None:
+        """Answer the game's background seats until none is thinking.
+
+        A failure outside the agent (the engine refusing to observe or
+        apply the step, the advance after it) is logged and ends that
+        seat's thinking, leaving the game where the failure found it, as
+        the same failure inside a request would (``_end_failed_ai_step``).
+        The worker then stops the way it always does, on finding no seat
+        thinking, so ``wait_for_ai`` returns only once the ring went out,
+        and a decision a human handed over meanwhile is still answered.
+        """
+
+        while True:
+            try:
+                if not self._ai_step(session):
+                    return
+            except Exception:
+                with session.lock:
+                    _LOGGER.exception(
+                        "the AI worker of game %s failed at step %d (thinking "
+                        "seat: %s); no seat thinks again until a human acts "
+                        "or the game is loaded again",
+                        session.game_id,
+                        len(session.steps),
+                        session.thinking,
+                    )
+                self._end_failed_ai_step(session)
+
+    def _end_failed_ai_step(self, session: GameSession) -> None:
+        """Clear the thinking a failed worker step leaves and ring for it.
+
+        No seat stays marked ``thinking``: only the worker answers it, and a
+        thinking seat blocks every undo, so a game whose step failed would
+        leave the humans with neither a move nor a way back. Without it, a
+        human whose undo window holds steps may take them back and play on,
+        which hands the decision over again; nothing retries the failed
+        step by itself. The doorbell rings whether or not the failure came
+        after the step was applied: either way the game is not what the
+        tables last heard.
+        """
+
+        game_id = session.game_id
+        bell: JsonObject | None = None
+        handed_over = False
+        with session.lock:
+            session.thinking = None
+            if not session.closed:
+                try:
+                    bell = self._ring_locked(session)
+                    handed_over = _rests_on_human(session)
+                except Exception:
+                    _LOGGER.exception(
+                        "the doorbell of game %s failed after its AI step failed",
+                        game_id,
+                    )
+        self._ring_out(game_id, bell, handed_over)
+
+    def _ring_out(
+        self, game_id: str, bell: JsonObject | None, handed_over: bool
+    ) -> None:
+        """Deliver a worker's doorbell and hand-over; never under the lock.
+
+        The change has happened whatever a listener does, so a failing
+        listener is logged and the worker goes on: it alone answers the
+        seats still to think.
+        """
+
+        if bell is not None:
+            try:
+                self._publish(game_id, bell)
+            except Exception:
+                _LOGGER.exception("a change listener failed for game %s", game_id)
+        if handed_over:
+            self._announce_hand_over(game_id)
+
+    def _ai_step(self, session: GameSession) -> bool:
+        """Answer one background decision off the lock; return whether to go on.
+
+        The answer is computed from the state as it stood when the seat was
+        asked. If the game moved meanwhile (it was deleted, or anything
+        else replaced the state), the answer is thrown away. Otherwise it
+        is applied like any AI step (``_agent_step_locked``), the game
+        advances to the next decision someone else must make, and the
+        doorbell rings; resting on a human decision or the finished game,
+        the turn has been handed over (``add_hand_over_listener``).
+        """
+
+        game_id = session.game_id
+        with session.lock:
+            seat = session.thinking
+            if session.closed or seat is None or _is_finished(session.state):
+                session.ai_worker = False
+                return False
+            state = session.state
+            step = len(session.steps)
+            observation = session.engine.observe(state, seat)
+            actions = session.engine.legal_actions(state, seat)
+            agent = session.agents[seat]
+            searching = is_background_agent_kind(session.seats[seat])
+            ready = _pace_ready_locked(session, seat)
+            session.pace_wake.clear()
+        # A search seat falls back on its view-only answer when its search
+        # fails (a load retraces it). Any other seat paced onto the worker
+        # answers as it would inside a request: a failure is the step's
+        # failure (``_run_ai``), never a substitute answer, which a load
+        # would regenerate differently and so refuse the game's saves.
+        action = (
+            _background_answer(game_id, seat, step, agent, state, observation, actions)
+            if searching
+            else _choose(agent, state, observation, actions)
+        )
+        # A paced game applies the answer once the tables have shown what
+        # came before it; a deletion or a new pace cuts the wait short.
+        wait = ready - _monotonic()
+        if wait > 0:
+            session.pace_wake.wait(wait)
+        with session.lock:
+            if (
+                session.closed
+                or session.state is not state
+                or session.thinking != seat
+            ):
+                return True
+            ended = self._agent_step_locked(session, seat, action)
+            session.thinking = None
+            if not ended:
+                self._advance_locked(session)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+            handed_over = _rests_on_human(session)
+        self._ring_out(game_id, bell, handed_over)
+        return True
+
+    def wait_for_ai(self, game_id: str, timeout: float = 30.0) -> None:
+        """Block until no background seat of the game is thinking.
+
+        For tests and scripted play: returns once no worker runs and no
+        decision waits for one (or the game was deleted meanwhile), and
+        raises ``TimeoutError`` after ``timeout`` seconds otherwise.
+        """
+
+        session = self._get(game_id)
+        deadline = time.monotonic() + timeout
+        while True:
+            with session.lock:
+                if session.closed or (
+                    not session.ai_worker and session.thinking is None
+                ):
+                    return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"game {game_id} is still thinking")
+            time.sleep(0.005)
+
+    def _restore_hand_over_locked(
+        self, session: GameSession, recorded: SavedHandOver
+    ) -> None:
+        """Put back the turn-end state a save recorded; caller holds the lock."""
+
+        steps = len(session.steps)
+        if not 0 <= recorded.sealed_steps <= steps:
+            raise SaveError(f"the save seals {recorded.sealed_steps} of {steps} steps")
+        for seat, opened in recorded.open_units:
+            if not self._is_human_seat(session, seat) or not 0 <= opened < steps:
+                raise SaveError(
+                    f"the save opens a unit for seat {seat} at step {opened}"
+                )
+        session.undo_floor = recorded.sealed_steps
+        session.open_units = dict(recorded.open_units)
+        confirmation = recorded.confirmation
+        if confirmation is None:
+            self._advance_locked(session)
+            return
+        if not self._is_human_seat(session, confirmation) or _is_finished(
+            session.state
+        ):
+            raise SaveError(
+                f"the save holds a turn end for seat {confirmation}, "
+                "which cannot press it"
+            )
+        session.awaiting_confirmation = confirmation
+
+    @staticmethod
+    def _is_human_seat(session: GameSession, seat: int) -> bool:
+        return 0 <= seat < len(session.seats) and session.seats[seat] == HUMAN_SEAT
+
+    def _restore_legacy_hand_over_locked(self, session: GameSession) -> None:
+        """Rebuild the pause of a save written before it was recorded.
+
+        Such a save holds the rule of its time: a human seat's turn end
+        paused only while the next decision was another seat's and the
+        seat's trailing steps could still be taken back. Where its opening
+        step is unknown, a human unit in progress counts as open from the
+        start, so its end still waits for the press.
+        """
+
+        live = live_steps(session.log)
+        seat = live[-1].actor if live else None
+        if seat is not None and session.seats[seat] == HUMAN_SEAT:
+            decision = session.engine.current_decision(session.state)
+            if (
+                isinstance(decision, PlayerDecision)
+                and decision.owner != seat
+                and _open_undo_window(session, seat) > 0
+            ):
+                session.awaiting_confirmation = seat
+                session.open_units[seat] = 0
+                return
+        self._advance_locked(session)
+        unit = unit_seat(session.state)
+        if (
+            unit is not None
+            and session.seats[unit] == HUMAN_SEAT
+            and not at_turn_start(session.state, unit)
+        ):
+            session.open_units[unit] = 0
+
+    def _summary_locked(self, session: GameSession) -> JsonObject:
+        state = session.state
+        decision: JsonObject | None = None
+        pending = session.engine.current_decision(state)
+        if isinstance(pending, PlayerDecision):
+            frame = state.decision_stack[-1]
+            ready = agent_turn_end_ready(state) == pending.owner
+            decision = {
+                "kind": str(frame.kind),
+                "owner": pending.owner,
+                "owner_is_human": session.seats[pending.owner] == HUMAN_SEAT,
+                # Nothing mandatory is left in the seat's Agent turn: it may
+                # still play a Plot, deploy or return a specimen, and ends
+                # the turn with its one press (OQ-095). Public facts only.
+                "prompt": (
+                    AGENT_TURN_END_PROMPT
+                    if ready
+                    else AGENT_SPACE_PROMPT
+                    if agent_card_pick(state, pending.owner) is not None
+                    else pending.prompt
+                ),
+                "turn_end_ready": ready,
+            }
+            # The Persuasion still unspent in a Reveal, for the buyer's
+            # panel. It is table knowledge: the reveal and every purchase
+            # are public, and this is their difference.
+            remaining = dict(frame.context).get("persuasion")
+            if str(frame.kind) == "reveal" and type(remaining) is int:
+                decision["persuasion"] = remaining
+        finished = state.phase is GamePhase.FINISHED
+        undo: list[JsonValue] = []
+        for seat, assignment in enumerate(session.seats):
+            if assignment != HUMAN_SEAT:
+                continue
+            window = _open_undo_window(session, seat)
+            if window > 0:
+                undo.append({"seat": seat, "steps": window})
+        remote = self._access is AccessMode.REMOTE
+        kinds = [
+            _public_seat_kind(assignment, hide_path=remote)
+            for assignment in session.seats
+        ]
+        online = self._online_seats_locked(session)
+        players: list[JsonValue] = [
+            {
+                "seat": seat,
+                "kind": kind,
+                "name": session.seat_names.get(seat),
+                "claimed": seat in session.seat_tokens,
+                "online": seat in online,
+            }
+            for seat, kind in enumerate(kinds)
+        ]
+        return {
+            "game_id": session.game_id,
+            "access": str(self._access),
+            "revision": state.revision,
+            "undo_count": session.undo_count,
+            "log_count": len(session.log),
+            "undo": undo,
+            "confirmation": session.awaiting_confirmation,
+            # The background seat whose answer is being computed (public: it
+            # owns the pending decision, which ``decision`` names anyway).
+            "thinking": session.thinking,
+            "ai_pace": session.ai_pace,
+            # A room waiting for its start (``start_game``): the human seats
+            # are not drawn yet and the tables show the room, not the game.
+            "awaiting_start": session.awaiting_start,
+            "phase": str(state.phase),
+            "round_number": state.round_number,
+            "first_player": state.first_player,
+            # The engine is deterministic: the seed plus the public actions
+            # reproduce every shuffle, so a remote game keeps it to itself
+            # until the finished game discloses everything (OQ-010 ruling 4).
+            "game_seed": session.game_seed if finished or not remote else None,
+            "base_game": session.config.base_game.value,
+            "choam_module": session.config.choam_module,
+            "leader_draft": session.config.leader_draft,
+            "promo_cards": session.config.promo_cards,
+            "bloodlines": session.config.bloodlines,
+            "tech_module": session.config.tech_module,
+            "immortality": session.config.immortality,
+            "go_to_11": session.config.go_to_11,
+            "epic_game": session.config.epic_game,
+            "rise_of_ix": session.config.rise_of_ix,
+            "imperium_cards": session.config.imperium_cards,
+            "ix_tech_tiles": session.config.ix_tech_tiles,
+            "ix_leaders": session.config.ix_leaders,
+            "arrakeen_scouts": session.config.arrakeen_scouts,
+            "first_player_seat_zero": session.config.first_player_seat_zero,
+            "seats": list(kinds),
+            "players": players,
+            "decision": decision,
+            # Game time and each seat's time holding control, as of the last
+            # change (``play_clock``); the snapshot adds how long ago that was.
+            "clock": session.clock.payload(),
+            "finished": finished,
+            "standings": (
+                [_jsonify(asdict(standing)) for standing in final_standings(state)]
+                if finished
+                else None
+            ),
+        }
+
+
+def _public_seat_kind(assignment: str, *, hide_path: bool) -> str:
+    """Return a seat assignment as the players of the game may see it.
+
+    A ``checkpoint:<path>`` or ``search:<path>`` seat names a file on the
+    host's disk; remote players get the file name only, with a search seat's
+    options after it (the server's own ``::flip=0.01``, and
+    ``::turn_extend=<worlds>`` where the host extends Agent turns).
+    """
+
+    if hide_path:
+        for prefix in (CHECKPOINT_PREFIX, SEARCH_PREFIX):
+            if assignment.startswith(prefix):
+                path = assignment[len(prefix) :]
+                return prefix + re.split(r"[\\/]", path)[-1]
+    return assignment
+
+
+def _clean_player_name(name: str) -> str:
+    """Normalize a player name: printable, single-spaced, 1 to 20 characters.
+
+    Names are shown to every player, so control and format characters are
+    dropped here; the browser still renders them as text, never as markup.
+    """
+
+    printable = "".join(character for character in name if character.isprintable())
+    cleaned = " ".join(printable.split())
+    if not cleaned:
+        raise SessionError("a player name must not be empty")
+    if len(cleaned) > PLAYER_NAME_MAX_LENGTH:
+        raise SessionError(
+            f"a player name may have at most {PLAYER_NAME_MAX_LENGTH} characters"
+        )
+    return cleaned
+
+
+def _reset(engine: UprisingRulesEngine, config: RulesetConfig, seed: int) -> GameState:
+    """The game's first state, for a new game or a save's restore.
+
+    Setup refuses a combination whose content is not in the engine yet (the
+    original game with an option of a later stage of
+    docs/base-game-and-ix-plan.md); that is a bad request or a save this
+    build cannot play, not a server fault.
+    """
+
+    try:
+        return engine.reset(config, seed)
+    except NotImplementedError as error:
+        raise SessionError(str(error)) from error
+
+
+def turn_extend_allowed(worlds: object) -> bool:
+    """Whether ``worlds`` may extend the search AI's Agent turns: 0 (off),
+    or a whole number above its own worlds and at most the bound."""
+
+    return (
+        isinstance(worlds, int)
+        and not isinstance(worlds, bool)
+        and (worlds == 0 or SEARCH_ROLLOUTS < worlds <= SEARCH_TURN_EXTEND_MAX)
+    )
+
+
+def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
+    if len(seats) != config.players:
+        raise SessionError("exactly one seat assignment per player is required")
+    for assignment in seats:
+        if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
+            raise SessionError(f"unknown seat assignment: {assignment!r}")
+        # The seats a table of this base game may hold (server/seat_kinds.py,
+        # the table the setup screen offers from too).
+        if not seat_kind_allowed(assignment, config.base_game):
+            raise SessionError(f"this base game cannot seat {assignment!r} yet")
+        # A split search seat, or one with a search option other than the
+        # flip margin and the Agent-turn extension, is a measurement tool; a
+        # table seat names one file, which is what the players are shown
+        # (``_public_seat_kind``).
+        if assignment.startswith(SEARCH_PREFIX) and (
+            SEARCH_OPTION_SEPARATOR in assignment
+        ):
+            if SEARCH_VALUE_SEPARATOR in assignment:
+                raise SessionError(
+                    f"a split search seat is not a table seat: {assignment!r}"
+                )
+            _, options = parse_search_kind(assignment)
+            if not options.keys() <= _TABLE_SEARCH_OPTIONS:
+                raise SessionError(
+                    f"a search seat with options is not a table seat: {assignment!r}"
+                )
+            if not turn_extend_allowed(options.get("turn_extend", 0)):
+                raise SessionError(
+                    f"a search seat's Agent-turn worlds are off limits: {assignment!r}"
+                )
+        # So is an older-codec network's seat, the stage B retrain's teacher
+        # (``training.older_teacher``, 2026-10-21): whether it may sit at a
+        # table is still the user's decision.
+        if assignment.startswith(OLDER_PREFIX):
+            raise SessionError(
+                f"an older-network seat is not a table seat: {assignment!r}"
+            )
+
+
+def _build_agents(
+    seats: tuple[str, ...], policy_seed: int, config: RulesetConfig
+) -> dict[int, Agent]:
+    """Instantiate one registry agent per non-human seat.
+
+    A checkpoint seat loads its network here, so a missing file, a foreign
+    observation or codec version, or an absent ``train`` extra surfaces as
+    a session error instead of a crash while the game advances. It answers
+    for ``config``'s catalog, so it may sit at a ruleset it was not trained
+    on, such as Epic Game Mode (OQ-092) or Arrakeen Scouts (design D6).
+    """
+
+    agents: dict[int, Agent] = {}
+    for seat, assignment in enumerate(seats):
+        if assignment == HUMAN_SEAT:
+            continue
+        try:
+            agents[seat] = make_agent(assignment, policy_seed + seat, config)
+        except (ValueError, OSError, ImportError, RuntimeError) as error:
+            raise SessionError(
+                f"cannot build seat {seat} agent {assignment!r}: {error}"
+            ) from error
+    return agents
+
+
+def _agent_action(session: GameSession, seat: int) -> DomainAction:
+    """Ask the seat's agent for its move, branching from the state if it can."""
+
+    engine = session.engine
+    actions = engine.legal_actions(session.state, seat)
+    observation = engine.observe(session.state, seat)
+    return _choose(session.agents[seat], session.state, observation, actions)
+
+
+def _choose(
+    agent: Agent,
+    state: GameState,
+    observation: PlayerView,
+    actions: tuple[DomainAction, ...],
+) -> DomainAction:
+    """The agent's answer, from the state if it can branch from one."""
+
+    if isinstance(agent, StateAgent):
+        return agent.choose_action_with_state(state, observation, actions)
+    return agent.choose_action(observation, actions)
+
+
+def _background_answer(
+    game_id: str,
+    seat: int,
+    step: int,
+    agent: Agent,
+    state: GameState,
+    observation: PlayerView,
+    actions: tuple[DomainAction, ...],
+) -> DomainAction:
+    """A background seat's answer to live step ``step``, computed off the lock.
+
+    A game must never stall on a failing search: the error is logged and
+    the seat plays its view-only answer (a search seat's greedy network),
+    and if that fails too, its first legal action. The fallback is there
+    for unexpected bugs only, and it costs the save its fidelity: a load
+    retraces the step as a search (``replay_decision``), while the failed
+    search may have drawn only part of its worlds and recorded nothing in
+    its cycle guard, and the fallback moved the greedy network's guard
+    instead. From that step on a load of the game may play on differently,
+    or refuse the save outright when the answer was not among the network's
+    shortlist, so a warning names the game and the step.
+    """
+
+    try:
+        if isinstance(agent, StateAgent):
+            return agent.choose_action_with_state(state, observation, actions)
+        return agent.choose_action(observation, actions)
+    except Exception:
+        _LOGGER.exception(
+            "seat %d of game %s failed to answer; it plays without searching",
+            seat,
+            game_id,
+        )
+    _LOGGER.warning(
+        "game %s step %d: seat %d answers without its search, so a load of "
+        "this game from this step on may not reproduce it",
+        game_id,
+        step,
+        seat,
+    )
+    try:
+        return agent.choose_action(observation, actions)
+    except Exception:
+        _LOGGER.exception(
+            "seat %d of game %s failed again; it plays its first legal action",
+            seat,
+            game_id,
+        )
+    return actions[0]
+
+
+def _rests_on_human(session: GameSession) -> bool:
+    """Whether the game waits for a human's move or is over; caller holds the lock.
+
+    Not while a background seat thinks, nor while a human's turn end
+    awaits its press: neither is a hand-over (``add_hand_over_listener``).
+    """
+
+    if session.thinking is not None or session.awaiting_confirmation is not None:
+        return False
+    if _is_finished(session.state):
+        return True
+    decision = session.engine.current_decision(session.state)
+    return (
+        isinstance(decision, PlayerDecision)
+        and session.seats[decision.owner] == HUMAN_SEAT
+    )
+
+
+def _replay_recorded_steps(
+    session: GameSession, recorded_steps: tuple[ReplayStep, ...]
+) -> None:
+    """Re-apply a save's steps, regenerating chance and AI decisions.
+
+    Caller holds the session lock. Every regenerated step must equal the
+    record; that check both validates the save and proves the fresh RNG
+    streams sit exactly where the saved session left them.
+
+    A ``ReplayableAgent`` (a ``search:`` seat) is not asked again: it
+    retraces its recorded answer (``replay_decision``), which moves its
+    memory on as answering would have, and refuses an answer it could not
+    have given. A search seat's playouts cost about a second a decision, so
+    regenerating them made a one-seat save take most of a minute to load.
+    What such a retrace cannot prove is in ``restore_game``.
+    """
+
+    engine = session.engine
+    for index, recorded in enumerate(recorded_steps):
+        decision = engine.current_decision(session.state)
+        regenerated: ReplayStep | None
+        if isinstance(recorded, ChanceOutcome):
+            if not isinstance(decision, ChanceDecision):
+                raise SaveError(
+                    f"save step {index} records {_step_summary(recorded)} but "
+                    "the game is not at a chance decision"
+                )
+            regenerated = session.chance.resolve(decision)
+        elif (
+            isinstance(decision, PlayerDecision) and decision.owner == recorded.actor
+        ):
+            agent = session.agents.get(recorded.actor)
+            if isinstance(agent, ReplayableAgent):
+                regenerated = (
+                    recorded if _agent_retraces(session, agent, recorded) else None
+                )
+            elif agent is not None:
+                regenerated = _agent_action(session, recorded.actor)
+            else:
+                regenerated = recorded
+        else:
+            raise SaveError(
+                f"save step {index} records {_step_summary(recorded)} but "
+                "the game expects a different decision owner"
+            )
+        if regenerated != recorded:
+            raise SaveError(
+                f"save step {index} ({_step_summary(recorded)}) does not "
+                "replay as recorded"
+            )
+        try:
+            _apply_step(session, recorded)
+        except Exception as error:
+            raise SaveError(
+                f"save step {index} ({_step_summary(recorded)}) failed to "
+                f"apply: {error}"
+            ) from error
+
+
+def _agent_retraces(
+    session: GameSession, agent: ReplayableAgent, recorded: DomainAction
+) -> bool:
+    """Retrace ``recorded`` as the seat's own answer; the caller holds the lock."""
+
+    engine = session.engine
+    seat = recorded.actor
+    return agent.replay_decision(
+        session.state,
+        engine.observe(session.state, seat),
+        engine.legal_actions(session.state, seat),
+        recorded,
+    )
+
+
+def _open_undo_window(session: GameSession, seat: int) -> int:
+    """How many steps ``seat`` may take back now; the caller holds the lock.
+
+    The log's window (``undo_window``), cut off at the last confirmed turn
+    end: what a seat has handed over stays handed over. Nothing may be
+    taken back while a background seat thinks: its answer is due, and in a
+    game of synchronous seats it would already stand in the log and close
+    the window. Rewinding under it would also leave its agent's memory past
+    a decision the record never got, which a load could not reproduce.
+    Nothing may be taken back once the game is over either: its end
+    disclosed every hidden zone and the seed (OQ-010 ruling 4), which an
+    undo would carry back into a game in progress; the step that ended it
+    is a reveal (``session_log.reveals_hidden_information``), and this
+    holds whatever the log says.
+    """
+
+    if session.thinking is not None or _is_finished(session.state):
+        return 0
+    unsealed = len(session.steps) - session.undo_floor
+    return max(0, min(undo_window(session.log, seat), unsealed))
+
+
+def _passed_turn(session: GameSession, seat: int, step_index: int) -> bool:
+    """Whether the live steps from ``step_index`` on passed ``seat``'s turn.
+
+    A turn-passing card (``TURN_PASS_EVENTS``) is the seat's turn end
+    itself (OQ-095 (6)); the caller holds the lock.
+    """
+
+    appended = len(session.steps) - step_index
+    return any(
+        event.kind in TURN_PASS_EVENTS and dict(event.payload).get("player") == seat
+        for entry in session.log[len(session.log) - appended :]
+        if isinstance(entry, LoggedStep)
+        for event in entry.events
+    )
+
+
+def _agent_turn_is_open(state: GameState, seat: int) -> bool:
+    """Whether ``seat``'s Agent-turn effect frame is still on the stack."""
+
+    return any(
+        frame.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(frame.decision, PlayerDecision)
+        and frame.decision.owner == seat
+        for frame in state.decision_stack
+    )
+
+
+def _took_turn(session: GameSession, seat: int, step_index: int) -> bool:
+    """Whether the live steps from ``step_index`` on took ``seat``'s turn.
+
+    An Agent sent or the turn passed (``TURN_TAKING_EVENTS``); the caller
+    holds the lock, and nothing but those steps was logged since.
+    """
+
+    appended = len(session.steps) - step_index
+    return any(
+        event.kind in TURN_TAKING_EVENTS and dict(event.payload).get("player") == seat
+        for entry in session.log[len(session.log) - appended :]
+        if isinstance(entry, LoggedStep)
+        for event in entry.events
+    )
+
+
+def _turn_passed(session: GameSession, seat: int, own_steps: int) -> bool:
+    """Whether ``seat``'s step ended in a hand-over; the caller holds the lock.
+
+    ``own_steps`` is the live step count right after the seat's own step.
+    The turn has passed when the game is over, when another player's step
+    followed (AI seats played on, even if the decision is back with the
+    same seat now), or when the decision rests with another seat. It has
+    not while the turn end still awaits the seat's confirmation, nor when a
+    chance outcome alone followed and the seat simply goes on with its turn.
+    """
+
+    if session.awaiting_confirmation is not None:
+        return False
+    if _is_finished(session.state):
+        return True
+    if any(
+        isinstance(step, DomainAction) and step.actor != seat
+        for step in session.steps[own_steps:]
+    ):
+        return True
+    decision = session.engine.current_decision(session.state)
+    return isinstance(decision, PlayerDecision) and decision.owner != seat
+
+
+def _require_current(
+    session: GameSession, revision: int, undo_count: int | None
+) -> None:
+    """Reject requests made against a state the session has moved past."""
+
+    if revision != session.state.revision:
+        raise StaleRevisionError("the game advanced past the submitted revision")
+    if undo_count is not None and undo_count != session.undo_count:
+        raise StaleRevisionError(
+            "the game was taken back since the submitted undo generation"
+        )
+
+
+# The clock the pace is measured on (a test may stand in its own).
+_monotonic: Callable[[], float] = time.monotonic
+
+# The steps that end a turn (static/effects.js TURN_END_ACTION_IDS): a turn
+# start after one of them is a new turn, even the same seat's again.
+_TURN_END_ACTION_IDS: Final = frozenset({"finish_agent_turn", "finish_reveal"})
+
+
+def _paced(session: GameSession) -> bool:
+    """Whether the game's AI seats pace their answers; caller holds the lock.
+
+    A game without a human seat never does: nobody watches it live, and
+    the browser replays it afterwards.
+    """
+
+    return session.ai_pace != "instant" and HUMAN_SEAT in session.seats
+
+
+def _turn_start_key(session: GameSession, seat: int) -> str | None:
+    """Key ``seat``'s turn start, if it stands at one, as the browser does.
+
+    "<seat>:<step of the last turn end>", the step counted among the live
+    steps; ``None`` when the seat is not choosing its Agent or Reveal turn.
+    """
+
+    if turn_start_seat(session.state) != seat:
+        return None
+    ended = next(
+        (
+            index
+            for index in range(len(session.steps) - 1, -1, -1)
+            if isinstance(step := session.steps[index], DomainAction)
+            and step.action_id in _TURN_END_ACTION_IDS
+        ),
+        -1,
+    )
+    return f"{seat}:{ended}"
+
+
+def _pace_ready_locked(session: GameSession, seat: int) -> float:
+    """When the worker may apply ``seat``'s answer; caller holds the lock.
+
+    At once in an instant game. In a paced one, once the tables have shown
+    the public events logged so far (``cue_clock``) and, at the start of the
+    seat's turn, its turn banner, which the tables show from the summary
+    while the seat waits there; never more than ``MAX_WAIT_SECONDS`` from
+    now. The banner's time goes on the clock, so the next answer waits for
+    what is on the tables then.
+    """
+
+    now = _monotonic()
+    if not _paced(session) or session.pace_seconds <= 0:
+        return now
+    ready = max(now, session.cue_clock)
+    turn = _turn_start_key(session, seat)
+    if turn is not None and turn != session.paced_turn:
+        session.paced_turn = turn
+        ready += TURN_BANNER_SECONDS * session.pace_seconds
+    ready = min(ready, now + MAX_WAIT_SECONDS)
+    session.cue_clock = ready
+    return ready
+
+
+def _apply_step(session: GameSession, step: ReplayStep) -> None:
+    """Apply one step to the session and record it in steps and log.
+
+    It also keeps the time the tables need to show the step: ``cue_clock``
+    in a paced game, which paces the next AI answer, and in an instant game
+    with a human seat ``narration_clock``, which paces nothing. An AI
+    step's share of either is charged to that seat while a human waits for
+    it (``play_clock``).
+    """
+
+    before = session.state
+    banner = _narrates_turn_start(session, step)
+    transition = session.engine.apply(before, step)
+    session.state = transition.state
+    session.steps.append(step)
+    session.log.append(log_step(before, transition.state, step, transition.events))
+    if _paced(session):
+        seconds = cue_seconds(transition.events) * session.pace_seconds
+        if seconds:
+            now = _monotonic()
+            start = max(session.cue_clock, now)
+            session.cue_clock = start + seconds
+            _narrate_locked(session, step, start, session.cue_clock, now)
+    elif session.clock.live and HUMAN_SEAT in session.seats:
+        seconds = cue_seconds(transition.events)
+        if banner:
+            seconds += TURN_BANNER_SECONDS
+        # The browser shows an instant game's cues at full length (its
+        # cueScale), a whole AI run of them after the request that played
+        # it; like a paced answer, no one step waits longer than the cap.
+        seconds = min(seconds * session.cue_unit, MAX_WAIT_SECONDS)
+        if seconds:
+            now = _monotonic()
+            start = max(session.narration_clock, now)
+            session.narration_clock = start + seconds
+            _narrate_locked(session, step, start, session.narration_clock, now)
+
+
+def _narrates_turn_start(session: GameSession, step: ReplayStep) -> bool:
+    """Whether an instant game's AI step opens a turn the tables announce.
+
+    The browser shows that seat's turn banner before the turn's steps
+    (static/effects.js); a paced game shows it while the seat waits at its
+    turn start instead (``_pace_ready_locked``). Called before the step is
+    applied; the caller holds the lock.
+    """
+
+    if (
+        _paced(session)
+        or not session.clock.live
+        or not isinstance(step, DomainAction)
+        or session.seats[step.actor] == HUMAN_SEAT
+    ):
+        return False
+    key = _turn_start_key(session, step.actor)
+    if key is None or key == session.narrated_turn:
+        return False
+    session.narrated_turn = key
+    return True
+
+
+def _narrate_locked(
+    session: GameSession, step: ReplayStep, start: float, end: float, now: float
+) -> None:
+    """Charge the tables' time for one step, [start, end), to its AI seat.
+
+    An AI step's segment starts when it is applied: the cues still on the
+    tables before it are the seat's wait too, as a paced seat waits for them
+    before it answers. A chance step's cues carry on the AI segment they
+    follow; a human step's are nobody's grace. The caller holds the lock.
+    """
+
+    if isinstance(step, ChanceOutcome):
+        session.clock.extend_narration(start, end)
+    elif session.seats[step.actor] != HUMAN_SEAT:
+        session.clock.narrate(step.actor, now, end)
+
+
+def _clock_holder(session: GameSession, *, resting: bool) -> int | None:
+    """The seat holding control now, read off public fields; caller holds the lock.
+
+    As the browser reads it (static/session.js isMyTurn): nobody once the
+    game is over or deleted, else the seat whose turn end waits for its
+    press, else the seat thinking in the background, else the owner of the
+    pending decision, human or AI. A chance outcome between steps is
+    nobody's, and so is an AI seat's decision with the game at rest and no
+    seat thinking: nothing answers it (the stall a failed worker step
+    leaves). ``resting`` is False only while the advance is about to have
+    that seat answer inside the request.
+    """
+
+    if session.closed or _is_finished(session.state):
+        return None
+    if session.awaiting_confirmation is not None:
+        return session.awaiting_confirmation
+    if session.thinking is not None:
+        return session.thinking
+    decision = session.engine.current_decision(session.state)
+    if not isinstance(decision, PlayerDecision):
+        return None
+    if resting and session.seats[decision.owner] != HUMAN_SEAT:
+        return None
+    return decision.owner
+
+
+def _settle_clock_locked(session: GameSession, *, resting: bool = True) -> None:
+    """Charge the time since the last transition and hand control on.
+
+    Called at every change (``_changed_summary_locked``) and before a
+    synchronous AI answer; a no-op until the clock starts, so a load's
+    replay charges nobody. The caller holds the lock.
+    """
+
+    if not session.clock.live:
+        return
+    holder = _clock_holder(session, resting=resting)
+    session.clock.settle(
+        _monotonic(),
+        holder=holder,
+        grace=holder is not None and session.seats[holder] == HUMAN_SEAT,
+        counting=not session.closed and not _is_finished(session.state),
+    )
+
+
+def _human_acts_locked(session: GameSession) -> None:
+    """A human's own request (a move, a press, an undo) is about to change the game.
+
+    The time up to it is charged by the schedule in force, narration and
+    all; then the narration still due is dropped, the tables' own clock with
+    it: whoever acted was not waiting for the tables any more, and a quick
+    player would otherwise pile up AI narration nobody waits for. The caller
+    holds the lock and has validated the request.
+    """
+
+    _settle_clock_locked(session)
+    session.clock.drop_narration()
+    session.narration_clock = 0.0
+
+
+def _start_clock_locked(
+    session: GameSession, saved: SavedClock | None = None, *, restored: bool = False
+) -> None:
+    """Start the play clock once the game rests; the caller holds the lock.
+
+    A new game starts at zero. A load (``restored``) continues from the
+    totals its save recorded, or, for a save that recorded none or a clock
+    it cannot read, counts from the load with ``known`` False.
+    """
+
+    holder = _clock_holder(session, resting=True)
+    session.clock.start(
+        _monotonic(),
+        holder=holder,
+        grace=holder is not None and session.seats[holder] == HUMAN_SEAT,
+        counting=not _is_finished(session.state),
+        elapsed=saved.elapsed_ms / 1000 if saved is not None else 0.0,
+        seat_seconds=(
+            tuple(ms / 1000 for ms in saved.seat_ms) if saved is not None else None
+        ),
+        known=saved.known if saved is not None else not restored,
+    )
+
+
+def _state_after(session: GameSession, count: int) -> GameState:
+    """Rebuild the state after the first ``count`` live steps.
+
+    Steps replay deterministically, so this never touches the session's
+    chance or AI streams; the caller holds the session lock.
+    """
+
+    engine = session.engine
+    state = engine.reset(session.config, session.game_seed)
+    for recorded in session.steps[:count]:
+        state = engine.apply(state, recorded).state
+    return state
+
+
+def _indexed_live_steps(session: GameSession) -> tuple[tuple[int, ReplayStep], ...]:
+    """Every live step in order, with the index of its log entry.
+
+    The live log entries are ``steps`` one for one (``GameSession.log``);
+    the caller holds the session lock.
+    """
+
+    indices = [
+        index
+        for index, entry in enumerate(session.log)
+        if isinstance(entry, LoggedStep) and not entry.undone
+    ]
+    if len(indices) != len(session.steps):
+        raise RuntimeError("the session log does not match the recorded steps")
+    return tuple(zip(indices, session.steps, strict=True))
+
+
+def _rebuild_log(
+    session: GameSession,
+    saved: tuple[tuple[ReplayStep, bool] | LoggedUndo, ...],
+) -> list[LogEntry]:
+    """Rebuild the session log of a save, replaying its undone branches.
+
+    Caller holds the session lock and has already replayed the live steps
+    into ``session.log``. Live entries must match the record in order;
+    undone steps re-apply on the state their branch forked from (they
+    never include chance or AI decisions, see ``undo``), so their events
+    and reveal flags come back exactly. The log reads as a stack
+    (``LoggedUndo``): the undone steps still in play sit on top of the
+    live ones, and each marker takes its count of them off the top.
+    """
+
+    live = [entry for entry in session.log if isinstance(entry, LoggedStep)]
+    rebuilt: list[LogEntry] = []
+    live_position = 0
+    # The undone steps still in play, each with the state it left behind.
+    in_play: list[tuple[LoggedStep, GameState]] = []
+    for index, item in enumerate(saved):
+        if isinstance(item, LoggedUndo):
+            if item.count > len(in_play):
+                raise SaveError(
+                    f"save log entry {index}: undo marker count {item.count} "
+                    f"exceeds the {len(in_play)} undone step(s) still in play"
+                )
+            if any(entry.actor != item.seat for entry, _ in in_play[-item.count :]):
+                raise SaveError(
+                    f"save log entry {index}: seat {item.seat}'s undo marker "
+                    "takes back another seat's step"
+                )
+            del in_play[-item.count :]
+            rebuilt.append(item)
+            continue
+        step, undone = item
+        if not undone:
+            if in_play:
+                raise SaveError(
+                    f"save log entry {index}: undone steps must be followed by "
+                    "an undo marker"
+                )
+            if live_position >= len(live) or live[live_position].step != step:
+                raise SaveError(
+                    f"save log entry {index} does not match recorded step "
+                    f"{live_position}"
+                )
+            rebuilt.append(live[live_position])
+            live_position += 1
+            continue
+        branch = in_play[-1][1] if in_play else _state_after(session, live_position)
+        try:
+            transition = session.engine.apply(branch, step)
+        except Exception as error:
+            raise SaveError(
+                f"save log entry {index} (undone {_step_summary(step)}) failed "
+                f"to apply: {error}"
+            ) from error
+        logged = replace(
+            log_step(branch, transition.state, step, transition.events), undone=True
+        )
+        rebuilt.append(logged)
+        in_play.append((logged, transition.state))
+    if in_play:
+        raise SaveError("the save log ends with undone steps but no undo marker")
+    if live_position != len(live):
+        raise SaveError("the save log does not cover every recorded step")
+    return rebuilt
+
+
+def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
+    """Build the doorbell payload from a summary of the same state.
+
+    Only what every client at the table may see goes in, and only what a
+    client needs to decide whether its picture is stale: the counters a
+    snapshot is identified by, whose move it is and whether that seat is
+    thinking in the background, and the public ``players`` list (names,
+    claims, presence), which a client may adopt as it stands.
+    """
+
+    decision = summary["decision"]
+    return {
+        "seq": session.event_seq,
+        "revision": summary["revision"],
+        "undo_count": summary["undo_count"],
+        "log_count": summary["log_count"],
+        "decision_owner": decision["owner"] if isinstance(decision, dict) else None,
+        "confirmation": summary["confirmation"],
+        "thinking": summary["thinking"],
+        "finished": summary["finished"],
+        "ai_pace": summary["ai_pace"],
+        "awaiting_start": summary["awaiting_start"],
+        "players": summary["players"],
+    }
+
+
+def _log_epoch(session: GameSession, seat: int) -> str:
+    """Name the log one seat has been served, as far as old entries go.
+
+    Entries a client already holds stay valid while this value stays the
+    same. It changes when an undo flags earlier entries, when the game
+    finishes (or an undo un-finishes it) and redaction changes for every
+    entry, and with the seat, whose redaction differs. The caller holds the
+    session lock.
+    """
+
+    finished = 1 if _is_finished(session.state) else 0
+    return f"{seat}:{session.undo_count}:{finished}"
+
+
+def _log_entries_json(
+    entries: tuple[LogEntry, ...], seat: int, finished: bool, after: int
+) -> list[JsonValue]:
+    return [
+        _log_entry_json(index, entry, seat, finished)
+        for index, entry in enumerate(entries)
+        if index >= after
+    ]
+
+
+def _log_entry_json(
+    index: int, entry: LogEntry, seat: int, finished: bool
+) -> JsonObject:
+    if isinstance(entry, LoggedUndo):
+        return {
+            "index": index,
+            "type": "undo",
+            "seat": entry.seat,
+            "count": entry.count,
+        }
+    events: list[JsonValue] = [
+        {"kind": event.kind, "payload": _jsonify(dict(event.payload))}
+        for event in entry.events
+        if finished or event.visible_to is None or seat in event.visible_to
+    ]
+    step = entry.step
+    if isinstance(step, ChanceOutcome):
+        payload: JsonObject = {
+            "index": index,
+            "type": "chance",
+            "decision_id": step.decision_id,
+            "undone": entry.undone,
+            "events": events,
+        }
+        if finished:
+            payload["values"] = list(step.values)
+        return payload
+    redact = not finished and step.actor != seat
+    # The last step of a waiting effect shows the whole action it ends
+    # (stage B3); a step that only picks toward it is marked ``pick``.
+    action = entry.whole or step
+    shown = SEALED_SHOWN_KEYS.get(action.action_id) if redact and entry.sealed else None
+    arguments = {
+        key: (
+            "(비공개)"
+            if redact and (entry.sealed or value in entry.hidden_arguments)
+            else value
+        )
+        for key, value in action.arguments
+        if shown is None or key in shown
+    }
+    action_id = action.action_id
+    if entry.picks and redact:
+        # Another seat learns nothing of a half-picked effect, not even
+        # what it does (OQ-111 (4)); the step that ends it shows it whole.
+        action_id, arguments = EFFECT_PICKED_EVENT, {}
+    payload = {
+        "index": index,
+        "type": "action",
+        "actor": step.actor,
+        "action_id": action_id,
+        "arguments": _jsonify(arguments),
+        "undone": entry.undone,
+        "events": events,
+    }
+    if entry.picks:
+        payload["pick"] = True
+    return payload
+
+
+def _step_summary(step: ReplayStep) -> str:
+    if isinstance(step, ChanceOutcome):
+        return f"chance {step.decision_id}"
+    return f"action {step.action_id} by seat {step.actor}"
+
+
+def _is_finished(state: GameState) -> bool:
+    return state.phase is GamePhase.FINISHED
+
+
+def _require_finished(session: GameSession) -> None:
+    if not _is_finished(session.state):
+        raise SessionError("replay review opens after the game finishes")
+
+
+def _review_step_labels(
+    steps: tuple[ReplayStep, ...], entries: tuple[LogEntry, ...]
+) -> list[JsonValue]:
+    """Each live step's label, as the log shows it (stage B3): the step that
+    ends a waiting effect names the whole action, and a step that only picks
+    toward it is marked ``pick`` (the review does not stop right after one)."""
+
+    live = live_steps(list(entries))
+    if len(live) != len(steps):
+        return [_review_step_label(step) for step in steps]
+    labels: list[JsonValue] = []
+    for entry in live:
+        label = _review_step_label(entry.whole or entry.step)
+        if entry.picks:
+            label["pick"] = True
+        labels.append(label)
+    return labels
+
+
+def _review_step_label(step: ReplayStep) -> JsonObject:
+    """Label one recorded step of a finished game in full (OQ-010 ruling 4)."""
+
+    if isinstance(step, ChanceOutcome):
+        return {
+            "type": "chance",
+            "decision_id": step.decision_id,
+            "values": list(step.values),
+        }
+    return {
+        "type": "action",
+        "actor": step.actor,
+        "action_id": step.action_id,
+        "arguments": _jsonify(dict(step.arguments)),
+    }
+
+
+def _serialize_view(
+    view: PlayerView,
+    state: GameState,
+    *,
+    disclose: bool = False,
+) -> JsonObject:
+    """Serialize a view with the public round-by-round Conflict history.
+
+    Only public Conflict reveals are projected from the state's event log;
+    reset's first reveal is there even when it predates the session log.
+    Undo/review states already contain only their own applied events.
+    ``disclose`` adds hidden zones only for a finished game (OQ-010 ruling
+    4); ``state`` may be an earlier state of that finished game.
+
+    ``conflict_deck_top_tier`` is the tier (1-3) printed on the back of the
+    Conflict deck's top card, 0 once the deck is empty: the deck is built
+    by back, I on II on III, and lies face down [Main p. 4], so every seat
+    sees the next card's back (docs/rules/information-visibility.md). It is
+    added here and not to ``PlayerView``, so the AI observation's encoding
+    stays as it was; the search AI's determinizer re-deals the deck within
+    each tier (with the boxed cards of that tier), so a sampled world
+    already shows the same top tier.
+
+    The observing seat's own ``private`` block also carries ``deck_cards``,
+    the composition of its draw deck sorted by card id, never its order
+    (OQ-010 ruling 5: the owner can deduce the composition, so showing it
+    reveals nothing new; the order stays hidden). ``view.player`` is the
+    observer, so no other seat's block ever carries it.
+
+    ``turn_card_ids`` names the cards the open Agent turn's owner played
+    with it (the played card and its graft partner) and
+    ``pending_box_card_ids`` the ones of them whose Agent box is not fully
+    resolved yet (``turn_cards``): the page tells this turn's copy of a
+    card from an earlier one, since trashing it now expires the rest of
+    its box (OQ-022). Both are public, the same for every seat and in a
+    review, and kept beside the other public table facts here rather than
+    in ``PlayerView``, so the AI observation's encoding stays as it was.
+
+    Each seat's ``trashed_skill_ids`` and ``trashed_tech_ids`` name the
+    Skill and Tech tiles it trashed (``_trashed_tiles``, from the public
+    events), for the seat panel's details (play feedback 2026-10-26); the
+    same for every seat and in a review, and outside ``PlayerView`` too.
+
+    Which step would lose such a box is not here: each row the seat is
+    served says so itself (``forfeit``, ``_dry_run_fields``).
+    """
+
+    serialized = _jsonify(asdict(view))
+    assert isinstance(serialized, dict)
+    private = serialized.get("private")
+    if isinstance(private, dict):
+        private["deck_cards"] = [*sorted(state.players[view.player].deck)]
+    serialized["conflict_history"] = _jsonify(
+        [
+            {key: dict(event.payload)[key] for key in ("round", "conflict_id")}
+            for event in state.event_log
+            if event.kind == "conflict_revealed" and event.visible_to is None
+        ]
+    )
+    serialized["conflict_deck_top_tier"] = (
+        CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value if state.conflict_deck else 0
+    )
+    trashed_tiles = _trashed_tiles(state)
+    players = serialized["players"]
+    assert isinstance(players, list)
+    for seat_view in players:
+        assert isinstance(seat_view, dict)
+        skills, tech = trashed_tiles.get(int(str(seat_view["player"])), ([], []))
+        seat_view["trashed_skill_ids"] = list(skills)
+        seat_view["trashed_tech_ids"] = list(tech)
+    played, pending = turn_cards(state)
+    serialized["turn_card_ids"] = list(played)
+    serialized["pending_box_card_ids"] = list(pending)
+    if disclose:
+        serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
+    return serialized
+
+
+def _trashed_tiles(state: GameState) -> dict[int, tuple[list[str], list[str]]]:
+    """Each seat's trashed Skill and Tech tiles, in the order trashed.
+
+    The state keeps one trash of each for the table (``skill_trash``,
+    ``tech_trash``); only the public ``skill_trashed`` and ``tech_trashed``
+    events say whose tile it was. Every rule that trashes one takes it from
+    its owner's own tiles, so the event's seat is the owner. A Skill is named
+    by its copy (``skill_instance_id``, as in ``skill_trash``): the actions
+    name a Skill by its catalog id, which the other copy may still answer
+    to, so a trashed copy must not.
+    """
+
+    trashed: dict[int, tuple[list[str], list[str]]] = {}
+    for event in state.event_log:
+        if event.visible_to is not None:
+            continue
+        if event.kind == "skill_trashed":
+            field, slot = "skill_instance_id", 0
+        elif event.kind == "tech_trashed":
+            field, slot = "tech_id", 1
+        else:
+            continue
+        payload = dict(event.payload)
+        seat = int(str(payload["player"]))
+        trashed.setdefault(seat, ([], []))[slot].append(str(payload[field]))
+    return trashed
+
+
+def _serialize_action(
+    index: int, action: DomainAction, session: GameSession
+) -> JsonObject:
+    """Serialize one legal action.
+
+    ``detail`` names a keyed icon's printed effect, or what a payment
+    several Agent boxes share buys on the resolving card (Control the Spice,
+    ``display.actions.agent_card_payment_text``); ``detail_ko`` is its
+    Korean twin, real for a personal card's own Agent-box icon (Step K2,
+    ``display.actions.agent_card_icon_text_ko``) and a board-space icon
+    (Step K4, ``display.spaces.board_effect_action_text_ko``); the client
+    falls back to ``detail`` whenever a resolution kind has no Korean text
+    yet, ``static/core.js`` ``describeAction``. An Agent-box row (a box
+    resolution, one of its icons, the graft switch) also carries
+    ``detail_title``/``detail_title_ko``, the card it works on
+    (``display.actions.agent_box_row_title``): the page then shows the
+    title and the detail as the button's text. ``undoable`` says whether
+    the step could still be taken back afterwards (it could not once it
+    reveals hidden information or hands the game to a chance outcome, nor
+    when it is an explicit turn end, which seals the turn);
+    ``sent_by_turn_end`` marks a step outside the seat's turns that cannot
+    be taken back because it reveals something itself (an Imperium Row
+    acquisition that refills the Row, a Scouts line that draws a card): the
+    browser only holds it and sends it with the seat's "확정 ▶" press, so
+    the seat may still pick another one before that ("확정 전에 다른 곳에
+    두고 싶을 수 있잖아", user, 2026-10-08). Inside a turn, a step listed
+    in ``turn_end.HELD_IN_TURN`` (Long Live the Fighters' second pick, user
+    decision 2026-10-19) is held the same way whenever it cannot be taken
+    back. The mark is read from the stack, the action id and ``undoable``
+    alone. A unit's last step that only runs into a reveal after it stops
+    at the engine's pause before that reveal instead
+    (rules/pauses.py), whatever the seats hold, and is held by the server
+    with its undo, so neither mark depends on another seat's hidden cards
+    (it did before the pauses: a Harvest Cells in another hand stopped the
+    dry run at its Conflict-end window, which then opened only for a seat
+    that could play one, OQ-103);
+    ``strength_after`` is the acting seat's running combat strength once the
+    step is taken, when the step changes it (``strength_preview``);
+    ``forfeit`` names the seat's cards whose unused effects the step would
+    lose, with those effects (``forfeits.forfeited_effects``: an Agent box
+    expired because another effect trashed its card, OQ-022, user request
+    2026-10-31), present only when it loses some; ``lapses`` lists, on an
+    Agent or Reveal turn's end, the optional effects its press lapses
+    unused (OQ-095 (2)), as the events the log will show
+    (``forfeits.lapsed_effects``);
+    ``reveal_preview`` sums up a Reveal the step would start; and
+    ``subcommittee_preview`` lists the Arrakeen Scouts subcommittees the
+    seat could join once the step takes its High Council seat, and why the
+    others cannot be (``subcommittee_preview``).
+
+    ``turn_start`` (present and true only then) marks a play of an "At the
+    start of your turn" card: Litany Against Fear's ``play_turn_start_card``
+    and Withdrawn's turn-start ``play_intrigue`` option
+    (``rules.intrigue.plays_turn_start_option``). The page asks for those
+    first and alone, in a window of the seat's own page that sends nothing
+    when it is put aside (static/turn.js, user decision 2026-10-14). It is
+    read off the action alone, and only the seat's own rows carry it.
+
+    ``solari_cost`` is what a Sardaukar Commander row
+    (``COMMANDER_PAYMENTS``) costs the seat now, its discounts included.
+    """
+
+    serialized: JsonObject = {
+        "index": index,
+        "action_id": action.action_id,
+        "arguments": _jsonify(dict(action.arguments)),
+        "detail": effect_action_text(session.state, action),
+        "detail_ko": effect_action_text_ko(session.state, action),
+        **_dry_run_fields(session, action, _dry_run(session, action)),
+    }
+    if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
+        serialized["turn_start"] = True
+    if action.action_id in COMMANDER_PAYMENTS:
+        # What the Commander costs this seat now (``commander_cost``), so the
+        # row does not print the base 2 Solari [Bloodlines p. 4] when
+        # Sardaukar High Command or Honor Guard lowers it.
+        serialized["solari_cost"] = commander_cost(session.state.players[action.actor])
+    title = agent_box_row_title(session.state, action)
+    if title is not None:
+        serialized["detail_title"], serialized["detail_title_ko"] = title
+    return serialized
+
+
+def _dry_run_fields(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> JsonObject:
+    """What a row says about its dry run: ``undoable``, ``sent_by_turn_end``,
+    the shortfall ``warning``/``shortfall``, ``strength_after`` and, when
+    they apply, ``forfeit``, ``reveal_preview`` and ``subcommittee_preview``
+    (``_serialize_action``). ``outcome`` is the dry run of ``action`` from
+    the session's state, None when the engine refused it."""
+
+    # An explicit turn end, a turn-passing card and a step of a pressed end's
+    # own follow-up seal the turn they end (``_settle_locked``).
+    undoable = (
+        action.action_id not in EXPLICIT_TURN_ENDS
+        and finishing_seat(session.state) != action.actor
+        and not (
+            outcome is not None
+            and any(
+                event.kind in TURN_PASS_EVENTS
+                and dict(event.payload).get("player") == action.actor
+                for event in outcome.events
+            )
+        )
+        and _action_is_undoable(session, action, outcome)
+    )
+    outcome = preview_outcome(action, outcome)
+    shortfalls = shortfall_outcome(session.engine, outcome)
+    serialized: JsonObject = {
+        "undoable": undoable,
+        "sent_by_turn_end": (
+            not undoable
+            and action.action_id not in EXPLICIT_TURN_ENDS
+            and (
+                own_unit_outside_turns(session.state, action.actor)
+                or action.action_id in HELD_IN_TURN
+            )
+        ),
+        "warning": shortfall_warning(shortfalls, action.actor),
+        "shortfall": shortfall_details(shortfalls, action.actor),
+        "strength_after": strength_preview(session.state, action, outcome, undoable),
+    }
+    forfeit = forfeited_effects(session.state, action.actor, outcome)
+    if forfeit is not None:
+        serialized["forfeit"] = forfeit
+    if action.action_id in LAPSING_TURN_ENDS:
+        lapses = lapsed_effects(action.actor, outcome)
+        if lapses is not None:
+            serialized["lapses"] = lapses
+    revealed = reveal_preview(action, outcome)
+    if revealed is not None:
+        serialized["reveal_preview"] = revealed
+    offer = subcommittee_preview(session, action, outcome)
+    if offer is not None:
+        serialized["subcommittee_preview"] = offer
+    return serialized
+
+
+def _serialize_placements(
+    session: GameSession,
+    seat: int,
+    actions: tuple[DomainAction, ...],
+    placements: tuple[tuple[int, DomainAction], ...],
+) -> list[JsonValue]:
+    """Serialize the placements an Agent-turn card pick leads to
+    (``display.actions.agent_placements``, stage B1).
+
+    Each entry is ``index`` (the card pick's row, which the page sends
+    first), ``placement`` (its position in this list, a key for the page),
+    ``arguments`` (the whole placement's) and what a row says about its dry
+    run (``_dry_run_fields``), here the dry run of both steps: the page
+    sends the card pick and then the space pick as one move, so whether it
+    can be taken back, its shortfalls and previews are the space pick's as
+    reached through the card pick. Each card pick is dry-run once for all
+    its placements.
+
+    A graft placement on the Heighliner with Rise of Ix and Immortality
+    also names its ``graft_partners``: the cards its partner choice then
+    offers (the dry run's ``choose_graft_partner`` rows), as such a
+    placement promises the cut its partner gives -- Guild Accord's, Ghola's
+    copy of it -- and the partner choice keeps only the cards that give
+    exactly that cut (P7g, OQ-158). They are the seat's own hand cards or
+    its Usurp partner from the Imperium Row, on its own rows.
+    """
+
+    engine = session.engine
+    names_partners = session.config.rise_of_ix and session.config.immortality
+    picked: dict[int, tuple[RuleResult, tuple[DomainAction, ...]] | None] = {}
+    serialized: list[JsonValue] = []
+    for key, (row, placement) in enumerate(placements):
+        if row not in picked:
+            try:
+                result = engine.apply(
+                    session.state, actions[row], legal_actions=actions
+                )
+                after = RuleResult(state=result.state, events=result.events)
+                picked[row] = (after, engine.legal_actions(after.state, seat))
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                picked[row] = None
+        outcome: RuleResult | None = None
+        step = picked[row]
+        if step is not None:
+            after, legal = step
+            card, graft = agent_card_pick(after.state, seat) or ("", False)
+            try:
+                (space,) = agent_space_pick_actions(seat, (placement,), card, graft)
+                placed = engine.apply(after.state, space, legal_actions=legal)
+            except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+                pass
+            else:
+                outcome = RuleResult(
+                    state=placed.state, events=(*after.events, *placed.events)
+                )
+        entry: JsonObject = {
+            "index": row,
+            "placement": key,
+            "arguments": _jsonify(dict(placement.arguments)),
+            **_dry_run_fields(session, placement, outcome),
+        }
+        arguments = dict(placement.arguments)
+        if (
+            names_partners
+            and outcome is not None
+            and arguments.get("graft") is True
+            and arguments.get("space_id") in HEIGHLINER_SPACE_IDS
+        ):
+            entry["graft_partners"] = _graft_partners(session, seat, outcome)
+        serialized.append(entry)
+    return serialized
+
+
+def _graft_partners(
+    session: GameSession, seat: int, outcome: RuleResult | None
+) -> list[JsonValue]:
+    """The cards a graft placement's partner choice offers ``seat``: its
+    dry run's ``choose_graft_partner`` rows (``_serialize_placements``),
+    none when the dry run failed."""
+
+    if outcome is None:
+        return []
+    try:
+        offered = session.engine.whole_actions(outcome.state, seat)
+    except Exception:  # noqa: BLE001 - a failing dry run names none
+        return []
+    return [
+        str(dict(action.arguments)["card_id"])
+        for action in offered
+        if action.action_id == "choose_graft_partner"
+    ]
+
+
+def preview_outcome(
+    action: DomainAction, outcome: RuleResult | None
+) -> RuleResult | None:
+    """The dry run's outcome the previews may read, or None.
+
+    A secret choice's own outcome, or one that runs into the reveal of due
+    secret choices (a Control defense, or a round's last step when the next
+    round opens without chance), could show other seats' secrets through
+    its warnings before the step is taken; such an action previews nothing
+    but whether it can be taken back.
+    """
+
+    if action.action_id in SEALED_ACTION_IDS or outcome is None:
+        return None
+    if any(event.kind in SEALED_REVEAL_EVENTS for event in outcome.events):
+        return None
+    return outcome
+
+
+# More Intrigue reshuffles than one step's draws could ever ask for.
+_PREVIEW_RESHUFFLES: Final = 4
+
+
+def shortfall_outcome(
+    engine: UprisingRulesEngine, outcome: RuleResult | None
+) -> RuleResult | None:
+    """The dry run's outcome with the shortfalls of its Intrigue reshuffles.
+
+    An Intrigue draw the deck cannot cover stops at a chance step that
+    shuffles the discard pile into a new deck, and Suspensor Suits deploys
+    for the cards drawn after it in that chance step's own hook (OQ-042).
+    The shortfall is still this step's, so it is warned before the click
+    (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): the copy runs
+    the reshuffle with the frame's own options as the permutation, since how
+    many cards come off the new deck does not depend on their order, and
+    only the shortfall events of that continuation are added (counts only,
+    from public zones), never a card it drew. Every other preview
+    (``undoable``, ``strength_after``, ``reveal_preview``) stays on the dry
+    run itself.
+    """
+
+    if outcome is None:
+        return None
+    state = outcome.state
+    extra: list[GameEvent] = []
+    for _ in range(_PREVIEW_RESHUFFLES):
+        if not state.decision_stack:
+            break
+        frame = state.decision_stack[-1]
+        decision = frame.decision
+        if frame.kind != FrameKind.INTRIGUE_RESHUFFLE or not isinstance(
+            decision, ChanceDecision
+        ):
+            break
+        shuffle = ChanceOutcome(
+            decision_id=decision.decision_id, values=decision.options
+        )
+        try:
+            transition = engine.apply(state, shuffle)
+        except Exception:  # noqa: BLE001 - the preview just stops here
+            break
+        state = transition.state
+        extra.extend(
+            event for event in transition.events if event.kind in _SHORTFALL_EVENTS
+        )
+    if not extra:
+        return outcome
+    return RuleResult(state=outcome.state, events=(*outcome.events, *extra))
+
+
+def reveal_preview(
+    action: DomainAction, outcome: RuleResult | None
+) -> JsonObject | None:
+    """Return what revealing the hand right now would give the acting seat.
+
+    For ``reveal_turn`` only: the Persuasion the Reveal would open with and
+    the seat's combat strength once its revealed swords count, read off the
+    same dry run as the rest (a Reveal sums Persuasion and swords as it
+    starts [Main p. 12]; effects the owner resolves later in the Reveal are
+    not in these figures). The listing goes to the seat that owns the hand,
+    so the preview shows that seat nothing it cannot work out itself.
+    """
+
+    if action.action_id != "reveal_turn" or outcome is None:
+        return None
+    for frame in reversed(outcome.state.decision_stack):
+        persuasion = dict(frame.context).get("persuasion")
+        if str(frame.kind) == "reveal" and type(persuasion) is int:
+            return {
+                "persuasion": persuasion,
+                "strength": outcome.state.players[action.actor].combat_strength,
+            }
+    return None
+
+
+def subcommittee_preview(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> JsonObject | None:
+    """Return the subcommittees the step's High Council seat would let the
+    seat join.
+
+    Arrakeen Scouts: taking a High Council seat lets the seat join one
+    unclaimed subcommittee any time in that turn (docs/rules/
+    arrakeen-scouts.md 4, OQ-076 alternative C). Read off the same dry run
+    as the rest, so it follows the seat's resources as they change during
+    the turn: every line (claimed, joinable right after the step, or not
+    now with its reason; no ``action_index``, the lines are not this
+    list's), and ``joinable`` when at least one could be joined at once.
+    With every subcommittee already taken every line says so (the offer
+    still opens with only its decline, OQ-076 (c)). None for a step that
+    takes no seat, or whose outcome the previews may not read
+    (``preview_outcome``).
+    """
+
+    if outcome is None:
+        return None
+    seat = action.actor
+    after = outcome.state
+    if session.state.players[seat].high_council or not after.players[seat].high_council:
+        return None
+    lines = pending_subcommittee_lines(after, seat)
+    if lines is None:
+        return None
+    return {
+        "joinable": any(line["enabled"] for line in lines),
+        "lines": [_jsonify({**line, "action_index": None}) for line in lines],
+    }
+
+
+def strength_preview(
+    before: GameState,
+    action: DomainAction,
+    outcome: RuleResult | None,
+    undoable: bool,
+) -> int | None:
+    """Return the actor's combat strength after the step, if the step moves it.
+
+    Read off the same dry run as the rest, so it is the engine's own figure
+    (a first unit in the Conflict switches the seat's swords on, a last one
+    off) rather than "2 per troop" worked out in the browser. Steps that
+    cannot be taken back are left out: they reveal hidden information or
+    hand over to chance, and their outcome is not the player's to preview.
+    So is a step whose dry run ran past the seat's unit to a chance outcome
+    held after it (the last Conflict reward before the next round's
+    reshuffle): that run went through the round's end, which resets every
+    seat's strength, so its figure is not the step's own.
+    """
+
+    if outcome is None or not undoable:
+        return None
+    stack = outcome.state.decision_stack
+    if stack and isinstance(stack[-1].decision, ChanceDecision):
+        return None
+    after = outcome.state.players[action.actor].combat_strength
+    return after if after != before.players[action.actor].combat_strength else None
+
+
+def _dry_run(session: GameSession, action: DomainAction) -> RuleResult | None:
+    """Apply ``action`` to a copy of the state; None when the engine refuses."""
+
+    try:
+        transition = apply_whole(session.engine, session.state, action)
+    except Exception:  # noqa: BLE001 - a failing dry run is reported as such
+        return None
+    return RuleResult(state=transition.state, events=transition.events)
+
+
+def _action_is_undoable(
+    session: GameSession, action: DomainAction, outcome: RuleResult | None
+) -> bool:
+    """Apply the undo-window rules to a dry run's outcome.
+
+    A chance outcome right after the step closes the window when it
+    resolves at once, inside the unit (a reshuffle mid-turn); one that
+    comes after a human seat's unit waits behind that seat's press
+    (``turn_end.unit_over``), so the step can be taken back until then.
+    """
+
+    if outcome is None:
+        return False
+    after = outcome.state
+    if reveals_hidden_information(session.state, after, action.actor):
+        return False
+    if not isinstance(session.engine.current_decision(after), ChanceDecision):
+        return True
+    # Only the seat's own unit (the actions served are a human seat's): an
+    # answer inside another seat's unit is never held for
+    # (``_hold_unit_end_locked``), so the outcome resolves.
+    return not answers_another_unit(session.state, action.actor) and unit_over(
+        after, action.actor
+    )
+
+
+def shortfall_warning(
+    outcome: RuleResult | None, player: int | None = None
+) -> str | None:
+    """Describe a shortfall the action would run into, if any.
+
+    Specimens and recruits come from the troop supply and a short supply
+    yields fewer at once (OQ-030, OQ-049; the rest waits on the seat until
+    troops return to its supply in the same player turn,
+    ``rules.shortfall``); the choice stays legal, so the player is told
+    beforehand what the action will actually do. The same
+    goes for the shortfalls where nothing can be chosen (user ruling
+    2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): an Intrigue draw the
+    Intrigue deck and discard cannot cover together (both empty, or the
+    discard too small to shuffle in), Suspensor Suits troops kept in the
+    garrison because the seat may not deploy (OQ-042; a troop the supply
+    lacks is a recruit shortfall since the 2026-10-25 re-ruling, warned
+    after such a reshuffle too, ``shortfall_outcome``), and held Contract
+    icons that fizzle as the turn-end press ends the turn
+    (OQ-059; the press itself is the confirmation, this is only the
+    warning), and an Intrigue play that changes nothing at all (OQ-113 (5),
+    user ruling 2026-10-24: "지금 내면 아무 효과가 없다"; it is played all
+    the same, OQ-113 (C)). With ``player`` only that seat's shortfalls count -- the
+    step's own seat, as the play server passes it.
+    """
+
+    notes: list[str] = []
+    for kind, requested, made in _shortfalls(outcome, player):
+        if kind == "specimens":
+            notes.append(f"supply 부족: specimen {requested}개 중 {made}개만 생성")
+        elif kind == "troops":
+            notes.append(f"supply 부족: troop {requested}개 중 {made}개만 recruit")
+        elif kind == "intrigue":
+            note = f"책략 카드 더미와 버림 더미를 합쳐도 {requested - made}장 모자람"
+            twisted = _unshuffled_twisted(outcome)
+            if twisted:
+                note += f" (버림 더미의 뒤틀린 책략 {twisted}장은 섞지 않음)"
+            notes.append(note)
+        elif kind == "suspensor":
+            notes.append(f"반중력 의복: 병력 {requested}개 중 {made}개만 배치")
+        elif kind == "no_effect":
+            notes.append("지금 내면 아무 효과가 없음")
+        else:
+            notes.append(f"계약 아이콘 {requested}개 소멸 — 가져갈 수 있는 계약 없음")
+    return " · ".join(notes) if notes else None
+
+
+def shortfall_details(
+    outcome: RuleResult | None, player: int | None = None
+) -> list[JsonValue] | None:
+    """The same shortfalls as data, for a client that words them itself.
+
+    ``warning`` stays the Korean sentence it always was; a browser showing
+    English builds its own from ``kind`` ("specimens", "troops",
+    "intrigue", "suspensor", "contract" or "no_effect"), ``requested`` and
+    ``made``.
+    For "intrigue" ``requested`` is what the draw still asked for once the
+    deck ran out, so ``requested - made`` is the number of cards missing,
+    and ``twisted`` (present only when nonzero) counts the Twisted Intrigue
+    cards left in the discard pile, which a reshuffle never takes (OQ-097);
+    for "contract" ``requested`` is the number of icons and ``made`` is 0;
+    for "no_effect" (an Intrigue play that changes nothing) both are 0.
+    """
+
+    details: list[JsonValue] = []
+    for kind, requested, made in _shortfalls(outcome, player):
+        entry: dict[str, JsonValue] = {
+            "kind": kind,
+            "requested": requested,
+            "made": made,
+        }
+        if kind == "intrigue" and (twisted := _unshuffled_twisted(outcome)):
+            entry["twisted"] = twisted
+        details.append(entry)
+    return details or None
+
+
+def _unshuffled_twisted(outcome: RuleResult | None) -> int:
+    """Twisted Intrigue cards the step leaves in the public Intrigue discard.
+
+    They stay there when it is reshuffled (OQ-097, user ruling 2026-10-04),
+    so a short Intrigue draw explains why a discard that shows cards did
+    not cover it (user request 2026-10-04: "경고 문구에 Twisted 제외 설명").
+    """
+
+    state = None if outcome is None else outcome.state
+    if state is None:
+        return 0
+    return sum(
+        is_twisted_intrigue(card_id) for card_id in state.intrigue_discard
+    )
+
+
+# Event kind -> (shortfall kind, payload key of what was asked for, payload
+# key of what was made). Suspensor Suits logs what is left over, so what was
+# asked for is the sum; a fizzled Contract icon made nothing, and an Intrigue
+# play without effect counts nothing (OQ-113 (5)).
+_SHORTFALL_EVENTS: Final[Mapping[str, tuple[str, str | None, str | None]]] = {
+    "specimens_short": ("specimens", "requested", "generated"),
+    "troops_recruit_short": ("troops", "requested", "recruited"),
+    "intrigue_draw_short": ("intrigue", "requested", "drawn"),
+    "suspensor_deployment_unavailable": ("suspensor", "troops", "deployed"),
+    "contract_icons_fizzled": ("contract", "count", None),
+    "intrigue_without_effect": ("no_effect", None, None),
+}
+
+
+def _shortfalls(
+    outcome: RuleResult | None, player: int | None
+) -> list[tuple[str, int, int]]:
+    """``(kind, requested, made)`` for each shortfall event of the dry run.
+
+    Every one of these events is public and carries counts only, all of
+    them worked out from public zones (the troop supply, the Intrigue deck
+    and discard sizes, the seat's own held icons), so the warning shows the
+    acting seat nothing it could not see.
+    """
+
+    if outcome is None:
+        return []
+    found: list[tuple[str, int, int]] = []
+    for event in outcome.events:
+        entry = _SHORTFALL_EVENTS.get(event.kind)
+        if entry is None:
+            continue
+        payload = dict(event.payload)
+        if player is not None and payload.get("player") != player:
+            continue
+        kind, asked_key, made_key = entry
+        made = _payload_count(payload, made_key) if made_key else 0
+        requested = _payload_count(payload, asked_key) if asked_key else 0
+        if kind == "suspensor":
+            requested += made
+        found.append((kind, requested, made))
+    return found
+
+
+def _payload_count(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    return value if type(value) is int else 0
+
+
+def _jsonify(value: object) -> JsonValue:
+    """Convert nested dataclass output into plain JSON-ready values."""
+
+    if isinstance(value, StrEnum):
+        return str(value)
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _jsonify(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_jsonify(item) for item in value]
+    raise TypeError(f"cannot serialize value of type {type(value)!r}")

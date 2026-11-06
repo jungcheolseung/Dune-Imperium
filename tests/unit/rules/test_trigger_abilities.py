@@ -1,0 +1,194 @@
+"""Acquire, trash and discard boxes as ability records (composed effects, A4a)."""
+
+from collections.abc import Collection, Mapping
+from dataclasses import replace
+from typing import Any
+
+from dune_imperium import RulesetConfig
+from dune_imperium.content.core.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+    single_resource,
+)
+from dune_imperium.content.core.effects import GainResources
+from dune_imperium.content.registry.card_abilities import (
+    ACQUISITION_ABILITIES,
+    DISCARD_ABILITIES,
+    REVEAL_ACQUISITION_ABILITIES,
+    TRASH_ABILITIES,
+    TURN_START_ABILITIES,
+)
+from dune_imperium.core import GamePhase, GameState, PlayerState
+from dune_imperium.display.effect_dsl_text import reward_text
+from dune_imperium.display.effect_dsl_text_ko import reward_text_ko
+from dune_imperium.display.tokens import (
+    ACQUISITION_EFFECT_TEXT,
+    DISCARD_EFFECT_TEXT,
+    TRASH_EFFECT_TEXT,
+)
+from dune_imperium.display.tokens_ko import (
+    ACQUISITION_EFFECT_TEXT_KO,
+    DISCARD_EFFECT_TEXT_KO,
+    TRASH_EFFECT_TEXT_KO,
+)
+from dune_imperium.rules.intrigue_deck import triggered_intrigue_draw
+
+_TABLES: tuple[
+    tuple[
+        Mapping[Any, Ability],
+        Collection[Any],
+        AbilityTiming,
+        Mapping[Any, str],
+        Mapping[Any, str],
+    ],
+    ...,
+] = (
+    (
+        ACQUISITION_ABILITIES,
+        # The cards printing an acquire box, by id.
+        frozenset(
+            {
+                "overthrow",
+                "price_is_no_object",
+                "guild_spy",
+                "in_high_places",
+                "spy_network",
+                "strike_fleet",
+                "subversive_advisor",
+                "intelligence_training",
+                "steersman",
+                "interstellar_trade",
+                "mercantile_affairs",
+                "arrakis_revolt",
+                "imperial_throneship",
+                "possible_futures",
+                "spiritual_fervor",
+                "lisan_al_gaib",
+                "occupation",
+                "liet_kynes_card",
+                "chani_card",
+                "choam_directorship",
+                "lady_jessica_card",
+                "negotiated_withdrawal",
+                "water_peddler",
+                "appropriate",
+                "full_scale_assault",
+                "shai_hulud",
+                "corrino_genes",
+                "subject_x_137",
+            }
+        ),
+        AbilityTiming.ACQUIRE,
+        ACQUISITION_EFFECT_TEXT,
+        ACQUISITION_EFFECT_TEXT_KO,
+    ),
+    (
+        TRASH_ABILITIES,
+        # The cards printing a trash box, by id (stage 4 of
+        # docs/content-core-refactor-plan.md keys these boxes by card).
+        frozenset(
+            {
+                "sardaukar_soldier",
+                "eliminate_allies",
+                "sardaukar_standard",
+                "replacement_eyes",
+                "assassination_mission",
+            }
+        ),
+        AbilityTiming.TRASH,
+        TRASH_EFFECT_TEXT,
+        TRASH_EFFECT_TEXT_KO,
+    ),
+    (
+        DISCARD_ABILITIES,
+        frozenset({"spacing_guild_s_favor", "corrupt_bureaucrat"}),
+        AbilityTiming.DISCARD,
+        DISCARD_EFFECT_TEXT,
+        DISCARD_EFFECT_TEXT_KO,
+    ),
+)
+
+
+def test_every_trigger_box_is_an_automatic_record() -> None:
+    """Every acquire, trash and discard box has its record: one line, no cost,
+    nothing to choose, at its own timing. A box prints one icon, but the
+    original game's CHOAM Directorship prints four Influence icons (one per
+    Faction): an acquire box paid icon by icon (OQ-141)."""
+
+    several = {"choam_directorship": 4}
+    for table, members, timing, _, _ in _TABLES:
+        assert set(table) == set(members)
+        for effect, ability in table.items():
+            assert ability.timing is timing
+            assert ability.mark is AbilityMark.AUTOMATIC
+            (line,) = ability.sections
+            assert line.costs == () and line.condition is None
+            assert len(line.rewards) == several.get(effect, 1)
+
+
+def test_trigger_records_read_as_the_cards_print_them() -> None:
+    """The record's reward renders as the box's printed text, in both
+    languages ("Take 1 face-up Contract" too, since cleanup 2e)."""
+
+    for table, _, _, english, korean in _TABLES:
+        for effect, ability in table.items():
+            rewards = ability.sections[0].rewards
+            assert ", ".join(map(reward_text, rewards)) == english[effect], effect
+            assert ", ".join(map(reward_text_ko, rewards)) == korean[effect], effect
+
+
+def test_a_trigger_gain_names_its_one_resource() -> None:
+    assert single_resource(GainResources(solari=2)) == ("solari", 2)
+    assert single_resource(GainResources(water=1)) == ("water", 1)
+    for table, _, _, _, _ in _TABLES:
+        for ability in table.values():
+            for reward in ability.sections[0].rewards:
+                if isinstance(reward, GainResources):
+                    single_resource(reward)
+
+
+def _game(owner: PlayerState, deck: tuple[str, ...]) -> GameState:
+    return GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.COMBAT,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        intrigue_deck=deck,
+    )
+
+
+def test_a_triggered_intrigue_draw_outside_a_turn_draws_or_queues() -> None:
+    """Outside its owner's turn the box draws the deck's top card at once,
+    or with an empty deck returns the draw to queue [FAQ p. 2]."""
+
+    owner = PlayerState(player_id=0)
+    state = _game(owner, ("intrigue:bribery:0", "intrigue:bypass_protocol:0"))
+    drawn, deck, events, pending = triggered_intrigue_draw(
+        state, owner, 0, origin="card:x", source="src"
+    )
+    assert drawn.intrigue_cards == ("intrigue:bribery:0",)
+    assert deck == ("intrigue:bypass_protocol:0",)
+    assert [(event.event_id, event.kind) for event in events] == [
+        ("src", "intrigue_card_drawn")
+    ]
+    assert pending is None
+    empty = replace(state, intrigue_deck=())
+    kept, deck, events, pending = triggered_intrigue_draw(
+        empty, owner, 0, origin="card:x", source="src"
+    )
+    assert kept == owner and deck == () and events == ()
+    assert pending == (0, 1, "src")
+
+
+def test_the_other_trigger_boxes_are_hook_records() -> None:
+    """Guild Spy's Reveal acquisition and Litany Against Fear's turn start
+    keep their flows as code (composed A4h), each with its record."""
+
+    assert set(REVEAL_ACQUISITION_ABILITIES) == {"guild_spy"}
+    assert set(TURN_START_ABILITIES) == {"litany_against_fear"}
+    assert [a.hook for a in REVEAL_ACQUISITION_ABILITIES.values()] == ["guild_spy"]
+    assert [a.hook for a in TURN_START_ABILITIES.values()] == ["litany_against_fear"]
+    (litany,) = TURN_START_ABILITIES.values()
+    assert litany.mark is AbilityMark.OPTIONAL

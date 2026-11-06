@@ -1,0 +1,591 @@
+# 한국어 용어집 (KR·EN 룰북 대조)
+
+기준일: 2026-09-20 (공간 이름·목적 카드 2026-10-11)
+
+브라우저 UI의 언어 설정(ko/en)이 쓸 게임 용어를 **공식 한국어 룰북**에서 가져와
+영어 원어와 짝지은 표다. 목적은 하나다 — 화면에 쓰는 한국어 단어를 **발명하지
+않는 것**. `lessons.md`에 trash/discard를 넘겨짚어 카드 전사를
+틀리게 만든 기록이 있고, 같은 실수를 UI 문구에서 반복하지 않기 위한 표다.
+
+계획과 정책은 `../ui-improvement-plan.md`의 "언어
+정책" 절을 따른다.
+
+## 출처와 방법
+
+공식 한국어 룰북은 Dire Wolf Digital 리소스 페이지가 배포한다(국내 유통은 Korea
+Boardgames). 네 문서를 [`../../scripts/official-rule-sources.json`](../../scripts/official-rule-sources.json)에
+`*-ko` 항목으로 고정했고, 2026-09-20에 공식 URL에서 받아 checksum이 일치함을
+확인했다. 자세한 표는 [`sources.md`](sources.md)에 있다.
+
+**KR판과 EN판은 쪽수가 정렬돼 있다** — Uprising 본문 20쪽, Supplements 14쪽,
+Bloodlines 12쪽, Immortality 16쪽으로 양쪽이 같고, 같은 쪽에 같은 내용이 온다.
+그래서 아래 인용은 한 쪽 번호로 양쪽을 가리킨다: `[Main p. 20]`은 EN·KR 두
+룰북의 20쪽을 함께 뜻한다. 예외: 게임판 장소 설명서 1~2쪽은 양쪽이 각자
+가나다순·알파벳순이라 한 장소가 두 판에서 다른 쪽에 있다(아래 "게임판 장소 이름").
+
+대부분의 항목은 **본문 20쪽의 용어집 페이지**("ICON GUIDE AND ADDITIONAL
+TERMS")에서 왔다. 그 페이지에 없는 항목은 나온 쪽을 따로 적었다.
+
+재현:
+
+```bash
+# 인자 없이 돌리면 manifest의 모든 출처(영어 5 + 한국어 4)를 받는다.
+uv run scripts/prepare_official_rules.py --output-dir <저장소 밖 경로>
+```
+
+대조한 쪽은 대부분 각 룰북의 용어·아이콘 정리 페이지다: 본문 `[Main p. 20]`,
+Bloodlines `[Bloodlines p. 12]`, Immortality `[Immortality p. 16]`, 그리고 보드
+공간 설명서 `[Board Guide pp. 1-2]`.
+
+**새 출처 종류: `[KO card: <영어 카드 이름>]`.** 네 룰북이 침묵하지만 한글판
+카드 실물 인쇄가 쓰는 단어가 있으면(2026-09-25부터), 그 단어를 룰북 인용
+대신 이 형식으로 인용해 올릴 수 있다 — 발명이 아니라 또 하나의 공식 출처(카드
+자체의 인쇄)에서 가져왔다는 뜻이다. 룰북과 카드 인쇄 둘 다 침묵하면
+[`open-questions.md`](open-questions.md)로 간다.
+
+## 적용 범위
+
+| 대상 | 정책 |
+| --- | --- |
+| UI 크롬, 결정 prompt, 행동 로그 라벨 | 이 표의 한국어를 쓴다 |
+| 카드·리더·Conflict·Contract·기술 타일·사다우카 지휘관 기술 토큰 **이름** | **한글판 인쇄가 확인된 것은 그 한국어**, 나머지는 영어 그대로(2026-09-23 사용자 결정; 같은 날 혈통·불멸까지). 인쇄 제목은 한국어판 카드 실물 사진에서 두 번 독립적으로 읽어 일치한 것만 쓴다(`src/dune_imperium/display/names_ko.py`, 출처는 그 docstring). 엔진의 영어 이름이 인쇄되지 않은 구분자를 달면(계약의 I·II·3+, Skirmish의 배틀 아이콘) 한국어 이름도 같은 구분자를 단다 — 배틀 아이콘은 아래 표의 말로. 운항 카드는 제목이 인쇄되지 않아 엔진의 번호를 붙여 "운항 카드 3"(영어 "Navigation Card 3"과 같은 번호, 2026-10-11; 그 전에는 영어 그대로) |
+| **공간 이름** | **한국어 게임판 장소 설명서의 이름**(2026-10-11 사용자 결정: "선택 칸이나 활동 로그에 나오는 게임판 장소는 한국어 설정일 때는 한국어로"). 보드 스캔은 영어판 그대로 쓴다. 아래 "게임판 장소 이름" 표, `src/dune_imperium/display/names_ko.py`의 `spaces`. 그 전(2026-09-20~10-10)에는 영어 그대로였다 |
+| 목적 카드 **이름** | 제목이 인쇄되지 않아 룰북의 부르는 방식("오니솝터 목적 카드")에 인쇄된 인원수 표시(4/6P, 1-3P)를 붙인다(2026-10-11, 아래 "그 밖의 게임 용어"의 Objective 행) |
+| 카드 그림 | 화면 언어를 따른다 — 한국어 화면은 한글판 그림(있을 때), 영어 화면은 영어판 그림 |
+| 카드·Contract·Conflict·기술 타일·공간의 **효과 문구** | **화면 언어를 따른다**(2026-09-25 사용자 결정). 화면의 효과 문장은 카드 인쇄를 옮긴 것이 아니라 `display/*.py`가 엔진 데이터로 짓는 문장이다 — 카드 능력(`cards.py`·`tokens.py`), 책략·운항 카드(`effect_dsl_text.py`), 계약·교전 보상(`structs.py`), 공간(`spaces.py`), 기술 타일·지휘관 기술 토큰(`bloodlines.py`), 선택 줄의 효과 설명(`actions.py`). 한국어는 그 옆의 `*_ko` 쌍둥이가 이 표의 단어와 한글판 카드의 문체([`korean-card-style.md`](korean-card-style.md))로 짓고, 영어가 아이콘으로 그리는 자리는 `{term}`/`{term:count}` 자리표시자로 같은 아이콘을 그린다. 문장 속 공간 이름도 한국어(2026-10-11부터) |
+| 리더 능력·인장 반지 능력 **문구** | **한국어 화면은 한글판 카드 인쇄를 그대로 옮긴다**(2026-09-25 사용자 결정). 이름 행과 같이 두 번 독립적으로 옮기고 대조했다(`display/leaders_ko.py`, 기록은 `../implementation-audits/leaders-ko.md`). 인쇄가 이 표와 다른 단어를 쓴 곳(Liet Kynes가 모래벌레에 "소환")이나 공간 이름을 한국어로 적은 곳(시치 타브르, 튜엑의 시치)도 인쇄대로다. 한글판 스캔이 없는 Reverend Mother Jessica는 영어 |
+| 카드 그림에 인쇄된 문구 | 그림 그대로 — 한국어 화면은 한글판 그림이 있을 때 그것 |
+
+아래 표의 "적용"은 UI가 그 한국어를 쓰는지다. `참고`는 룰북에 있지만 위 정책에
+따라 화면에서는 영어를 유지하는 항목이다.
+
+## 자원과 비용
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Resources | 자원 | `[Main p. 20]` | 적용 |
+| Solari | 솔라리 | `[Main p. 20]` | 적용 |
+| Spice | 스파이스 | `[Main p. 20]` | 적용 |
+| Water | 물 | `[Main p. 20]` | 적용 |
+| bank | 은행 | `[Main p. 20]` | 적용 |
+| Paying a cost | 비용 지불 | `[Main p. 20]` | 적용 |
+| Persuasion | 설득 비용 | `[Main p. 20]` | 적용 |
+
+## 카드 동작
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Gain (resource/Influence/VP) | 얻다 | `[Main p. 20]`(아이콘 안내 "Resources"/"Influence"/"Victory Point" 항목: "자원을 얻거나 비용으로 지불할 때는", "영향력을 얻습니다", "승점 1을 얻으면") | 적용 |
+| Acquire | 획득 | `[Main p. 20]` | 적용 |
+| Take a Contract | 가져오다 | `[Main p. 16]`("이 아이콘은 게임판에서 앞면으로 놓인 두 계약 토큰 중 1개를 **가져와** 개인 공급처에 놓는다는 의미입니다"), `[Main p. 20]`("앞면 계약 1개를 **가져옵니다**") | 적용(Acquire의 "획득"과 다른 동사 — 같은 단어가 두 행동을 가리키지 않도록, 2026-09-25 검토) |
+| Complete (a Contract) | 완수 | `[Main p. 16]`("대부분의 계약에는 특정 게임판 장소가 적혀 있으며, 그 장소에 에이전트를 보내면 **완수됩니다**", "즉시 계약은 그 계약을 가져가자마자 **완수됩니다**") | 적용 |
+| Draw a card | 카드 1장 뽑기 | `[Main p. 20]` | 적용 |
+| Draw an Intrigue card | 책략 카드 1장 뽑기 | `[Main p. 20]` | 적용 |
+| Discard a card | 카드 1장 버리기 | `[Main p. 20]` | 적용 |
+| Trash one card | 카드 1장 폐기 | `[Main p. 20]` | 적용 |
+| Trash an Intrigue card | 책략 카드 1장 폐기 | `[Main p. 20]` | 적용 |
+| Steal Intrigue | 책략 훔치기 | `[Main p. 20]` | 적용 |
+
+**trash와 discard를 절대 섞지 않는다.** 폐기(trash)는 게임 상자로 보내 이번
+게임에서 빠지는 것이고, 버리기(discard)는 버림 더미로 가는 것이다
+(`[Main p. 20]`). 같은 구분을 놓쳐 실제 버그가 났다(`lessons.md`
+2026-09-09).
+
+## 영역
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| hand | 핸드 | `[Main p. 20]` | 적용 |
+| deck | 카드덱 | `[Main p. 20]` | 적용 |
+| discard pile | 버림 더미 | `[Main p. 20]` | 적용 |
+| supply | 개인 공급처 | `[Main p. 20]` | 적용 |
+| In Play | 플레이 영역 | `[Main p. 20]` | 적용 |
+| garrison | 주둔지 | `[Main p. 20]` | 적용 |
+| the Conflict (칸) | 교전 칸 | `[Main p. 20]` | 적용 |
+| observation post | 관측소 | `[Main p. 20]` | 적용 |
+
+## 유닛과 조각
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Troop | 병력 | `[Main p. 20]` | 적용 |
+| Recruit | 소집 | `[Main p. 20]` ("병력 1을 소집합니다") | 적용 |
+| Lose (troops) | 잃다 | `[Bloodlines p. 12]`(Chani clarification: "전술 트랙의 끝까지 도달하고도 남을 만큼의 병력을 잃거나 후퇴시킨 경우에도") | 적용(Influence의 "잃기"와 같은 동사, `합성 표기` 절 참고) |
+| Sandworm | 모래벌레 | `[Main p. 20]` | 적용 |
+| Sandworm (summon) | 부르다 — **"소환"이 아님**(소환은 Agent/Spy 회수 전용) | `[Main p. 10]`("모래벌레를 불러서 즉시 교전 칸에 배치합니다"), `[Main p. 20]`("Sandworm" 항목: "모래벌레 1마리를 불러서 배치합니다") | 적용 |
+| units (병력 + 모래벌레) | 부대 | `[Main p. 10]` | 적용 |
+| Agent | 에이전트 | `[Main p. 20]` | 적용 |
+| Agent box | 에이전트 칸 | `[Main p. 8]`(카드 구조 범례 D=에이전트 칸, E=공개 칸: "당신의 카드덱을 구성하는 각 카드의 효과는 에이전트 칸과 공개 칸으로 구분되어 있습니다") | 적용 |
+| Send an Agent | 보내다 | `[Main p. 9]`("에이전트 1명을 게임판의 장소로 보내면"), `[Main p. 7]`("에이전트를 게임판의 팩션 장소에 보내면") | 적용(Place a Spy의 "배치하다"와는 다른 동사) |
+| Recall Agent | 에이전트 소환 | `[Main p. 20]` | 적용 |
+| Spy | 스파이 | `[Main p. 20]` | 적용 |
+| Place a Spy | 배치 | `[Main p. 20]`("Spy" 항목: "개인 공급처에서 스파이 1명을 가져와서 게임판의 빈 관측소 한 곳에 배치합니다") | 적용(Deploy와 같은 동사를 공유) |
+| Deploy (to the Conflict) | 배치 | `[Main p. 10]`("부대를 교전 칸에 배치할 수 있습니다"), `[Main p. 20]`("Control" 항목: "개인 공급처에 있던 병력 1을 교전 칸에 배치할 수 있습니다") | 적용 |
+| Recall Spy | 스파이 소환 | `[Main p. 20]` | 적용 |
+| Infiltrate | 침투 | `[Main p. 11]` ("침투: 다른 플레이어의 에이전트가 이미 놓여 있는 게임판 장소에…") | 적용 |
+| spying on (a Faction) | 정탐 | `[KO card: Guild Spy]` ("당신이 정탐하고 있는 각각의 팩션에서") | 적용 |
+| Gather Intelligence | 정보 수집 | `[Main p. 11]` ("정보 수집: 당신이 게임판 장소에 에이전트를 보낼 때마다…") | 적용 |
+| Maker Hooks | 메이커 작살 | `[Main p. 20]` | 적용 |
+| Shield Wall | 방어벽 | `[Main p. 20]` | 적용 |
+| Control marker | 지배 마커 | `[Main p. 20]` | 적용 |
+| Score marker / track | 승점 마커 / 승점 트랙 | `[Main p. 20]` | 적용 |
+| Combat marker / track | 전투 마커 / 전투 트랙 | `[Main p. 12]` | 적용 |
+| First Player marker | 시작 플레이어 마커 | `[Main p. 14]` | 적용 |
+| Alliance token | 동맹 토큰 | `[Main p. 20]` | 적용 |
+| Contract token | 계약 토큰 | `[Main p. 16]` | 적용 |
+
+## 전투
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Conflict | 교전 | `[Main p. 20]` | 적용 |
+| Combat space | 전투 장소 | `[Main p. 10]` | 적용 |
+| strength | 전투력 | `[Main p. 12]` | 적용 |
+| Sword | 검 | `[Main p. 20]` | 적용 |
+| Retreat | 후퇴 | `[Main p. 20]` | 적용 |
+| Battle Icon | 배틀 아이콘 | `[Main p. 20]` | 적용 |
+| Crysknife / Desert Mouse / Ornithopter | 크리스나이프 / 사막쥐 / 오니솝터 | `[Main p. 20]` | 적용(배틀 아이콘; 2026-09-23부터 — 같은 이름의 음모 카드는 한글판 인쇄가 확인된 것만) |
+| wild battle icon | 와일드 배틀 아이콘 | `[Bloodlines p. 5]`("와일드 배틀 아이콘을 개인 공급처에 있는 아무 배틀 아이콘… 하나와 짝지어도 됩니다") | 적용(Skirmish (Wild)의 구분자 "와일드", 2026-09-23) |
+| Victory Point | 승점 | `[Main p. 20]` | 적용 |
+| first / second / third place | 1등 / 2등 / 3등 칸 | `[Main p. 14]` | 적용 |
+
+## 팩션과 영향력
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Influence | 영향력 | `[Main p. 20]` | 적용 |
+| Emperor | 황제 | `[Main p. 20]` | 적용 |
+| Spacing Guild | 우주 항행 길드 | `[Main p. 20]` | 적용 |
+| Bene Gesserit | 베네 게세리트 | `[Main p. 20]` | 적용 |
+| Fremen | 프레멘 | `[Main p. 20]` | 적용 |
+| Alliance | 동맹 | `[Main p. 20]` | 적용 |
+| Fremen Bond | 프레멘의 유대감 | `[Main p. 20]` | 적용 |
+| Landsraad | 랜드스래드 | `[Main p. 2]` | 적용 |
+| any Faction | 4개의 팩션 중 하나 | `[Main p. 20]`("Influence" 선택 효과 항목: "영향력 1 얻기, 영향력 2 얻기, 영향력 1 잃기: 4개의 팩션 중 하나를 선택합니다") | 적용 |
+| each Faction | 각 팩션 | `[Main p. 7]`("게임 시작 시 팩션 큐브들은 각 팩션의 영향력 트랙 가장 아래 칸에 놓입니다") | 적용 |
+
+## 라운드와 단계
+
+라운드 구조는 `[Main p. 8]`의 순서도에서 왔다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Setup | 게임 준비 | `[Main pp. 3-4]`(펼침면 제목 `SETUP` / "게임 준비") | 적용 |
+| 1. Round Start | 1. 라운드 시작 | `[Main p. 8]` | 적용 |
+| 2. Player Turns | 2. 플레이어 차례 | `[Main p. 8]` | 적용 |
+| Agent turn | 에이전트 차례 | `[Main p. 8]` | 적용 |
+| Reveal turn | 공개 차례 | `[Main p. 8]` | 적용 |
+| 3. Combat | 3. 전투 | `[Main p. 8]` | 적용 |
+| 4. Makers | 4. 메이커스 | `[Main p. 8]` | 적용 |
+| 5. Recall | 5. 소환 | `[Main p. 8]` | 적용 |
+| Endgame | 종료 단계 | `[Main p. 20]` | 적용 |
+
+## 그 밖의 게임 용어
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Maker | 메이커 | `[Main p. 20]` | 적용 |
+| opponent | 다른 플레이어 — **"상대"가 아님** | `[Main p. 20]`("Steal Intrigue": "책략 카드를 4장 이상 가진 다른 플레이어들은 각자 당신에게…"), `[Main p. 7]`(동맹 토큰 이전 규칙: "이후 해당 영향력 트랙에서 다른 플레이어의 팩션 큐브가 더 높은 칸을 차지하게 되면") | 적용 |
+| game board | 게임판 | `[Main p. 3]`("양면 게임판" / "Two-sided game board") | 적용 |
+| Imperium Deck / Intrigue Deck / Conflict deck | 임페리움 카드덱 / 책략 카드덱 / 교전 카드덱 | `[Main p. 4]`(준비 C1·C2, "교전 카드덱을 만듭니다") | 적용 |
+| Contract | 계약 | `[Main p. 20]` | 적용 |
+| Control | 지배 | `[Main p. 20]` | 적용 |
+| Signet Ring | 인장 반지 | `[Main p. 20]` | 참고(카드 이름) |
+| Signet Ring ability | 인장 반지 능력 | `[Main p. 3]`(지도자 카드 "인장 반지 능력") | 적용 |
+| Intrigue | 책략 | `[Main p. 20]` | 적용 |
+| Plot / Combat / Endgame Intrigue | 음모 / 전투 / 종료 단계 책략 카드 | `[Main p. 7]` | 적용 |
+| Imperium card | 임페리움 카드 | `[Main p. 20]` | 적용 |
+| Reserve card | 예비 카드 | `[Main p. 20]` | 적용 |
+| Leader | 지도자 | `[Main p. 20]` | 적용 |
+| CHOAM Module | 초암 모듈 | `[Main p. 20]` | 적용 |
+| Uprising | 봉기 | `[Main p. 20]` | 적용 |
+| Dune: Imperium — Uprising (제품 이름) | 듄 임페리움: 봉기 | `[Main p. 2]`("듄 임페리움: 봉기는 덱빌딩 일꾼 놓기 게임으로"), `[Bloodlines p. 3]` | 적용(기본 판 선택, 봉기 보드 그림의 이름; 페이지 제목이던 것은 2026-11-06 사용자 결정으로 "듄: 임페리움"이 됨, 아래 행) |
+| Dune: Imperium (제품 이름, 원판) | 듄: 임페리움 | `[DI-ko p. 2]`("듄:임페리움은 덱빌딩 일꾼 놓기 게임으로"), `[DI-ko p. 15]`(판권 줄 "<듄: 임페리움>은 … (주)코리아보드게임즈가") | 적용(모든 페이지·게임 화면 머리글·브라우저 탭·서버 런처 창의 제목, 2026-11-06 사용자 결정 — 그 전에는 원판 판의 페이지 제목만, 2026-10-31; 기본 판 선택) |
+| set aside (Shaddam의 사다우카 계약) | 따로 치워두다 | `[Board Guide p. 8]`("사다우카 계약 2개를 따로 치워둡니다") | 적용 |
+| set aside (나중에 쓰려고 빼 둔 카드, Manipulate) | 따로 빼두다 | `[Immortality p. 14]`("이 지도자를 사용해 따로 빼둔 카드") | 적용 |
+| Swordmaster | 소드마스터 | `[Main p. 17]`, `[Board Guide p. 3]` | 적용(획득·좌석 상태; 2026-10-11부터 보드 공간 이름도) |
+| High Council | 원로회 / 원로회 자리 | `[Main p. 17]`, `[Board Guide p. 2]`("원로회의 빈자리에 의원 토큰을 놓습니다") | 적용(자리·좌석 상태; 2026-10-11부터 보드 공간 이름도) |
+| Arrakeen / Spice Refinery / Imperial Basin | 아라킨 / 스파이스 정제소 / 제국 분지 | `[Main p. 20]` | 적용(공간 이름, 2026-10-11; 아래 "게임판 장소 이름") |
+| Objective card | 목적 카드 | `[Main p. 3]`("목적 카드 5", "라이벌에게 오니솝터 목적 카드를 주고"), `[Main p. 5]`("목적 카드를 잘 섞습니다. (일부 카드에는 인원수를 의미하는 “1-3P”나 “4/6P”와 같은 …") | 적용(2026-10-11). 카드 이름은 배틀 아이콘 + 목적 카드 + 인쇄된 인원수 표시: 크리스나이프 목적 카드 / 크리스나이프 목적 카드 4/6P / 사막쥐 목적 카드 / 사막쥐 목적 카드 4/6P / 오니솝터 목적 카드 1-3P |
+
+"참고"로 적은 카드 이름은 룰북이 한국어로 옮겼지만 UI는 영어를 유지한다 —
+카드 그림이 영어판이라 화면의 글자와 그림이 어긋나기 때문이다.
+한국어 스캔을 확보하면 그림은 코드 변경 없이 바뀌고(`display/images.py`의
+`DEFAULT_LANGUAGES = ("ko", "en")`), 그때 이 항목들의 "적용"을 다시 판단한다.
+공간 이름은 2026-10-11 사용자 결정으로 보드 스캔이 영어판인 채로 한국어를 쓴다
+(아래 "게임판 장소 이름").
+
+## 합성 표기
+
+아이콘의 대체 텍스트처럼 **두 용어를 붙여 써야 하는 자리**가 있다. 아래는 위 표의
+항목만으로 만든 합성이며 새 번역이 아니다. 영어판도 같은 방식으로 합성한다
+(`Emperor Influence`, `Trash an Intrigue card`).
+
+| EN | 한국어 | 합성 근거 |
+| --- | --- | --- |
+| Emperor Influence | 황제 영향력 | 황제 + 영향력, `[Main p. 20]`("해당하는 팩션의 영향력") |
+| Spacing Guild Influence | 우주 항행 길드 영향력 | 위와 같음 |
+| Bene Gesserit Influence | 베네 게세리트 영향력 | 위와 같음 |
+| Fremen Influence | 프레멘 영향력 | 위와 같음 |
+| Lose Influence | 영향력 잃기 | `[Main p. 20]`("영향력 1 잃기") |
+| Trash an Intrigue card | 책략 카드 폐기 | `[Main p. 20]`("책략 카드 1장 폐기")에서 수량만 뺀 형태 |
+| Wild card (종료 시 와일드 짝짓기 로그의 그 카드) | 와일드 배틀 아이콘 카드 | 와일드 배틀 아이콘 `[Bloodlines p. 5]` + 카드; 좌석 패널의 "배틀 아이콘 카드"와 같은 꼴 (2026-10-11) |
+
+수량은 아이콘 옆에 숫자로 붙으므로("영향력 1 잃기" → `2` + 아이콘) 합성 표기에는
+수량을 넣지 않는다.
+
+## Agent 아이콘 분류
+
+보드 공간의 Agent 아이콘 일곱 가지다. 양쪽 룰북의 공간 설명에서 그대로 추출했고
+개수와 항목이 정확히 일치한다(`[Board Guide pp. 1-2]`).
+
+| EN | 한국어 | 적용 |
+| --- | --- | --- |
+| City | 도시 | 적용 |
+| Emperor | 황제 | 적용 |
+| Spacing Guild | 우주 항행 길드 | 적용 |
+| Bene Gesserit | 베네 게세리트 | 적용 |
+| Fremen | 프레멘 | 적용 |
+| Landsraad | 랜드스래드 | 적용 |
+| Spice Trade | 스파이스 거래 | 적용 |
+
+## 게임판 장소 이름
+
+2026-10-11 사용자 결정: 보드 스캔은 영어판 그대로 쓰고, 선택 칸·행동 로그·팝오버
+등 화면의 글자로 나오는 게임판 장소는 한국어 화면에서 아래 이름을 쓴다(영어 화면은
+영어 그대로). 22곳은 KR·EN 게임판 장소 설명서 `[Board Guide pp. 1-2]`에서 짝지었다.
+두 설명서는 각자 가나다순·알파벳순이라 순서가 다르고 같은 장소가 한쪽에서는 1쪽,
+다른 쪽에서는 2쪽에 있기도 하므로(아라킨은 KR 2쪽, EN 1쪽) 모두 두 쪽을 함께 인용한다. 에이전트 아이콘·전투 장소
+여부·조건·비용·효과가 같은 항목끼리 맞췄다. KR판 PDF는 장소 제목만 글리프 번호로
+들어 있어(텍스트 추출이 `/_2689/_1204` 꼴) 쪽을 그림으로 읽었고, 같은 글자가 다른
+제목에서 같은 글리프 번호인지(예: "제"는 제국 분지·제국 특권·스파이스 정제소에서
+모두 `_2689`) 대조해 확인했다. 계약 타일의 한글판 인쇄 제목(`names_ko.py`의
+`contracts`: 보급품 배송·원로회·비밀·스파이스 정제소·첩보 활동·하이라이너)과도
+일치한다. 코드는 `src/dune_imperium/display/names_ko.py`의 `_SPACES`.
+
+| EN | 한국어 | 인용 |
+| --- | --- | --- |
+| Accept Contract | 계약 수락 | `[Board Guide pp. 1-2]` |
+| Arrakeen | 아라킨 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Assembly Hall | 회의장 | `[Board Guide pp. 1-2]` |
+| Deep Desert | 사막 심부 | `[Board Guide pp. 1-2]` |
+| Deliver Supplies | 보급품 배송 | `[Board Guide pp. 1-2]` |
+| Desert Tactics | 사막 전술 | `[Board Guide pp. 1-2]` |
+| Dutiful Service | 순종적인 공헌 | `[Board Guide pp. 1-2]` |
+| Espionage | 첩보 활동 | `[Board Guide pp. 1-2]` |
+| Fremkit | 프렘 행낭 | `[Board Guide pp. 1-2]` |
+| Gather Support | 지원자 모집 | `[Board Guide pp. 1-2]` |
+| Hagga Basin | 하가 분지 | `[Board Guide pp. 1-2]` |
+| Heighliner | 하이라이너 | `[Board Guide pp. 1-2]` |
+| High Council | 원로회 | `[Board Guide pp. 1-2]` |
+| Imperial Basin | 제국 분지 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Imperial Privilege | 제국 특권 | `[Board Guide pp. 1-2]` |
+| Research Station | 연구 기지 | `[Board Guide pp. 1-2]`, `[Immortality p. 16]` |
+| Sardaukar | 사다우카 | `[Board Guide pp. 1-2]` |
+| Secrets | 비밀 | `[Board Guide pp. 1-2]` |
+| Shipping | 운송 | `[Board Guide pp. 1-2]` |
+| Sietch Tabr | 시치 타브르 | `[Board Guide pp. 1-2]` |
+| Spice Refinery | 스파이스 정제소 | `[Board Guide pp. 1-2]`, `[Main p. 20]` |
+| Swordmaster | 소드마스터 | `[Board Guide pp. 1-2]` |
+| Tuek's Sietch (Bloodlines) | 튜엑의 시치 | `[Bloodlines p. 2]`, `[Bloodlines p. 12]` |
+
+조사는 한국어 이름에 맞춰 붙인다(지원자 모집**으로**, 사다우카**로**).
+
+## 지도자 능력 이름과 그 밖의 행동·로그 단어
+
+행동 목록·로그 라벨(`static/labels.js` 등)이 지도자 능력·인장 반지 이름을 부르는
+자리다. 2026-09-25부터 지도자 팝오버는 한글판 카드 인쇄를 옮겨 썼지만(`display/leaders_ko.py`,
+두 번 독립적으로 옮겨 대조) 라벨은 영어로 남아 있었다. 2026-10-11 사용자 결정("확실한 한국어
+공식 표현이 있는거지? 그럼 한국어 변환 하자")으로 라벨도 인쇄된 이름을 쓴다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Other Memories (Lady Jessica) | 다른 기억들 | `[KO card: Lady Jessica]` | 적용(2026-10-11) |
+| Memories (Lady Jessica의 병력) | 기억 / 보낸 기억(Memories returned) | `[KO card: Lady Jessica]`("이것은 이제 당신의 기억이 됨", "그렇게 보낸 기억 1당 카드 1장을 뽑을 수 있음") | 적용(2026-10-11) |
+| Into the Fray (Duncan Idaho) | 전투 속으로 | `[KO card: Duncan Idaho]` | 적용(2026-10-11) |
+| Fedaykin Maneuver (Chani) | 페다이킨의 책략 | `[KO card: Chani]` | 적용(2026-10-11) |
+| Secret Project (Kota Odax of Ix) | 비밀 프로젝트 | `[KO card: Kota Odax of Ix]` | 적용(2026-10-11) |
+| Arrakis Planetologist (Liet Kynes) | 아라키스 행성학자 | `[KO card: Liet Kynes]` | 적용(2026-10-11) |
+| Feyd token | 페이드 토큰 | `[Main p. 3]`(구성물 "페이드 토큰"), `[Main p. 17]`("페이드 토큰을 지도자에 표시된 훈련 트랙 맨 왼쪽"), `[KO card: Feyd-Rautha Harkonnen]`("훈련 트랙에 놓인 페이드 토큰") | 적용(2026-10-11) |
+| Immediate (Contract) | 즉시 / 즉시 계약 | `[Main p. 16]`("즉시 계약은 그 계약을 가져가자마자 완수됩니다"), `[KO card: Immediate]`(`names_ko.py`) | 적용(2026-10-11) |
+
+같은 날 카드 이름이 한글판 인쇄로 확인된 카드를 라벨·문구에 영어로 적던 곳도 고쳤다:
+Usurp → 찬탈, Reclaimed Forces → 되돌아온 병사들, Advanced Data Analysis → 고급 데이터 분석
+(`names_ko.py`).
+
+## Bloodlines 확장과 Tech Module
+
+대부분 `[Bloodlines p. 12]`의 "ICON GUIDE AND TERMS"에서 왔다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Bloodlines | 혈통 | `[Bloodlines p. 12]` | 적용 |
+| Sardaukar Commander | 사다우카 지휘관 | `[Bloodlines p. 4]` | 적용 |
+| Sardaukar Commander Skill | 사다우카 지휘관 기술 토큰 | `[Bloodlines p. 4]` | 적용 |
+| Tech Module | 기술 모듈 | `[Bloodlines p. 12]` | 적용 |
+| Tech tile | 기술 타일 | `[Bloodlines p. 12]` | 적용 |
+| Acquire Tech | 기술 획득 | `[Bloodlines p. 12]` | 적용 |
+| Flip (a Tech tile) | 뒤집기 | `[Bloodlines p. 12]` | 적용 |
+| Ixian Embassy board | 익스 대사관 판 | `[Bloodlines p. 12]` | 적용 |
+| Command (6+) | 통솔 | `[Bloodlines p. 12]` | 적용 |
+| Combat (아이콘) | 전투 | `[Bloodlines p. 12]` | 적용 |
+| Spy with Deep Cover | 잠복 스파이 | `[Bloodlines p. 12]` | 적용 |
+| Twisted Intrigue | 뒤틀린 책략 | `[Bloodlines p. 12]` | 적용 |
+| Navigation card | 운항 카드 | `[Bloodlines p. 12]` | 적용 |
+| Navigation slot | 운항 구획 | `[KO card: Navigation Card 3]` ("이 카드가 운항 구획 4에 놓여 있었다면") | 적용 |
+| Tactics token / track | 전술 토큰 / 전술 트랙 | `[Bloodlines p. 12]` | 적용 |
+| Rival Tech Tile | 라이벌 기술 타일 | `[Bloodlines p. 12]` | 범위 밖(1인 게임) |
+| Tuek's Sietch | 튜엑의 시치 | `[Bloodlines p. 12]`, `[Bloodlines p. 2]`("튜엑의 시치 게임판 장소 (에스마르 튜엑 전용)") | 적용(공간 이름, 2026-10-11) |
+| Forbidden Weapon | 금지된 무기 | `[Bloodlines p. 12]` | 참고(타일 이름) |
+
+> **기술은 두 가지를 가리킨다.** 한국어판은 Tech tile을 `기술 타일`, Sardaukar
+> Commander Skill을 `기술 토큰`으로 옮겨 둘 다 "기술"로 시작한다. 화면에서
+> **맨 "기술"만 쓰지 않는다** — 항상 `기술 타일` 또는 `사다우카 지휘관 기술 토큰`처럼
+> 뒤 명사까지 붙여 쓴다. 둘은 서로 다른 구성물이고 규칙도 다르다.
+
+## Immortality 확장
+
+대부분 `[Immortality p. 16]`의 "NEW ICONS"에서 왔다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Immortality | 불멸 | `[Immortality p. 16]` | 적용 |
+| Research | 연구 | `[Immortality p. 16]` | 적용 |
+| research token / track | 연구 토큰 / 연구 트랙 | `[Immortality p. 16]` | 적용 |
+| Genetic marker | 유전자 마커 | `[Immortality p. 16]` | 적용 |
+| Specimen | 표본 | `[Immortality p. 16]` | 적용 |
+| Axolotl tanks | 악솔로틀 탱크 | `[Immortality p. 16]` | 적용 |
+| Bene Tleilax board | 베네 틀레이락스 게임판 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu | 틀레이락스 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu token / track | 틀레이락스 토큰 / 틀레이락스 트랙 | `[Immortality p. 16]` | 적용 |
+| Tleilaxu Row | 틀레이락스 열 | `[Immortality p. 4]` | 적용 |
+| Imperium Row | 임페리움 열 | `[Immortality p. 4]` | 적용 |
+| Reserve (더미) | 예비 카드 더미 | `[Immortality p. 4]` | 적용 |
+| Graft | 접합 | `[Immortality p. 10]` | 적용 |
+| Family Atomics token | 가문 핵 토큰 | `[Immortality p. 3]`(구성물), `[Immortality p. 5]`(준비), `[Immortality p. 12]`("각 플레이어는 게임 준비 단계에 가문 핵 토큰을 1개씩 받습니다… 가문 핵 토큰을 소비할 수 있습니다… 임페리움 열을 다시 채웁니다") | 적용 |
+| Research Station | 연구 기지 | `[Immortality p. 16]`, `[Board Guide p. 2]` | 적용(공간 이름, 2026-10-11) |
+| Go to 11 (변형) | 11점을 향해 | `[Immortality p. 12]`("11점을 향해 … 4인 게임이라면, 승점 트랙의 0칸에서 게임을 시작해서 종료 점수를 10점으로 설정하면 됩니다") | 적용 |
+
+## Rise of Ix Epic Game Mode
+
+`epic_game` 옵션(2026-09-28)의 용어. 출처는 한국어판 Rise of Ix 룰북(`rise-of-ix-ko`)과 Uprising 한국어판 룰북이다. 카드 이름 둘은 한글판 카드 실물 사진으로 확인한 것이 아니라 **한국어판 룰북 표기를 쓰기로 한 사용자 결정**(2026-09-28, OQ-092)이다. TTS 한글화 모드의 Control the Spice 카드면은 "스파이스를 조종하라"로 적혀 있지만 쓰지 않는다.
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Epic Game Mode | 에픽 게임 모드 | `[Rise of Ix p. 10]`("에픽 게임 모드에서는 10점이 아닌 12점에 도달한 플레이어가 있어야 게임이 끝납니다") | 적용 |
+| Control the Spice | 스파이스를 지배하라 | `[Rise of Ix p. 10]`("사막 행성 듄 카드를 1장씩 제거한 다음, 스파이스를 지배하라 카드를 1장씩 추가합니다"), `[Immortality p. 12]` | 적용(카드 이름, 사용자 결정) |
+| Economic Supremacy | 경제적 패권 | `[Main p. 18]`("이런 경우, 경제적 패권을 추가합니다"), `[Board Guide p. 13]` | 적용(카드 이름, 사용자 결정) |
+| Epic Game Only (아이콘) | 에픽 게임 모드 전용 | `[Rise of Ix p. 12]` | 참고 |
+
+## 원판 Dune: Imperium
+
+원판 화면(`docs/base-game-and-ix-plan.md` 18절 P5)의 이름과 용어. 출처는 공식 한국어 원판 룰북(`imperium-ko`,
+`KR_Dune_Imperium_Rulebook.pdf`, sha256 `f3bf6839…`; 사용자의 로컬 사본을 2026-10-29 사용자 허락으로 읽음)이다. 쪽은 `[DI-ko p. N]`.
+본문을 PDF 읽기 도구 둘(pypdf, PyMuPDF)로 따로 뽑아 모든 이름이 같았다. 원판 Imperium·Intrigue 카드 이름은 한글판 카드 사진을 찾을
+때까지 영어다(계획 9절 6). 룰북 본문에 이름이 없는 지도자 둘(Duke Leto Atreides, Countess Ariana Thorvald)도 영어다.
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Conspire / Wealth | 흑막 / 재물 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Heighliner / Foldspace | 하이라이너 / 접힘 공간 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Selective Breeding / Secrets | 선별 교배 / 비밀 | `[DI-ko p. 17]` | 적용(공간 이름) |
+| Hardy Warriors / Stillsuits | 강인한 전사들 / 스틸슈트 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Hall of Oratory / Rally Troops / Mentat / Swordmaster / High Council | 강당 / 병력 소집 / 멘타트 / 소드마스터 / 원로회 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Arrakeen / Carthag / Research Station / Sietch Tabr | 아라킨 / 카르타그 / 연구 기지 / 시치 타브르 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Imperial Basin / Hagga Basin / The Great Flat | 제국 분지 / 하가 분지 / 대평지 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Secure Contract / Sell Melange | 계약 체결 / 멜란지 판매 | `[DI-ko p. 17]` | 적용(공간 이름) |
+| Mentat (말·아이콘) | 멘타트 | `[DI-ko pp. 3, 16, 18]`("멘타트를 가져와 지도자 위에 놓습니다") | 적용 |
+| Reserve | 예비 카드 | `[DI-ko pp. 3, 4]` | 참고 |
+| Arrakis Liaison / The Spice Must Flow / Foldspace (Reserve) | 아라키스 연락책 / 스파이스는 흘러야 한다 / 접힘 공간 | `[DI-ko p. 3]` | 적용(카드 이름) |
+| Acquire a Foldspace card (아이콘) | 접힘 공간 카드 획득 | `[DI-ko p. 16]` | 적용 |
+| Paul Atreides / Glossu "Beast" Rabban | 폴 아트레이드 / 짐승 같은 글로서 라반 | `[DI-ko pp. 4, 13, 20]` | 적용(지도자 이름) |
+| Baron Vladimir Harkonnen / Masterstroke | 블라디미르 하코넨 남작 / 절묘한 수완 | `[DI-ko pp. 3, 13]` | 적용 |
+| Count Ilban Richese / Helena Richese / Earl Memnon Thorvald | 일반 리체스 백작 / 헬레나 리체스 / 멤논 소르발드 백작 | `[DI-ko pp. 4, 20]` | 적용(지도자 이름) |
+
+## Arrakeen Scouts 모듈
+
+**새 출처 종류: `[KO app: <loc key>]`**(2026-09-28). Arrakeen Scouts에는 룰북이 없어 Dire Wolf Game Room 컴패니언 앱의 공식 한국어 문구(`ko_KR` 로컬라이제이션)가 한국어 용어의 출처다([sources.md](sources.md)의 "Arrakeen Scouts" 절). 인용은 앱의 loc key다. 앱 한국어에는 오역과 누락이 있어(OQ-086) **용어로만** 쓰고, 효과 문장은 이 표의 단어로 우리가 짓는다.
+
+**Scouts는 이 출처를 계속 쓴다(2026-10-31 사용자 결정, base-game-and-ix-plan.md 20.5 P8-2 "Scouts만 앱 한국어").**
+원판 일정 풀(P8)의 새 항목 35개도 Game Room 앱의 한국어 이름을 쓴다. 오역은 OQ-086처럼 확인하고, 효과 문장은 이 표의 단어로 우리가 짓는다.
+2026-10-21 사용자 결정("한국어 카드 이름·문구는 공식 한글판(공식 KR 룰북, 한글판 실물 카드 사진)만, 앱 번역은 쓰지 않는다")은 그대로다: Steam
+Dune: Imperium 앱의 한국어 문구와 TTS 한글화 모드는 카드·지도자·보드·Tech 타일 어디에도 쓰지 않는다. Arrakeen Scouts는 인쇄된 제품이 없는 앱
+모드이고, Dire Wolf의 Game Room 앱이 이 모드의 유일한 한국어판이라 이 절의 항목 이름과 용어만 예외다.
+
+| EN | 한국어 | 인용 | 적용 |
+| --- | --- | --- | --- |
+| Arrakeen Scouts | 아라킨 스카웃 | `[KO app: spice.mainmenu.34pgame.label]` | 적용 |
+| subcommittee | 소위원회 | `[KO app: spice.subcommittees.confirmtitle]`("소위원회 가입") | 적용 |
+| remaining subcommittee seats | 남아있는 소위원회 자리 | `[KO app: spice.subcommittees.available.title]` | 적용 |
+| mission | 임무 | `[KO app: spice.mission.title]` | 적용 |
+| event | 이벤트 | `[KO app: spice.event.title]` | 적용 |
+| auction | 경매 | `[KO app: spice.auction.title]` | 적용 |
+| sale | 판매 | `[KO app: spice.sale.title]` | 적용 |
+
+**항목 이름.** 카드 이름처럼 공식 한국어가 있으므로 한국어 화면은 아래 이름을 쓴다(영어 화면은 EN). 같은 이름의 중간·후반 판과 CHOAM 판은 이름을 함께 쓴다. 이벤트의 계열 이름은 앱이 제목으로, 변형 이름을 부제로 보여 준다: 스파이스 획득 `[KO app: spice.event.title.spicegain]`, 책략 보너스 `[KO app: spice.event.title.intriguebonus]`, 영향력 증가 `[KO app: spice.event.title.influencegain]`, 영향력 축소 `[KO app: spice.event.title.influencereduction]`.
+
+| EN | 한국어 | 인용 |
+| --- | --- | --- |
+| Appropriations | 재무 | `[KO app: spice.subcommittees.appropriations.title]` |
+| Intelligence | 정보 | `[KO app: spice.subcommittees.intelligence.title]` |
+| Readiness | 긴급대응 | `[KO app: spice.subcommittees.readiness.title]` |
+| CHOAM Coordination | 초암 조직화 | `[KO app: spice.subcommittees.choamcoordination.title]` |
+| Growth Project | 성장 프로젝트 | `[KO app: spice.subcommittees.growthproject.title]` |
+| Oversight | 관리감독 | `[KO app: spice.subcommittees.oversight.title]` |
+| Investigations | 수사 | `[KO app: spice.subcommittees.investigations.title]` |
+| Forecasting | 예측 | `[KO app: spice.subcommittees.forecasting.title]` |
+| CHOAM Management | 초암 운영 | `[KO app: spice.subcommittees.choammanagement.title]` |
+| Analytics | 분석 | `[KO app: spice.subcommittees.analytics.title]` |
+| Relations | 외교 | `[KO app: spice.subcommittees.relations.title]` |
+| Contingencies | 유사시 대비 | `[KO app: spice.subcommittees.contingencies.title]` |
+| Leverage | 권위 | `[KO app: spice.subcommittees.leverage.title]` |
+| Tleilaxu Relations | 협력: 틀레이락스 | `[KO app: spice.subcommittees.tleilaxurelations.title]` |
+| Security Detail | 경호 요원 | `[KO app: spice.mission.securitydetail.title]` |
+| Imperial Reserve | 제국 비축 물자 | `[KO app: spice.mission.imperialreserve.title]` |
+| Desert Riding | 사막 질주 | `[KO app: spice.mission.desertriding.title]` |
+| Urban Surveillance | 유익한 정보원 - 도시 감시 | `[KO app: spice.mission.valuedinformants.urbansurveillance.title]` |
+| Planetary Exploration | 유익한 정보원 - 행성 탐사 | `[KO app: spice.mission.valuedinformants.planetaryexploration.title]` |
+| CHOAM Research | 초암 연구 | `[KO app: spice.mission.choamresearch.title]` |
+| CHOAM Escort | 초암 호송대 | `[KO app: spice.mission.choamescort.title]` |
+| Sponsored Research | 연구 후원 | `[KO app: spice.mission.sponsoredresearch.title]` |
+| Back Room Deal | 밀실 거래 | `[KO app: spice.mission.backroomdeal.title]` |
+| Prison Planet | 정예 사다우카 - 감옥 행성 | `[KO app: spice.mission.elitesardaukar.prisonplanet.title]` |
+| Emperor's Schemes | 정예 사다우카 - 황제의 계략 | `[KO app: spice.mission.elitesardaukar.emperorsschemes.title]` |
+| Fedaykin Assistance | 페다이킨의 지원 | `[KO app: spice.mission.fedaykinassistance.title]` |
+| Weirding Warfare | 기이한 전투 | `[KO app: spice.mission.weirdingwarfare.title]` |
+| Send for Aid | 지원 제공 | `[KO app: spice.mission.sendforaid.title]` |
+| Coordinate With The Emperor | 황제와의 협력 | `[KO app: spice.mission.coordinatewiththeemperor.title]` |
+| Tleilaxu Offering | 틀레이락스의 공물 | `[KO app: spice.mission.tleilaxuoffering.title]` |
+| Secret Stash | 비자금 | `[KO app: spice.mission.secretstash.title]` |
+| Armed Escort | 무장 경호 | `[KO app: spice.mission.armedescort.title]` |
+| Stowaways | 밀항자 | `[KO app: spice.mission.stowaways.title]` |
+| Private Stock | 개인 비축품 | `[KO app: spice.event.subtitle.privatestock]` |
+| Market Research | 시장 조사 | `[KO app: spice.event.subtitle.marketresearch]` |
+| Smoke and Mirrors | 진실의 왜곡 | `[KO app: spice.event.subtitle.smokeandmirrors]` |
+| Rotating Doors | 회전문 | `[KO app: spice.event.subtitle.rot]` |
+| Moment of Revelation | 폭로의 순간 | `[KO app: spice.event.title.momentofrevelation]` |
+| Water Discipline | 물 규칙 | `[KO app: spice.event.title.waterdiscipline]` |
+| Royal Delegation | 왕실 대표단 | `[KO app: spice.event.subtitle.royaldelegation]` |
+| Guild Negotiation | 길드 협상 | `[KO app: spice.event.subtitle.negotiation]` |
+| Covert Assistance | 비밀스러운 지원 | `[KO app: spice.event.subtitle.covertassistance]` |
+| Gift of Water | 물이 가져다 준 선물 | `[KO app: spice.event.subtitle.giftofwater]` |
+| Share Intelligence | 정보 공유 | `[KO app: spice.event.subtitle.shareintelligence]` |
+| Political Equilibrium | 정치적 균형 | `[KO app: spice.event.subtitle.equ]` |
+| Crackdown | 강력 단속 | `[KO app: spice.event.subtitle.crackdown]` |
+| Water for Spice Smugglers | 밀수업자들에게 물 제공 | `[KO app: spice.event.subtitle.smu]` |
+| Bene Gesserit Treachery | 베네 게세리트의 음모 | `[KO app: spice.event.subtitle.ben]` |
+| Funeral Rites | 장례 의식 | `[KO app: spice.event.subtitle.funeralrites]` |
+| Covert Operation | 작전 변경 | `[KO app: spice.event.title.cov]` |
+| Mating Season | 교미기 | `[KO app: spice.event.title.matingseason]` |
+| Unlikely Allies | 뜻밖의 동맹 | `[KO app: spice.event.title.unlikelyallies]` |
+| Clear the Market | 시장 정리 | `[KO app: spice.event.title.clearthemarket]` |
+| Market Opening | 시장 개장 | `[KO app: spice.event.title.marketopening]` |
+| Eyes on Arrakis | 아라키스를 지켜보는 눈 | `[KO app: spice.event.title.eyesonarrakis]` |
+| Friends Everywhere | 어디든 있는 벗 | `[KO app: spice.event.title.friendseverywhere]` |
+| Rebuild Infrastructure | 인프라 재구축 | `[KO app: spice.event.title.rebuildinfrastructure]` |
+| CHOAM Bargain | 초암 협정 | `[KO app: spice.event.title.choambargain]` |
+| Ingratiate | 비위 맞추기 | `[KO app: spice.event.title.ingratiate]` |
+| Betrayal | 배반 | `[KO app: spice.event.title.betrayal]` |
+| New Innovations | 새로운 혁신 | `[KO app: spice.event.title.newinnovations]` |
+| Termination Request | 폐기 요청 | `[KO app: spice.event.title.terminationrequest]` |
+| Offworld Operation | 외우주 작전 | `[KO app: spice.event.title.offworldoperation]` |
+| To The Highest Bidder | 최고 입찰자에게 | `[KO app: spice.auction.title.highestbidder]` |
+| Mercenaries | 용병단 | `[KO app: spice.auction.title.mercenaries]` |
+| Competitive Study | 경쟁적인 연구 | `[KO app: spice.auction.title.competitivestudy]` |
+| Spies for Hire | 스파이 고용 | `[KO app: spice.auction.title.spiesforhire]` |
+| Critical Moment | 중대한 순간 | `[KO app: spice.auction.title.criticalmoment]` |
+| CHOAM Negotiations | 초암 협상 | `[KO app: spice.auction.title.choamnegotiations]` |
+| Unravel the Future | 미래의 실타래를 풀다 | `[KO app: spice.sale.title.fut]` |
+| Imperium Connections | 임페리움 접점 | `[KO app: spice.sale.title.imperiumconnections]` |
+| Secrets for Sale | 기밀 정보 판매 | `[KO app: spice.sale.title.secretsforsale]` |
+| Shadow Warfare | 그림자 속 전투 | `[KO app: spice.sale.title.shadowwarfare]` |
+| Development | 개발 | `[KO app: spice.subcommittees.development.title]` |
+| Political Affairs | 정치 | `[KO app: spice.subcommittees.politicalaffairs.title]` |
+| Joint Forces | 합동군 | `[KO app: spice.subcommittees.jointforces.title]` |
+| Space Travel Deal | 우주 여행 계약 | `[KO app: spice.mission.spacetravel.title]` |
+| Muster an Army - Spice Incentive | 군대 모병 - 스파이스 인센티브 | `[KO app: spice.mission.muster.spiceincentive.Title]` |
+| Muster an Army - Strongarmed Alliance | 군대 모병 - 강인한 동맹 | `[KO app: spice.mission.muster.strongarm.Title]` |
+| Botanical Testing - Stationed Support | 식물학 실험 - 주둔 지원 | `[KO app: spice.mission.botanicaltesting.support.title]` |
+| Botanical Testing - Secrets in the Desert | 식물학 실험 - 사막의 비밀 | `[KO app: spice.mission.botanicaltesting.secrets.title]` |
+| Genetic Research | 유전학 연구 | `[KO app: spice.mission.geneticresearch.title]` |
+| Sapho Juice | 사포 주스 | `[KO app: spice.mission.saphojuice.title]` |
+| Guild Maneuvers | 길드와의 연합 작전 | `[KO app: spice.mission.guildmanuevers.title]` |
+| Tap into Spice Reserves | 스파이스 비축품 활용 | `[KO app: spice.event.subtitle.tap]` |
+| Assassination | 암살 | `[KO app: spice.event.subtitle.ass]` |
+| Change of Plans | 계획 변경 | `[KO app: spice.event.title.cha]` |
+| No Coming Back | 귀환은 없다 | `[KO app: spice.event.title.noc]` |
+| Test of Loyalty | 충성심 테스트 | `[KO app: spice.event.subtitle.loyalty]` |
+| Intriguing Gift | 흥미로운 선물 | `[KO app: spice.event.subtitle.intriguinggift]` |
+| Desert Gift | 버림받은 선물 | `[KO app: spice.event.subtitle.desertgift]` |
+| The Emperor's Tax | 황제가 거두는 세금 | `[KO app: spice.event.subtitle.tax]` |
+| Fremen Exchange | 프레멘과의 거래 | `[KO app: spice.event.subtitle.fre]` |
+| Mentat | 멘타트 | `[KO app: spice.auction.title.mentat]` |
+| Treachery | 배반 | `[KO app: spice.auction.title.treachery]` |
+| Soo-Soo Sook! Water Peddlers | 수수 숙! 물장수 | `[KO app: spice.sale.title.wat]` |
+| Fremen Mercenaries | 프레멘 용병 | `[KO app: spice.sale.title.mer]` |
+
+**원판 풀의 이름(2026-10-31, P8; P8-2 결정).** 위 표의 마지막 24줄은 원판 일정 풀에만 있는 항목이다. 원판 풀에도 같은 영어 이름의 항목이 있다
+— Appropriations·Intelligence·Oversight(같은 정의의 원판 문구), Secrets for Sale(원판에서는 책략 보너스 이벤트, Uprising에서는 판매), Rotating
+Doors·Covert Operation·Gift of Water·Guild Negotiation·Political Equilibrium·Water for Spice Smugglers·Bene Gesserit Treachery·Coordinate With The
+Emperor(원판 판) — 이들은 앱이 같은 제목 키를 써서 한국어 이름도 위의 것과 같다. 확인한 것: Desert Gift의 "버림받은 선물"은 직역이 아니지만(Covert
+Operation의 "작전 변경"처럼) 앱의 이름 그대로 쓴다. 원판 + Immortality 판에서는 경매 Treachery와 이벤트 Betrayal이 둘 다 "배반"이다(앱도 같다) —
+화면(P8e)은 둘이 함께 나올 수 있는 곳에서 이름 옆에 종류(경매·이벤트)를 보인다. No Coming Back이 부르는 시작 카드 Seek Allies·Diplomacy는 카드 이름이라 이 절이 아니라 공식
+한글판의 이름을 쓴다(앱의 Diplomacy 카드 제목 "독점"은 쓰지 않는다).
+
+## 아직 채우지 않은 것
+
+- Bloodlines·Immortality의 **Leader 전용 용어**는 해당 Leader UI를 건드릴 때 각 룰북과
+  한글판 지도자 카드에서 채운다. 행동·로그 라벨에 나오던 능력·인장 반지 이름은
+  2026-10-11에 채웠다(아래 "지도자 능력 이름").
+- **한국어 FAQ는 없다.** 공식 FAQ는 영어판만 배포된다. FAQ가 근거인 판정의
+  용어는 본문 룰북의 단어를 쓴다.
+- (2026-10-11 확인) 엔진 event kind는 모두 한국어 라벨이 있다(`static/labels.js`의
+  `EVENT_LABELS`, `tests/server/test_action_labels.py`가 지킨다). 이 표가 그 라벨의 어휘를 정한다.
+
+## 규칙
+
+1. 화면에 쓸 한국어 게임 용어는 **이 표에 있는 것만** 쓴다.
+2. 표에 없는 용어가 필요하면 먼저 공식 한국어 룰북에서 찾아 이 표에 인용과 함께
+   더한다. 룰북이 침묵하면 [`open-questions.md`](open-questions.md)에 적고,
+   프로젝트 관례임을 분명히 한 뒤에 쓴다.
+3. 공간 이름은 아래 "게임판 장소 이름" 표의 한국어를 쓴다(2026-10-11). 카드·리더·Conflict·Contract·기술
+   타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
+   한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
+   리더 능력·인장 반지 문구는 한글판 인쇄를 옮긴 것이라 그 안의 공간 이름도 인쇄대로다.
+
+## Rise of Ix (원판 위)
+
+원판 + Rise of Ix 화면(`docs/base-game-and-ix-plan.md` 18.6, P5f~)의 이름과 용어. 출처는 공식 한국어판 Rise of Ix 룰북(`rise-of-ix-ko`,
+`KR_DUNE_IMPERIUM_RISE_OF_IX_Rulebook.pdf`, sha256 `177a00b5…`; 사용자의 로컬 사본을 2026-10-29 사용자 허락("룰북 읽어. 허락함")으로 읽음)이다.
+쪽은 `[IX-ko p. N]`(위 Epic 절의 `[Rise of Ix p. N]`과 같은 책). 본문을 PDF 읽기 도구 둘(PyMuPDF, pypdf)로 따로 뽑아 모든 이름이 같았다. Ix 카드·
+Tech 타일 이름은 한글판 카드 사진을 찾을 때까지 영어다. 룰북 본문에 이름이 없는 지도자 둘(Archduke Armand Ecaz, "Princess" Yuna Moritani)도
+영어다. 화면에 넣는 일은 P4 병합 뒤 P5f에서 한다(그때까지 상태는 "적용 예정").
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Rise of Ix | 익스의 부상 | `[IX-ko pp. 2-3]` | 적용 예정 |
+| CHOAM board overlay | 초암 게임판 덮개 | `[IX-ko pp. 2-3, 5]` | 적용 예정 |
+| Ix board | 익스 게임판 | `[IX-ko pp. 2-4]` | 적용 |
+| Dreadnought (공간) | 드레드노트 | `[IX-ko p. 12]` | 적용 예정(공간 이름) |
+| Tech Negotiation (공간·아이콘) | 기술 협상 | `[IX-ko pp. 4, 12]` | 적용 예정(공간 이름) |
+| Interstellar Shipping | 성간 거래 | `[IX-ko pp. 5, 12]` | 적용 예정(공간 이름) |
+| Smuggling | 밀수 | `[IX-ko pp. 7, 12]` | 적용 예정(공간 이름) |
+| dreadnought (말) | 드레드노트 | `[IX-ko pp. 2, 6]` | 적용 |
+| commission (a dreadnought) | 취역(시키다) | `[IX-ko pp. 6, 12]` ("당신의 드레드노트 하나가 취역합니다") | 적용 |
+| units (troops + dreadnoughts) | 부대 | `[IX-ko pp. 6, 12]` ("병력과 드레드노트를 모두 아우르는 단어") | 적용 예정 |
+| Freighter | 화물선 (구성물은 화물선 토큰) | `[IX-ko pp. 2, 5, 12]` | 적용 |
+| Shipping track | 운송 트랙 | `[IX-ko pp. 3, 5, 12]` | 적용 — Uprising의 Shipping 공간(운송)과 다르다 |
+| Shipping reward | 운송 보상 | `[IX-ko pp. 5, 12]` | 적용 |
+| Tech tile | 기술 타일 | `[IX-ko pp. 2, 4, 12]` | 적용(위 Bloodlines 표와 같다) |
+| Acquire Tech | 기술 획득 | `[IX-ko pp. 4, 12]` | 적용 예정 |
+| Tech Discount | 기술 할인 | `[IX-ko pp. 4, 12]` | 적용 예정 |
+| Negotiator | 협상가 | `[IX-ko pp. 4, 12]` | 적용 |
+| Infiltration (아이콘) | 침투 | `[IX-ko pp. 7, 12]` | 적용 예정 — Uprising Spy의 Infiltrate(침투, `[Main p. 11]`)와 같은 말이라 화면에서 아이콘으로 가른다 |
+| Unload | 처분 | `[IX-ko pp. 7, 12]` | 적용 예정 |
+| Discard (아이콘) | 버림 | `[IX-ko pp. 7, 12]` | 적용 예정 |
+| Flip (Tech tile) | 뒤집기 | `[IX-ko p. 12]` | 적용 예정 |
+| Snooper token | 탐지기 토큰 | `[IX-ko p. 2]` | 적용(패널, 2026-10-30부터 로그 줄도) |
+| Tessia Vernius | 테시아 버니우스 | `[IX-ko p. 2]` | 적용(지도자 이름) |
+| Prince Rhombur Vernius | 롬버 버니우스 대공 | `[IX-ko p. 8]` | 적용 예정(지도자 이름) |
+| Viscount Hundro Moritani | 헌드로 모리타니 자작 | `[IX-ko pp. 8, 10]` | 적용 예정(지도자 이름) |
+| Ilesa Ecaz | 일레사 에카즈 | `[IX-ko p. 10]` | 적용 예정(지도자 이름) |

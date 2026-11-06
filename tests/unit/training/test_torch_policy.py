@@ -1,0 +1,1198 @@
+"""Tests for the network, checkpoints, learner, and training loop (M10)."""
+
+import json
+from collections.abc import Sequence
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+torch = pytest.importorskip("torch")
+
+from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium.adapters.action_codec import (  # noqa: E402
+    ActionCodec,
+    ActionTemplate,
+)
+from dune_imperium.adapters.observation_encoding import (  # noqa: E402
+    OBSERVATION_SIZE,
+    encode_player_view,
+)
+from dune_imperium.agents import make_agent  # noqa: E402
+from dune_imperium.agents.registry import is_agent_kind  # noqa: E402
+from dune_imperium.cli.train import main as train_main  # noqa: E402
+from dune_imperium.core.actions import DomainAction  # noqa: E402
+from dune_imperium.core.observation import PlayerView  # noqa: E402
+from dune_imperium.evaluation import (  # noqa: E402
+    MatchResult,
+    MatchSpec,
+    SeatResult,
+    TournamentReport,
+    play_match,
+    run_tournament,
+    summarize,
+)
+from dune_imperium.training import (  # noqa: E402
+    UNDO_ACTION_IDS,
+    AgentBatchPolicy,
+    BatchPolicy,
+    Episode,
+    PolicyRequest,
+    RandomBatchPolicy,
+    SelfPlayRunner,
+    SelfPlaySpec,
+    stack_episodes,
+)
+from dune_imperium.training import collect as collect_module  # noqa: E402
+from dune_imperium.training import loop as loop_module  # noqa: E402
+from dune_imperium.training.checkpoint import (  # noqa: E402
+    load_checkpoint,
+    save_checkpoint,
+    widen_checkpoint,
+)
+from dune_imperium.training.learner import Learner, LearnerConfig  # noqa: E402
+from dune_imperium.training.loop import (  # noqa: E402
+    TRAINING_SEED_BASE,
+    TrainConfig,
+    evaluated_entry,
+    select_policy_steps,
+    train,
+)
+from dune_imperium.training.network import (  # noqa: E402
+    MASKED_LOGIT,
+    MlpSlotsNetwork,
+    PolicyValueNetwork,
+    build_network,
+)
+from dune_imperium.training.policy import without_undo_actions  # noqa: E402
+from dune_imperium.training.torch_policy import (  # noqa: E402
+    NetworkAgent,
+    TorchBatchPolicy,
+    load_frozen_network,
+    resolve_device,
+)
+
+_CPU = torch.device("cpu")
+
+
+def _network(action_size: int) -> PolicyValueNetwork:
+    torch.manual_seed(0)
+    return PolicyValueNetwork(action_size, hidden=(32,))
+
+
+def test_network_masks_illegal_actions_to_zero_probability() -> None:
+    network = _network(action_size=7)
+    observations = torch.randint(0, 5, (3, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.zeros(3, 7, dtype=torch.int8)
+    masks[0, 2] = 1
+    masks[1, [0, 6]] = 1
+    masks[2, :] = 1
+
+    logits, values = network(observations, masks)
+
+    assert logits.shape == (3, 7)
+    assert values.shape == (3,)
+    assert torch.all(logits[masks == 0] <= MASKED_LOGIT)
+    probabilities = torch.softmax(logits, dim=-1)
+    assert torch.all(probabilities[masks == 0] == 0.0)
+    assert probabilities[0, 2].item() == pytest.approx(1.0)
+    with pytest.raises(ValueError, match="positive"):
+        PolicyValueNetwork(0)
+
+
+@pytest.mark.parametrize("kind", ["mlp", "mlp_slots"])
+def test_sliced_head_reads_match_the_full_forward_pass(kind: str) -> None:
+    """``trunk`` + ``action_logits`` give the full pass's legal logits.
+
+    The search agent reads only a decision's legal rows of the policy head,
+    and its value from the trunk, so both must agree with ``forward``.
+    """
+
+    torch.manual_seed(0)
+    network = build_network({"kind": kind, "hidden": [32], "slot_version": 1}, 11)
+    if isinstance(network, MlpSlotsNetwork):
+        with torch.no_grad():
+            network.slot_embed.weight.normal_(std=0.1)
+    observations = torch.randint(0, 5, (2, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(2, 11, dtype=torch.int8)
+    index = torch.tensor([9, 0, 4])
+
+    with torch.no_grad():
+        logits, values = network(observations, masks)
+        hidden = network.trunk(observations)
+        sliced = network.action_logits(hidden, index)
+        sliced_values = network.value_head(hidden).squeeze(-1)
+
+    assert sliced.shape == (2, 3)
+    assert torch.allclose(sliced, logits[:, index], atol=1e-5)
+    assert torch.equal(sliced_values, values)
+
+
+def test_torch_batch_policy_plays_legal_self_play_games() -> None:
+    runner = SelfPlayRunner(RulesetConfig())
+    network = _network(runner.codec.size)
+    sampling = TorchBatchPolicy(network, _CPU, seed=1, sample=True)
+    greedy = TorchBatchPolicy(network, _CPU, seed=1, sample=False)
+    specs = (
+        SelfPlaySpec(game_seed=3, lineup=("s", "g", "s", "g")),
+        SelfPlaySpec(game_seed=4, lineup=("g", "s", "g", "s")),
+    )
+
+    result = runner.run({"s": sampling, "g": greedy}, specs)
+
+    assert all(not episode.truncated for episode in result.episodes)
+    for episode in result.episodes:
+        assert all(step.action in step.legal.tolist() for step in episode.steps)
+    assert sampling.act(()) == ()
+    with pytest.raises(ValueError, match="temperature"):
+        TorchBatchPolicy(network, _CPU, seed=1, temperature=0.0)
+    assert resolve_device("cpu").type == "cpu"
+    assert resolve_device("auto").type in {"cpu", "mps", "cuda"}
+
+
+class _Capture:
+    """A batch policy that keeps every batch it answers."""
+
+    def __init__(self, inner: BatchPolicy) -> None:
+        self.inner = inner
+        self.batches: list[tuple[PolicyRequest, ...]] = []
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        self.batches.append(tuple(requests))
+        return self.inner.act(requests)
+
+
+def test_sampling_reads_only_the_legal_rows_of_the_full_masked_softmax() -> None:
+    """The sampled distribution is the full forward pass's, over fewer rows.
+
+    Since 2026-10-12 a sampled batch computes logits for the union of its
+    requests' legal actions only (``TorchBatchPolicy.distribution``). Every
+    request's probabilities must equal the full masked softmax at those
+    catalog indices, sum to one there (so nothing outside the union could
+    have been drawn), and give an action legal elsewhere in the batch zero.
+    """
+
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=300)
+    network = _network(runner.codec.size)
+    with torch.no_grad():
+        network.policy_head.weight.mul_(25.0)  # a peaked, not near-uniform, policy
+    policy = TorchBatchPolicy(network, _CPU, seed=3, sample=True, temperature=0.7)
+    capture = _Capture(policy)
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("s",) * 4) for seed in (5, 6, 7)
+    )
+    runner.run({"s": capture}, specs)
+
+    batches = [batch for batch in capture.batches if len(batch) > 1]
+    assert len(batches) > 50
+    peaks: list[float] = []
+    for batch in batches[:80]:
+        catalog, probabilities = policy.distribution(batch)
+        with torch.no_grad():
+            logits, _ = network(
+                torch.from_numpy(np.stack([request.observation for request in batch])),
+                torch.from_numpy(np.stack([request.mask for request in batch])),
+            )
+        full = torch.softmax(logits / 0.7, dim=-1)
+        expected = full[:, torch.from_numpy(catalog)]
+        assert torch.allclose(probabilities, expected, atol=1e-6)
+        assert torch.allclose(expected.sum(-1), torch.ones(len(batch)))
+        peaks.append(float(probabilities.max()))
+        for row, request in enumerate(batch):
+            illegal = ~np.isin(catalog, request.legal_indices)
+            assert float(probabilities[row, torch.from_numpy(illegal)].sum()) == 0.0
+    assert max(peaks) > 0.5
+    with pytest.raises(ValueError, match="at least one"):
+        policy.distribution(())
+
+
+def test_collection_deals_each_lineup_evenly_over_the_workers() -> None:
+    selfplay = ("learner",) * 4
+    against = ("learner", "app_ai", "learner", "app_ai")
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=against if seed % 2 else selfplay)
+        for seed in range(32)
+    )
+
+    chunks = collect_module.deal(specs, 4)
+
+    # Dealt by position, workers 1 and 3 took all sixteen opponent games.
+    def opponent_games(chunk: Sequence[SelfPlaySpec]) -> int:
+        return sum(spec.lineup == against for spec in chunk)
+
+    assert [opponent_games(specs[i::4]) for i in range(4)] == [0, 8, 0, 8]
+    assert [opponent_games(chunk) for chunk in chunks] == [4, 4, 4, 4]
+    dealt = sorted(spec.game_seed for chunk in chunks for spec in chunk)
+    assert dealt == list(range(32))
+    # One lineup keeps the positional deal, and no chunk falls two behind.
+    plain = specs[::2]
+    assert collect_module.deal(plain, 4) == [plain[i::4] for i in range(4)]
+    assert [len(chunk) for chunk in collect_module.deal(specs[:6], 4)] == [2, 2, 1, 1]
+    # A game's cost follows how many seats each policy holds, not which.
+    one = ("learner", "app_ai", "app_ai", "app_ai")
+    turned = ("app_ai", "learner", "app_ai", "app_ai")
+    mixed = (
+        SelfPlaySpec(game_seed=0, lineup=against),
+        SelfPlaySpec(game_seed=1, lineup=one),
+        SelfPlaySpec(game_seed=2, lineup=turned),
+        SelfPlaySpec(game_seed=3, lineup=against),
+    )
+    dealt_seeds = [[s.game_seed for s in c] for c in collect_module.deal(mixed, 2)]
+    assert dealt_seeds == [[0, 1], [3, 2]]
+
+
+def test_checkpoint_round_trip_and_version_guard(tmp_path: Path) -> None:
+    network = _network(action_size=11)
+    path = tmp_path / "ckpt" / "net.pt"
+    save_checkpoint(
+        path, network, ruleset="uprising-4p-base", iteration=3, metadata={"k": 1}
+    )
+
+    loaded, info = load_checkpoint(path)
+
+    assert info.ruleset == "uprising-4p-base"
+    assert info.iteration == 3
+    assert info.hidden == (32,)
+    assert info.metadata == {"k": 1}
+    observations = torch.randint(0, 5, (2, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(2, 11, dtype=torch.int8)
+    expected, _ = network(observations, masks)
+    actual, _ = loaded(observations, masks)
+    assert torch.allclose(expected, actual)
+
+    document = torch.load(path, weights_only=True)
+    document["action_codec_version"] += 1
+    stale = tmp_path / "stale.pt"
+    torch.save(document, stale)
+    with pytest.raises(ValueError, match="codec"):
+        load_checkpoint(stale)
+
+
+def test_learner_update_changes_parameters_and_reports_finite_stats() -> None:
+    runner = SelfPlayRunner(RulesetConfig())
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=2)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
+    batch = stack_episodes(result.episodes, action_size=runner.codec.size)
+    learner = Learner(network, _CPU, LearnerConfig(minibatch_size=256, epochs=2))
+    before = [parameter.detach().clone() for parameter in network.parameters()]
+
+    stats = learner.update(batch)
+
+    assert stats.steps == batch.actions.shape[0]
+    assert stats.minibatches == 2 * ((stats.steps + 255) // 256)
+    assert np.isfinite(stats.policy_loss)
+    assert np.isfinite(stats.value_loss)
+    assert stats.entropy > 0.0
+    assert stats.mean_return == pytest.approx(float(batch.returns.mean()))
+    assert any(
+        not torch.equal(old, new)
+        for old, new in zip(before, network.parameters(), strict=True)
+    )
+
+
+def test_a_restored_optimizer_keeps_its_moments_and_takes_the_configured_rate() -> None:
+    # Adam's state dict carries the rate it was saved with. A resumed run that
+    # asks for another rate must get it (it silently kept the checkpoint's,
+    # which would have turned a learning-rate A/B into the control twice).
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=160)
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=2)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=5, lineup=("p",) * 4),))
+    saved = Learner(network, _CPU, LearnerConfig(learning_rate=1.0e-4))
+    saved.update(stack_episodes(result.episodes, action_size=runner.codec.size))
+    state = saved.optimizer_state()
+
+    resumed = Learner(
+        _network(runner.codec.size), _CPU, LearnerConfig(learning_rate=3.0e-5)
+    )
+    resumed.restore_optimizer(state)
+
+    assert [group["lr"] for group in resumed.optimizer.param_groups] == [3.0e-5]
+    before = saved.optimizer.state_dict()["state"]
+    after = resumed.optimizer.state_dict()["state"]
+    assert int(after[0]["step"]) == int(before[0]["step"]) > 0
+    assert torch.equal(after[0]["exp_avg"], before[0]["exp_avg"])
+    assert torch.equal(after[0]["exp_avg_sq"], before[0]["exp_avg_sq"])
+
+
+def test_checkpoint_agents_enter_tournaments_by_path(tmp_path: Path) -> None:
+    config = RulesetConfig()
+    runner = SelfPlayRunner(config)
+    network = _network(runner.codec.size)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(path, network, ruleset=config.identifier, iteration=1)
+    kind = f"checkpoint:{path}"
+    assert is_agent_kind(kind)
+    assert not is_agent_kind("checkpoint:")
+    assert isinstance(make_agent(kind, 0), NetworkAgent)
+
+    result = play_match(
+        MatchSpec(
+            game_seed=6,
+            policy_seed=1,
+            seat_agents=(kind, "heuristic", "heuristic", "heuristic"),
+        )
+    )
+
+    assert result.seats[0].agent == kind
+    assert result.seats[0].decisions > 0
+    assert result.seats[0].illegal_actions == 0
+    with pytest.raises(ValueError, match="catalog"):
+        NetworkAgent(network, RulesetConfig(choam_module=True))
+
+
+
+def test_a_checkpoint_seat_answers_for_an_epic_game_it_was_not_trained_on(
+    tmp_path: Path,
+) -> None:
+    # OQ-092 (d): checkpoint seats may sit at Epic games. The Epic catalog
+    # adds Control the Spice's and Economic Supremacy's templates, so the
+    # head moves onto it by template identity and the new templates start
+    # at zero, as for an older codec (``load_checkpoint(ruleset=...)``).
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    network = _network(base_codec.size)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, network, ruleset=base.identifier, iteration=1, codec=base_codec
+    )
+    kind = f"checkpoint:{path}"
+
+    # A game the file's catalog already covers keeps the file as it is.
+    covered = make_agent(kind, 0, base)
+    assert isinstance(covered, NetworkAgent)
+    assert covered.codec.config == base
+
+    epic = RulesetConfig(epic_game=True)
+    agent = make_agent(kind, 0, epic)
+    assert isinstance(agent, NetworkAgent)
+    assert agent.codec.config == epic
+    old_rows = {template: row for row, template in enumerate(base_codec.catalog)}
+    weight = agent.network.policy_head.weight.detach()
+    bias = agent.network.policy_head.bias.detach()
+    old_weight = network.policy_head.weight.detach()
+    new_templates = 0
+    for row, template in enumerate(agent.codec.catalog):
+        if template in old_rows:
+            assert torch.equal(weight[row], old_weight[old_rows[template]])
+        else:
+            new_templates += 1
+            assert not weight[row].any() and not bias[row].any()
+    assert new_templates > 0
+
+    result = play_match(
+        MatchSpec(
+            game_seed=6,
+            policy_seed=1,
+            seat_agents=(kind, "heuristic", "heuristic", "heuristic"),
+            epic_game=True,
+        )
+    )
+    assert result.seats[0].decisions > 0
+    assert result.seats[0].illegal_actions == 0
+
+def test_migration_names_the_policy_rows_a_file_was_never_trained_on(
+    tmp_path: Path,
+) -> None:
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, _network(base_codec.size), ruleset=base.identifier, iteration=1,
+        codec=base_codec,
+    )
+
+    _, same = load_checkpoint(path)
+    assert same.migration is None
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    _, moved = load_checkpoint(path, ruleset=scouts)
+    assert moved.migration is not None
+    held = set(base_codec.catalog)
+    catalog = ActionCodec(scouts).catalog
+    expected = {row for row, template in enumerate(catalog) if template not in held}
+    assert moved.migration.new_action_rows == expected
+    assert len(expected) == moved.migration.actions_new > 0
+    # Stage B3d-2b: a bid, a secret pick and a market slot are the generic
+    # ``choose_count`` and ``choose_option`` rows, which the file was trained
+    # on; the rows only the Scouts windows hold are untrained.
+    untrained = {catalog[row] for row in expected}
+    assert {template.action_id for template in untrained} >= {
+        "choose_subcommittee",
+        "confirm_scouts_bid",
+        "scouts_pass",
+    }
+    # Stage B3d-3: a mission's refusal is the ``decline`` row of its join (the
+    # whole ``scouts_decline_mission`` left the catalog), a Scouts-only row.
+    decline_mission = ActionTemplate(
+        "decline", (("of", "join"), ("printed", "desert_riding"), ("source", "scouts"))
+    )
+    assert decline_mission in untrained
+    assert not any(
+        template.action_id in {"scouts_bid", "scouts_decline_mission"}
+        for template in catalog
+    )
+    assert ActionTemplate("choose_count", (("count", 1),)) not in untrained
+
+
+class _Seat0Recorder:
+    """Seat 0's agent, checked decision by decision against two twins."""
+
+    def __init__(self, agent: NetworkAgent, network: PolicyValueNetwork) -> None:
+        from dune_imperium.agents.heuristic_agent import HeuristicAgent
+
+        self.agent = agent
+        # The heuristic the untrained-only decisions must go to, and the
+        # plain greedy network every other decision must stay with.
+        self.heuristic = HeuristicAgent(seed=7)
+        self.network_only = NetworkAgent(network, agent.codec.config)
+        self.untrained_only = 0
+        self.network_decisions = 0
+
+    def choose_action(
+        self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction:
+        chosen = self.agent.choose_action(observation, legal_actions)
+        offered = without_undo_actions(legal_actions)
+        rows = [self.agent.codec.encode(action) for action in offered]
+        if all(row in self.agent.untrained for row in rows):
+            self.untrained_only += 1
+            assert chosen == self.heuristic.choose_action(observation, offered)
+        else:
+            self.network_decisions += 1
+            assert chosen == self.network_only.choose_action(
+                observation, legal_actions
+            )
+        return chosen
+
+
+def test_a_checkpoint_seat_hands_untrained_only_decisions_to_a_heuristic(
+    tmp_path: Path,
+) -> None:
+    # Design D6 (2026-09-30): a checkpoint seat may play Arrakeen Scouts. A
+    # file trained without Scouts has zero logits for every Scouts template,
+    # so a decision offering only those (a subcommittee, a mission) goes to
+    # a heuristic seeded with the agent seed; a decision with any trained
+    # action stays with the network. Stage B3d-2b: a sealed bid and a secret
+    # pick are the generic ``choose_count`` and ``choose_option`` rows the
+    # file was trained on, so they stay with the network.
+    from dune_imperium.agents.heuristic_agent import HeuristicAgent
+    from dune_imperium.rules import UprisingRulesEngine
+    from dune_imperium.simulation.runner import run_policy_game
+
+    base = RulesetConfig()
+    base_codec = ActionCodec(base)
+    network = _network(base_codec.size)
+    path = tmp_path / "policy.pt"
+    save_checkpoint(
+        path, network, ruleset=base.identifier, iteration=1, codec=base_codec
+    )
+    kind = f"checkpoint:{path}"
+    # On its own catalog nothing is untrained: the plain greedy network.
+    plain = make_agent(kind, 7, base)
+    assert isinstance(plain, NetworkAgent)
+    assert plain.untrained == frozenset()
+
+    scouts = RulesetConfig(arrakeen_scouts=True)
+    agent = make_agent(kind, 7, scouts)
+    assert isinstance(agent, NetworkAgent)
+    assert agent.codec.config == scouts
+    assert agent.untrained
+    recorder = _Seat0Recorder(agent, agent.network)
+    others = [HeuristicAgent(seed=seed) for seed in (1, 2, 3)]
+
+    # Seed 4 (it was 6): the Scouts windows' bids and picks are trained rows
+    # now, so stage B3d-2b moved the old seed off the scenario -- seat 0 never
+    # meets a mission or subcommittee window in it.
+    simulation = run_policy_game(
+        UprisingRulesEngine(), scouts, 4, [recorder, *others], max_steps=30_000
+    )
+
+    assert simulation.state.phase.name == "FINISHED"
+    assert recorder.untrained_only > 0
+    assert recorder.network_decisions > recorder.untrained_only
+    with pytest.raises(ValueError, match="rows of the catalog"):
+        NetworkAgent(network, base, untrained=frozenset({base_codec.size}))
+
+
+def test_a_frozen_checkpoint_opponent_plays_the_same_games_batched(
+    tmp_path: Path,
+) -> None:
+    """The batched frozen opponent is the per-seat NetworkAgent, move for move.
+
+    Collection used to seat a checkpoint opponent through AgentBatchPolicy:
+    one NetworkAgent per (game, seat), one forward pass per decision. The
+    collector now answers those seats with one greedy TorchBatchPolicy over
+    the same network. Both take the argmax behind a per-(game, seat) cycle
+    guard over the same mask, so the games must be identical -- a batched
+    matrix product that flipped a near-tie argmax would show up here as a
+    different action sequence.
+    """
+
+    config = RulesetConfig()
+    codec_size = SelfPlayRunner(config).codec.size
+    path = tmp_path / "frozen.pt"
+    save_checkpoint(path, _network(codec_size), ruleset=config.identifier, iteration=1)
+    kind = f"checkpoint:{path}"
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("learner", kind, kind, kind))
+        for seed in (41, 42, 43)
+    )
+
+    def play(opponent: BatchPolicy) -> tuple[Episode, ...]:
+        runner = SelfPlayRunner(config, undo_actions=False)
+        return runner.run(
+            {"learner": RandomBatchPolicy(seed=7), kind: opponent}, specs
+        ).episodes
+
+    per_seat = play(AgentBatchPolicy(kind, 0))
+    batched = play(
+        TorchBatchPolicy(load_frozen_network(str(path)), _CPU, seed=0, sample=False)
+    )
+
+    for old, new in zip(per_seat, batched, strict=True):
+        assert new.ranks == old.ranks
+        assert new.decisions == old.decisions
+        assert [(step.seat, step.action) for step in new.steps] == [
+            (step.seat, step.action) for step in old.steps
+        ]
+    # And the collector builds exactly that policy for a checkpoint opponent.
+    policies = collect_module._policies(
+        _network(codec_size), _CPU, 1, 1.0, kind, 0
+    )
+    frozen = policies[kind]
+    assert isinstance(frozen, TorchBatchPolicy)
+    assert not frozen.sample
+    assert isinstance(
+        collect_module._policies(_network(codec_size), _CPU, 1, 1.0, "heuristic", 0)[
+            "heuristic"
+        ],
+        AgentBatchPolicy,
+    )
+
+
+def test_learner_seats_rotate_evenly_over_the_table() -> None:
+    """Every seat position is the learner's equally often over an iteration."""
+
+    for count in (1, 2, 3):
+        config = TrainConfig(
+            out_dir=Path("unused"),
+            games_per_iteration=8,
+            opponent="heuristic",
+            learner_seats=count,
+        )
+        specs = loop_module._iteration_specs(config, 0)
+        per_seat = [0, 0, 0, 0]
+        for spec in specs:
+            learner = [
+                seat for seat, name in enumerate(spec.lineup) if name == "learner"
+            ]
+            assert len(learner) == count
+            assert all(
+                name == "heuristic"
+                for seat, name in enumerate(spec.lineup)
+                if seat not in learner
+            )
+            for seat in learner:
+                per_seat[seat] += 1
+        assert len(set(per_seat)) == 1
+    # Two seats sit interleaved, as in the 2:2 evaluation mirror.
+    two = loop_module._iteration_specs(
+        TrainConfig(
+            out_dir=Path("unused"),
+            games_per_iteration=2,
+            opponent="heuristic",
+            learner_seats=2,
+        ),
+        0,
+    )
+    assert [spec.lineup for spec in two] == [
+        ("learner", "heuristic", "learner", "heuristic"),
+        ("heuristic", "learner", "heuristic", "learner"),
+    ]
+    with pytest.raises(ValueError, match="between 1 and 3"):
+        TrainConfig(out_dir=Path("unused"), opponent="heuristic", learner_seats=4)
+    with pytest.raises(ValueError, match="needs an opponent"):
+        TrainConfig(out_dir=Path("unused"), learner_seats=2)
+
+
+def test_the_evaluation_reads_the_tested_row_when_the_opponent_sorts_first() -> None:
+    """The row under test is found by its exact name, not by its prefix.
+
+    ``summarize`` sorts rows by agent name. With a checkpoint opponent both
+    names start with ``checkpoint:``, and an older opponent directory sorts
+    first, so taking "the first row that starts with checkpoint:" read the
+    OPPONENT's three-seat row: (1 - true) / 3, equal at parity and falling as
+    the tested checkpoint got stronger.
+    """
+
+    tested = "checkpoint:runs/2026-09-21/long/latest.pt"
+    opponent = "checkpoint:runs/2026-09-19/anchor/latest.pt"
+    assert opponent < tested  # the trap: the opponent sorts first
+
+    def seat(index: int, agent: str, rank: int) -> SeatResult:
+        return SeatResult(
+            seat=index,
+            agent=agent,
+            leader_id="paul_atreides",
+            rank=rank,
+            victory_points=12 - rank,
+            decisions=10,
+            illegal_actions=0,
+            decision_seconds=0.0,
+        )
+
+    report = TournamentReport(
+        matches=(
+            MatchResult(
+                ruleset="uprising-4p-base",
+                game_seed=1,
+                policy_seed=1,
+                first_player=0,
+                rounds=10,
+                steps=40,
+                duration_seconds=1.0,
+                seats=(
+                    seat(0, tested, 1),
+                    seat(1, opponent, 2),
+                    seat(2, opponent, 3),
+                    seat(3, opponent, 4),
+                ),
+            ),
+        ),
+        failures=(),
+        duration_seconds=1.0,
+    )
+    summary = summarize(report)
+    assert summary.agents[0].agent == opponent
+
+    entry = evaluated_entry(summary, tested)
+
+    assert entry.agent == tested
+    assert entry.win_rate == 1.0
+    assert entry.mean_rank == 1.0
+    with pytest.raises(ValueError, match="no single summary row"):
+        evaluated_entry(summary, "checkpoint:somewhere/else.pt")
+
+
+def test_each_in_loop_evaluation_takes_its_own_block_of_seeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two evaluations of one run must not replay the same games.
+
+    ``tournament_specs`` defaults ``start_seed`` to 0, so leaving it out
+    measured seeds 0..eval_games-1 at every evaluation of every run: a whole
+    series was one small fixed sample read repeatedly, and averaging it
+    bought nothing.
+    """
+
+    seeds: list[set[int]] = []
+    real = run_tournament
+
+    def spy(specs, *, workers=1):  # type: ignore[no-untyped-def]
+        seeds.append({spec.game_seed for spec in specs})
+        return real(specs, workers=1)
+
+    monkeypatch.setattr("dune_imperium.training.loop.run_tournament", spy)
+    train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=2,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+            eval_every=1,
+            eval_games=2,
+        )
+    )
+
+    assert len(seeds) == 2
+    assert not seeds[0] & seeds[1]
+    # And never a training seed: those start far above.
+    assert max(seed for block in seeds for seed in block) < TRAINING_SEED_BASE
+
+
+def test_the_in_loop_evaluation_uses_the_run_s_worker_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Collection is done when an evaluation runs, so it gets the same workers.
+
+    ``run_tournament`` defaults to one process; leaving it at the default
+    played every evaluation match inside the training process.
+    """
+
+    seen: list[int] = []
+
+    def spy(specs, *, workers=1):  # type: ignore[no-untyped-def]
+        seen.append(workers)
+        return run_tournament(specs, workers=1)
+
+    monkeypatch.setattr("dune_imperium.training.loop.run_tournament", spy)
+    train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=1,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            workers=3,
+            opponent="heuristic",
+            eval_every=1,
+            eval_games=1,
+        )
+    )
+
+    assert seen == [3]
+
+
+def test_train_loop_writes_log_checkpoints_and_evaluates(tmp_path: Path) -> None:
+    config = TrainConfig(
+        out_dir=tmp_path / "run",
+        iterations=2,
+        games_per_iteration=2,
+        seed=1,
+        hidden=(32,),
+        learner=LearnerConfig(minibatch_size=512),
+        opponent="heuristic",
+        eval_every=2,
+        eval_games=1,
+    )
+
+    result = train(config)
+
+    assert len(result.records) == 2
+    first, second = result.records
+    assert first.iteration == 1 and second.iteration == 2
+    assert first.games == 2
+    assert first.learner_steps > 0
+    assert first.eval_win_rate is None
+    assert second.eval_win_rate is not None
+    assert 0.0 <= second.eval_win_rate <= 1.0
+    assert second.eval_mean_rank is not None and 1.0 <= second.eval_mean_rank <= 4.0
+    assert (tmp_path / "run" / "latest.pt").exists()
+    assert (tmp_path / "run" / "iteration_00002.pt").exists()
+    lines = result.log_path.read_text().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[1])["iteration"] == 2
+
+    # latest.pt carries the optimizer state; numbered checkpoints do not.
+    _, latest_info = load_checkpoint(result.latest_checkpoint)
+    assert latest_info.optimizer_state is not None
+    assert "state" in latest_info.optimizer_state
+    _, numbered_info = load_checkpoint(tmp_path / "run" / "iteration_00002.pt")
+    assert numbered_info.optimizer_state is None
+
+    # Resuming continues the iteration count (and the optimizer) from the
+    # checkpoint, at the learning rate the resumed run asks for.
+    steps_before = int(latest_info.optimizer_state["state"][0]["step"])
+    resumed = train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=1,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(learning_rate=1.0e-5),
+            resume=result.latest_checkpoint,
+        )
+    )
+    assert resumed.records[0].iteration == 3
+    _, resumed_info = load_checkpoint(resumed.latest_checkpoint)
+    assert resumed_info.optimizer_state is not None
+    assert [g["lr"] for g in resumed_info.optimizer_state["param_groups"]] == [1.0e-5]
+    assert int(resumed_info.optimizer_state["state"][0]["step"]) > steps_before
+    with pytest.raises(ValueError, match="unknown opponent"):
+        TrainConfig(out_dir=tmp_path, opponent="oracle")
+
+
+def test_train_config_expansion_flags_shape_the_checkpoint_ruleset(
+    tmp_path: Path,
+) -> None:
+    config = TrainConfig(
+        out_dir=tmp_path / "run",
+        iterations=1,
+        games_per_iteration=1,
+        seed=1,
+        hidden=(32,),
+        learner=LearnerConfig(minibatch_size=512),
+        opponent="heuristic",
+        bloodlines=True,
+        tech_module=True,
+    )
+
+    result = train(config)
+
+    _, info = load_checkpoint(result.latest_checkpoint)
+    assert info.ruleset == "uprising-4p-base+bloodlines+tech"
+
+
+def test_train_loop_rejects_resuming_into_a_different_ruleset(tmp_path: Path) -> None:
+    base = train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=1,
+            games_per_iteration=1,
+            seed=1,
+            hidden=(32,),
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+        )
+    )
+
+    with pytest.raises(ValueError, match="different ruleset"):
+        train(
+            TrainConfig(
+                out_dir=tmp_path / "run",
+                iterations=1,
+                games_per_iteration=1,
+                seed=1,
+                hidden=(32,),
+                opponent="heuristic",
+                bloodlines=True,
+                resume=base.latest_checkpoint,
+            )
+        )
+
+
+def test_train_loop_resumes_a_widened_checkpoint_as_mlp_slots(tmp_path: Path) -> None:
+    config = TrainConfig(
+        out_dir=tmp_path / "run",
+        iterations=1,
+        games_per_iteration=1,
+        seed=2,
+        hidden=(16,),
+        learner=LearnerConfig(minibatch_size=512),
+        opponent="heuristic",
+    )
+    base = train(config)
+    _, base_info = load_checkpoint(base.latest_checkpoint)
+    assert base_info.arch == "mlp"
+    assert base_info.metadata["arch"] == {"kind": "mlp", "hidden": [16]}
+
+    widened = tmp_path / "widened.pt"
+    widen_checkpoint(base.latest_checkpoint, widened)
+    resumed = train(
+        TrainConfig(
+            out_dir=tmp_path / "slots",
+            iterations=1,
+            games_per_iteration=1,
+            seed=2,
+            learner=LearnerConfig(minibatch_size=512),
+            opponent="heuristic",
+            resume=widened,
+        )
+    )
+    network, info = load_checkpoint(resumed.latest_checkpoint)
+    assert isinstance(network, MlpSlotsNetwork)
+    assert info.arch == "mlp_slots" and info.format == 3
+    assert info.iteration == 2
+    assert info.metadata["arch"]["kind"] == "mlp_slots"
+    # One update trained the embedding rows the collected games touched.
+    assert float(network.slot_embed.weight.detach().abs().sum()) > 0.0
+
+
+def test_select_policy_steps_keeps_only_the_named_seats() -> None:
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=40)
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=3)
+    result = runner.run(
+        {"learner": policy, "other": TorchBatchPolicy(network, _CPU, seed=4)},
+        (SelfPlaySpec(game_seed=7, lineup=("learner", "other", "other", "other")),),
+    )
+    batch = select_policy_steps(
+        result.episodes, "learner", action_size=runner.codec.size
+    )
+    assert batch.actions.shape[0] > 0
+    assert set(batch.seats.tolist()) == {0}
+    with pytest.raises(ValueError, match="no steps"):
+        select_policy_steps(
+            result.episodes, "nobody", action_size=runner.codec.size
+        )
+
+
+def test_train_cli_smoke(tmp_path: Path) -> None:
+    exit_code = train_main(
+        [
+            "--out",
+            str(tmp_path / "cli"),
+            "--iterations",
+            "1",
+            "--games-per-iteration",
+            "1",
+            "--hidden",
+            "16",
+            "--minibatch",
+            "256",
+        ]
+    )
+    assert exit_code == 0
+    assert (tmp_path / "cli" / "latest.pt").exists()
+    with pytest.raises(SystemExit):
+        train_main(["--out", str(tmp_path), "--opponent", "oracle"])
+
+
+def test_train_cli_parses_expansion_flags_into_the_config(tmp_path: Path) -> None:
+    exit_code = train_main(
+        [
+            "--out",
+            str(tmp_path / "cli"),
+            "--iterations",
+            "1",
+            "--games-per-iteration",
+            "1",
+            "--hidden",
+            "16",
+            "--minibatch",
+            "256",
+            "--opponent",
+            "heuristic",
+            "--promo-cards",
+            "--bloodlines",
+            "--tech-module",
+            "--immortality",
+        ]
+    )
+    assert exit_code == 0
+    _, info = load_checkpoint(tmp_path / "cli" / "latest.pt")
+    document = info.metadata["config"]
+    assert document["promo_cards"] is True
+    assert document["bloodlines"] is True
+    assert document["tech_module"] is True
+    assert document["immortality"] is True
+    assert info.ruleset == "uprising-4p-base+promo+bloodlines+tech+immortality"
+
+
+def test_parallel_collection_matches_the_serial_contract(tmp_path: Path) -> None:
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig()
+    network = _network(SelfPlayRunner(config).codec.size)
+    specs = tuple(
+        SelfPlaySpec(
+            game_seed=seed, lineup=("learner", "heuristic", "heuristic", "heuristic")
+        )
+        for seed in range(30, 34)
+    )
+    with Collector(config, workers=2, opponent="heuristic") as collector:
+        result = collector.collect(network, _CPU, specs, policy_seed=5, opponent_seed=6)
+
+    assert [episode.game_seed for episode in result.episodes] == [30, 32, 31, 33]
+    assert all(episode.steps == () for episode in result.episodes)
+    assert result.decisions == sum(e.decisions for e in result.episodes)
+    batch = result.batch
+    assert batch.actions.shape[0] > 0
+    assert set(batch.seats.tolist()) == {0}
+    assert set(batch.episode_ids.tolist()) <= {0, 1, 2, 3}
+    for episode_id, value in zip(
+        batch.episode_ids.tolist(), batch.returns.tolist(), strict=True
+    ):
+        assert value == pytest.approx(result.episodes[episode_id].rewards[0])
+    assert batch.action_size == network.action_size
+    with pytest.raises(ValueError, match="workers"):
+        Collector(config, workers=0)
+
+    parallel = train(
+        TrainConfig(
+            out_dir=tmp_path / "par",
+            iterations=1,
+            games_per_iteration=2,
+            seed=3,
+            hidden=(16,),
+            workers=2,
+            learner=LearnerConfig(minibatch_size=256),
+        )
+    )
+    assert parallel.records[0].games == 2
+    assert parallel.records[0].learner_steps > 0
+
+
+def test_parallel_collection_is_the_same_for_a_widened_network() -> None:
+    """Workers rebuild the learner from its arch; a widened copy plays alike.
+
+    The widened network computes the same logits bit for bit, so seeded
+    sampling picks the same actions and the batches are identical. A worker
+    that rebuilt a plain MLP would refuse the ``slot_embed`` weight.
+    """
+
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig()
+    network = _network(SelfPlayRunner(config).codec.size)
+    widened = MlpSlotsNetwork(network.action_size, hidden=network.hidden)
+    widened.load_state_dict(network.state_dict(), strict=False)
+    widened.eval()
+    specs = tuple(
+        SelfPlaySpec(game_seed=seed, lineup=("learner",) * 4) for seed in (50, 51)
+    )
+    batches = []
+    for learner in (network, widened):
+        with Collector(config, workers=2, max_steps=400) as collector:
+            batches.append(
+                collector.collect(
+                    learner, _CPU, specs, policy_seed=9, opponent_seed=10
+                ).batch
+            )
+    plain, slots = batches
+    assert plain.actions.shape[0] > 0
+    for name in (
+        "observations",
+        "legal_indices",
+        "legal_offsets",
+        "actions",
+        "seats",
+        "returns",
+        "episode_ids",
+    ):
+        assert np.array_equal(getattr(plain, name), getattr(slots, name)), name
+    assert plain.action_size == slots.action_size
+
+
+def test_parallel_collection_pickles_an_expansion_ruleset(tmp_path: Path) -> None:
+    from dune_imperium.training.collect import Collector
+
+    config = RulesetConfig(bloodlines=True, tech_module=True)
+    network = _network(SelfPlayRunner(config).codec.size)
+    specs = tuple(
+        SelfPlaySpec(
+            game_seed=seed, lineup=("learner", "heuristic", "heuristic", "heuristic")
+        )
+        for seed in range(40, 42)
+    )
+    with Collector(config, workers=2, opponent="heuristic") as collector:
+        result = collector.collect(network, _CPU, specs, policy_seed=7, opponent_seed=8)
+
+    assert len(result.episodes) == 2
+    assert all(episode.steps == () for episode in result.episodes)
+    assert result.batch.actions.shape[0] > 0
+    assert result.batch.action_size == network.action_size
+
+
+def test_cycle_guard_masks_taken_actions_for_greedy_play_only() -> None:
+    from dune_imperium.training.torch_policy import _CycleGuard
+
+    guard = _CycleGuard()
+    observation = np.zeros(4, dtype=np.int32)
+    logits = torch.tensor([0.0, 5.0, 1.0])
+    first = guard.greedy(1, observation, logits)
+    second = guard.greedy(1, observation, logits)
+    third = guard.greedy(1, observation, logits)
+    assert (first, second, third) == (1, 2, 0)
+    # Every legal action taken: the full set comes back rather than nothing.
+    assert torch.equal(guard.restrict(1, observation, logits), logits)
+    # A new round forgets the history.
+    assert guard.greedy(2, observation, logits) == 1
+
+    # Sampling is unguarded: the same observation may repeat an action.
+    runner = SelfPlayRunner(RulesetConfig())
+    network = _network(runner.codec.size)
+    policy = TorchBatchPolicy(network, _CPU, seed=4, sample=True)
+    result = runner.run({"p": policy}, (SelfPlaySpec(game_seed=8, lineup=("p",) * 4),))
+    assert not result.episodes[0].truncated
+    assert not policy._guards
+
+
+class _CaptureWithdrawal:
+    """Deploy whenever offered; keep the first decision that allows undoing it."""
+
+    def __init__(self) -> None:
+        self.inner = RandomBatchPolicy(seed=5)
+        self.engine = SelfPlayRunner(RulesetConfig(), record=False)._engine(None)
+        self.captured: tuple[PlayerView, tuple[DomainAction, ...]] | None = None
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        answers = list(self.inner.act(requests))
+        for row, request in enumerate(requests):
+            full = self.engine.legal_actions(request.state, request.seat)
+            if self.captured is None and any(
+                action.action_id in UNDO_ACTION_IDS for action in full
+            ):
+                self.captured = (request.view, full)
+            for action, index in zip(
+                request.legal_actions, request.legal_indices, strict=True
+            ):
+                if action.action_id == "deploy_troops":
+                    answers[row] = index
+                    break
+        return tuple(answers)
+
+
+def test_network_agent_never_plays_a_pure_undo_action() -> None:
+    # Training never offers withdraw_troops / withdraw_commanders (OQ-029's
+    # take-back; docs/rl-environment.md), so their logits are untrained. Greedy
+    # checkpoint play must not pick them either, even when they would win.
+    capture = _CaptureWithdrawal()
+    runner = SelfPlayRunner(RulesetConfig(), max_steps=400, record=False)
+    runner.run({"p": capture}, (SelfPlaySpec(game_seed=11, lineup=("p",) * 4),))
+    assert capture.captured is not None, "no decision allowed a withdrawal"
+    view, legal = capture.captured
+
+    network = _network(runner.codec.size)
+    undo_indices = [
+        index
+        for index, template in enumerate(runner.codec.catalog)
+        if template.action_id in UNDO_ACTION_IDS
+    ]
+    with torch.no_grad():
+        network.policy_head.bias[undo_indices] = 50.0
+
+    # The setup bites: over the engine's full legal set the undo logit wins.
+    mask = np.zeros(runner.codec.size, dtype=np.int8)
+    mask[[runner.codec.encode(action) for action in legal]] = 1
+    encoded = np.asarray(encode_player_view(view), dtype=np.int32)
+    with torch.no_grad():
+        logits, _ = network(
+            torch.from_numpy(encoded).unsqueeze(0), torch.from_numpy(mask).unsqueeze(0)
+        )
+    assert int(logits[0].argmax().item()) in undo_indices
+
+    chosen = NetworkAgent(network, RulesetConfig()).choose_action(view, legal)
+    assert chosen in legal
+    assert chosen.action_id not in UNDO_ACTION_IDS
+
+
+def test_train_loop_keeps_a_numbered_checkpoint_every_n_iterations(
+    tmp_path: Path,
+) -> None:
+    result = train(
+        TrainConfig(
+            out_dir=tmp_path / "run",
+            iterations=3,
+            games_per_iteration=1,
+            seed=2,
+            hidden=(16,),
+            learner=LearnerConfig(minibatch_size=512),
+            checkpoint_every=2,
+        )
+    )
+
+    kept = sorted(path.name for path in (tmp_path / "run").glob("iteration_*.pt"))
+    assert kept == ["iteration_00002.pt"]
+    _, latest_info = load_checkpoint(result.latest_checkpoint)
+    assert latest_info.iteration == 3
+    with pytest.raises(ValueError, match="checkpoint_every"):
+        TrainConfig(out_dir=tmp_path, checkpoint_every=0)
+
+    exit_code = train_main(
+        [
+            "--out",
+            str(tmp_path / "cli"),
+            "--iterations",
+            "2",
+            "--games-per-iteration",
+            "1",
+            "--hidden",
+            "16",
+            "--minibatch",
+            "256",
+            "--checkpoint-every",
+            "2",
+        ]
+    )
+    assert exit_code == 0
+    assert sorted(path.name for path in (tmp_path / "cli").glob("iteration_*.pt")) == [
+        "iteration_00002.pt"
+    ]
+

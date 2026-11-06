@@ -1,0 +1,3 @@
+{{ define "main" }}
+<div class="wrap not-found"><p class="eyebrow">404</p><h1>{{ i18n "notFound" }}</h1><p>{{ i18n "notFoundText" }}</p><div class="actions"><a class="button primary" href="{{ .Site.Home.RelPermalink }}">{{ i18n "goHome" }}</a><a class="button secondary" href="{{ (site.GetPage "/search").RelPermalink }}">{{ i18n "goSearch" }} ↗</a></div></div>
+{{ end }}

@@ -1,0 +1,772 @@
+"""English display text for the board spaces of both base games.
+
+Uprising's 22 spaces and the original game's 22 (docs/rules/imperium-base.md
+8; Arrakeen, Imperial Basin and Secrets are one print on both boards).
+
+Spaces whose printed effect is fully covered by the engine's static
+automatic-effect table render their text from that same table, so the shown
+effect cannot drift from what the engine executes. Spaces resolved through
+dedicated choice frames or imperative code carry hand-authored lines whose
+wording follows ``docs/rules/board-spaces.md`` (Board Space Guide citations).
+Implementation flags are always computed from the engine table, never
+authored, so an unimplemented space is marked automatically.
+"""
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import assert_never
+
+from dune_imperium.content.core.effects import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainResources,
+    RecruitTroops,
+    Research,
+)
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.registry.board import BOARD_SPACES_BY_ID
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.state import GameState
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+from dune_imperium.rules.board_effects import (
+    BOARD_ICON_CONNECTIONS,
+    BOARD_ICON_CONTRACT,
+    BOARD_ICON_FOLDSPACE,
+    BOARD_ICON_HIGH_COUNCIL,
+    BOARD_ICON_INFLUENCE,
+    BOARD_ICON_MENTAT,
+    BOARD_ICON_SPY,
+    BOARD_ICON_SWORDMASTER,
+    BOARD_ICON_TRASH,
+    CHOICE_DRIVEN_SPACE_IDS,
+    board_icon_for_effect,
+    static_board_effects,
+    visit_board_effects,
+)
+from dune_imperium.rules.effects import (
+    AutomaticEffect,
+    current_agent_effect_context,
+)
+
+FACTION_NAMES: Mapping[Faction, str] = MappingProxyType(
+    {
+        Faction.EMPEROR: "Emperor",
+        Faction.SPACING_GUILD: "Spacing Guild",
+        Faction.BENE_GESSERIT: "Bene Gesserit",
+        Faction.FREMEN: "Fremen",
+    }
+)
+
+# Board-space text below has a Korean twin (feature decided 2026-09-25, Step
+# K4: the effect text the engine *generates* gets a Korean version). A
+# space named inside a Korean line goes by its Korean Board Space Guide name
+# (``display.names_ko``, glossary-ko.md's "공간 이름" row, 2026-10-11).
+# Every Korean function/table here mirrors the English one
+# directly above it one-for-one; a test asserts the ``_KO`` tables share the
+# same keys as their English counterparts. Word choice follows only
+# ``docs/rules/glossary-ko.md`` (game terms) or ordinary Korean grammar for
+# everything else, and every icon a Korean line names follows the same
+# "counted vs. bare, per what ``ICON_RULES`` actually matches for the
+# matching English wording" policy ``display/tokens_ko.py``'s module
+# docstring sets out in detail — not copied here a second time, see that
+# module for the reasoning; the choices below were checked against it and
+# against ``docs/rules/board-spaces.md``'s own English wording line by line.
+
+# Hand-authored effect lines, keyed by (space_id, choam_module) with None
+# meaning both rulesets, holding one string per cost option. Wording follows
+# docs/rules/board-spaces.md; the faction-visit Influence line is included
+# where the space has a faction Agent icon.
+_AUTHORED_OPTION_EFFECTS: Mapping[
+    tuple[str, bool | None],
+    tuple[str, ...],
+] = MappingProxyType(
+    {
+        ("dutiful_service", True): (
+            "Gain 1 Emperor Influence. Take a face-up Contract"
+            " (Gain 2 solari if none is available)",
+        ),
+        ("accept_contract", True): (
+            "Draw 1 card. Take a face-up Contract"
+            " (Gain 2 solari if none is available)",
+        ),
+        ("espionage", None): (
+            "Gain 1 Bene Gesserit Influence, Draw 1 card."
+            " Place a Spy",
+        ),
+        ("secrets", None): (
+            "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card."
+            " Each opponent holding 4 or more Intrigue cards gives you one"
+            " at random",
+        ),
+        ("desert_tactics", None): (
+            "Gain 1 Fremen Influence, Recruit 1 troop."
+            " You may trash a card",
+        ),
+        ("high_council", None): (
+            "First visit: seat your Councilor for +2 Persuasion at every"
+            " Reveal turn. Later visits: Gain 2 spice, Draw 1 Intrigue card,"
+            " Recruit 3 troops",
+        ),
+        ("imperial_privilege", None): (
+            "You may trash an Intrigue card → Draw 1 Intrigue card."
+            " Recall one of your other Agents and Draw 1 card",
+        ),
+        ("swordmaster", None): (
+            "Once per game: take your third Agent, usable from this round",
+        )
+        * 2,
+        ("sietch_tabr", None): (
+            "Choose one: take the Maker Hooks token (if you lack it),"
+            " Recruit 1 troop and Gain 1 water — or Gain 1 water,"
+            " optionally destroying the Shield Wall",
+        ),
+        ("tuek_sietch", None): (
+            "Take all bonus spice here, then choose: Gain 1 spice — or"
+            " Draw 1 card (Esmar Tuek's Maker space)",
+        ),
+        ("deep_desert", None): (
+            "Take all bonus spice here, then choose: Gain 4 spice — or,"
+            " with Maker Hooks, summon 2 sandworms into the Conflict",
+        ),
+        ("hagga_basin", None): (
+            "Take all bonus spice here, then choose: Gain 2 spice — or,"
+            " with Maker Hooks, summon 1 sandworm into the Conflict",
+        ),
+        ("imperial_basin", None): ("Gain 1 spice plus all bonus spice here",),
+        ("shipping", None): (
+            "Gain 5 solari, Gain 1 Influence with a Faction of your choice",
+        ),
+        # The original game's spaces whose visit is more than the engine's
+        # static table says, worded after docs/rules/imperium-base.md 8
+        # [DI pp. 17-18] and 9 (the Mentat).
+        ("foldspace", None): (
+            "Gain 1 Spacing Guild Influence, Acquire a Foldspace card",
+        ),
+        ("selective_breeding", None): (
+            "Gain 1 Bene Gesserit Influence. You may trash a card → Draw 2 cards",
+        ),
+        ("mentat", None): (
+            "Draw 1 card. Take the Mentat if it is here: one of your Agents"
+            " this round",
+        ),
+        ("imperium_swordmaster", None): (
+            "Once per game: take your third Agent, usable from this round",
+        ),
+        ("imperium_high_council", None): (
+            "Once per game: seat your Councilor for +2 Persuasion at every"
+            " Reveal turn",
+        ),
+        ("imperium_hagga_basin", None): ("Gain 2 spice plus all bonus spice here",),
+        ("the_great_flat", None): ("Gain 3 spice plus all bonus spice here",),
+        # Rise of Ix's four spaces, one line per printed row of
+        # docs/rules/rise-of-ix.md 8 [Rise of Ix pp. 4, 5, 12] (the ability
+        # records of ``content.rise_of_ix.board_abilities``, resolved by
+        # ``rules.ix_board_spaces``): each names its icons by the phrase the
+        # engine's text uses for them (``effect_dsl_text``, ``structs``), so
+        # the client draws the Dreadnought, Acquire Tech, Tech Negotiation and
+        # Freighter icons. Tech Negotiation's Reveal-turn Persuasion for an
+        # Agent there is its note (``SPACE_NOTES``).
+        ("dreadnought", None): (
+            "Commission a dreadnought and/or Acquire a Tech tile",
+        ),
+        ("tech_negotiation", None): (
+            "Acquire a Tech tile (1 spice off) -OR- Place a troop from your"
+            " supply on the Ix board as a Negotiator",
+        ),
+        ("interstellar_shipping", None): ("Move your Freighter 2 times",),
+        ("smuggling", None): ("Gain 1 solari, Move your Freighter once",),
+    }
+)
+
+# A phrase repeated verbatim by three of the entries above (dutiful_service's
+# and accept_contract's CHOAM variant, and BOARD_ICON_CONTRACT below): Take a
+# Contract 가져오다 [Main p. 16]/[Main p. 20] (glossary-ko.md), the bare
+# {contract} icon (ICON_RULES' "Contracts?" rule is capital-only, and this
+# printed line is capitalized), "없으면" (if there is none) for "if none is
+# available" — ordinary grammar, not a game term.
+_TAKE_CONTRACT_OR_SOLARI_KO = "{contract} 가져옴 (없으면 {solari:2})"
+
+# Esmar Tuek's Korean print name (the leader, referenced by tuek_sietch's
+# flavor line below), read from names_ko.py's own confirmed transcription
+# ("에스마르 튜엑" — Korea Boardgames retail cards, read twice
+# independently, per that module's docstring), not left as the untranslated
+# English flavor name. The Korean Bloodlines rulebook already names this
+# very leader/space pairing "튜엑의 시치 게임판 장소 (에스마르 튜엑
+# 전용)" `[Bloodlines p. 2]`, confirming this is the same person, not a
+# second unconfirmed name.
+_ESMAR_TUEK_NAME_KO = KOREAN_CARD_NAMES["leaders"]["esmar_tuek"]
+
+_AUTHORED_OPTION_EFFECTS_KO: Mapping[
+    tuple[str, bool | None],
+    tuple[str, ...],
+] = MappingProxyType(
+    {
+        ("dutiful_service", True): (
+            f"{{influence_emperor:1}}. {_TAKE_CONTRACT_OR_SOLARI_KO}",
+        ),
+        ("accept_contract", True): (
+            f"{{draw:1}}. {_TAKE_CONTRACT_OR_SOLARI_KO}",
+        ),
+        ("espionage", None): (
+            "{influence_bene_gesserit:1}, {draw:1}. {spy} 배치",
+        ),
+        ("secrets", None): (
+            # "Each opponent holding 4 or more Intrigue cards gives you one
+            # at random" quotes glossary-ko.md's own "opponent" citation
+            # almost verbatim ("책략 카드를 4장 이상 가진 다른 플레이어들은
+            # 각자 당신에게…", the Steal Intrigue rule, [Main p. 20]) — this
+            # space's own effect is the same shape. "Intrigue cards" here
+            # has no adjacent "Draw N" so it is the bare icon (tokens_ko.py
+            # docstring), not the counted one used for "Draw 1 Intrigue
+            # card" just before it.
+            "{influence_bene_gesserit:1}, {intrigue:1}. {intrigue}를 4장 "
+            "이상 가진 다른 플레이어들은 각자 당신에게 무작위로 한 장을 줌",
+        ),
+        ("desert_tactics", None): (
+            "{influence_fremen:1}, {troop:1}. 카드 1장 {trash} 가능",
+        ),
+        ("high_council", None): (
+            # "의원 토큰을 놓습니다" quotes glossary-ko.md's High Council
+            # citation ([Board Guide p. 2]) for "seat your Councilor";
+            # "매 {reveal_turn}마다" is the rulebook's own recurring-trigger
+            # shape (korean-card-style.md's "때마다" note), not the one-shot -다면.
+            # English opens the line with "First visit:" — the Korean
+            # rulebook's own two-visit split ("이 장소에 처음으로 에이전트를
+            # 보낼 때: … / 그 뒤로 이 장소에 다시 에이전트를 보낼 때: …")
+            # confirms this line needs the same first/later split, so
+            # "첫 방문:" mirrors "이후 방문:" already used just below.
+            "첫 방문: 매 {reveal_turn}마다 +{persuasion:2}를 위해 원로회에"
+            " 의원 토큰 놓음. 이후 방문: {spice:2}, {intrigue:1}, {troop:3}",
+        ),
+        ("imperial_privilege", None): (
+            # "trash an Intrigue card" is the exact adjacency ICON_RULES'
+            # combined trash_intrigue rule matches (structs.py docstring
+            # precedent) — bare {trash_intrigue}, not two separate icons.
+            "{trash_intrigue} 가능 {arrow_right} {intrigue:1}. 당신의 다른"
+            " {agent} 하나 소환 및 {draw:1}",
+        ),
+        ("swordmaster", None): (
+            "게임당 한 번: 세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)",
+        )
+        * 2,
+        ("sietch_tabr", None): (
+            "하나 선택: {maker_hooks} 가져옴 (없다면), {troop:1}, {water:1}"
+            " / {water:1}, 선택적으로 {shield_wall} 제거",
+        ),
+        ("tuek_sietch", None): (
+            # "Gain" here is glossary-ko.md's 얻다 [Main p. 20], not
+            # Acquire's 획득; "Esmar Tuek" is the leader, whose Korean-print
+            # name is _ESMAR_TUEK_NAME_KO above (names_ko.py), not left in
+            # English.
+            f"여기 있는 보너스 {{spice}} 모두 얻음, 그 후 하나 선택: {{spice:1}}"
+            f" / {{draw:1}} ({_ESMAR_TUEK_NAME_KO}의 메이커 장소)",
+        ),
+        ("deep_desert", None): (
+            # "모래벌레를 불러서 즉시 교전 칸에 배치합니다" [Main p. 10] is
+            # glossary-ko.md's own Sandworm-summon citation; "부르다", never
+            # "소환" (Agent/Spy recall only) — see assert_no_summon_for_
+            # sandworm in tests/support/ko_text.py. "Gain" is 얻다
+            # [Main p. 20], not Acquire's 획득.
+            "여기 있는 보너스 {spice} 모두 얻음, 그 후 하나 선택: {spice:4}"
+            " / {maker_hooks}면 {sandworm} 2마리를 불러서 교전 칸에 배치",
+        ),
+        ("hagga_basin", None): (
+            "여기 있는 보너스 {spice} 모두 얻음, 그 후 하나 선택: {spice:2}"
+            " / {maker_hooks}면 {sandworm} 1마리를 불러서 교전 칸에 배치",
+        ),
+        ("imperial_basin", None): ("{spice:1} 및 여기 있는 보너스 {spice} 모두 얻음",),
+        ("shipping", None): ("{solari:5}, {influence_any:1} 선택",),
+        # The original game's spaces (the English table's comment), in its
+        # Korean rulebook's words: 접힘 공간 카드 (the Foldspace card) and
+        # 멘타트 [DI-ko pp. 16-18]; the trash arrow and the Councilor follow
+        # the Uprising lines above.
+        ("foldspace", None): ("{influence_spacing_guild:1}, 접힘 공간 카드 {acquire}",),
+        ("selective_breeding", None): (
+            "{influence_bene_gesserit:1}. 카드 1장 {trash} 가능 {arrow_right} {draw:2}",
+        ),
+        ("mentat", None): (
+            "{draw:1}. 멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나",
+        ),
+        ("imperium_swordmaster", None): (
+            "게임당 한 번: 세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)",
+        ),
+        ("imperium_high_council", None): (
+            "게임당 한 번: 매 {reveal_turn}마다 +{persuasion:2}를 위해 원로회에"
+            " 의원 토큰 놓음",
+        ),
+        ("imperium_hagga_basin", None): (
+            "{spice:2} 및 여기 있는 보너스 {spice} 모두 얻음",
+        ),
+        ("the_great_flat", None): ("{spice:3} 및 여기 있는 보너스 {spice} 모두 얻음",),
+        # Rise of Ix's four spaces (the English table's comment). The Korean
+        # rulebook's words for each icon are the TERMS rows' labels (드레드노트,
+        # 기술 획득, 기술 할인, 기술 협상, 화물선 [IX-ko pp. 4, 5, 12]); each
+        # icon is written where English's phrase draws it, the verb going with
+        # the icon (``display/tokens_ko.py``'s placeholder policy). "그리고/또는"
+        # and "—또는—" are docs/rules/rise-of-ix.md 8's and the Leader faces'
+        # words for the printed "and/or" and "-OR-".
+        ("dreadnought", None): ("{dreadnought} 그리고/또는 {acquire_tech}",),
+        ("tech_negotiation", None): (
+            "{acquire_tech_minus_one} —또는— {tech_negotiation}",
+        ),
+        ("interstellar_shipping", None): ("{freighter:2}",),
+        ("smuggling", None): ("{solari:1}, {freighter}",),
+    }
+)
+
+# Printed facts outside the automatic-effects channel, each verified against
+# its implementing rules module (reveal_turn.py persuasion passives,
+# agent_turn.py control visit bonus and Swordmaster cost option).
+#
+# - swordmaster: the space prints two costs and its option lines show both,
+#   so the note says when each applies, worded after the Board Guide's own
+#   line ("Cost: 8 Solari if no player has their Swordmaster; 6 Solari once
+#   any player does." [Board Guide p. 2]; docs/rules/board-spaces.md:
+#   "아무도 Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는
+#   6 Solari" `[Board Guide p. 2]`). agent_turn.py charges option 1 once
+#   any player's swordmaster_acquired is set. Lower-case "solari" is what
+#   the client's ICON_RULES turns into the Solari icon.
+# - sietch_tabr: the space's second choice may remove the Shield Wall; the
+#   note says what the wall does, worded after [Main p. 10]
+#   (docs/rules/uprising-systems.md: "token이 있는 동안 Arrakeen, Spice
+#   Refinery, Imperial Basin의 Conflict에는 sandworm을 소환할 수 없다.
+#   `[Main pp. 4, 10]`" and "제거된 뒤에는 어느 Conflict에도 Shield Wall로
+#   인한 sandworm 금지가 없다. `[Main pp. 10, 20]`").
+SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "swordmaster": (
+            "Cost: 8 solari if no player has their Swordmaster;"
+            " 6 solari once any player does",
+        ),
+        "sietch_tabr": (
+            "Shield Wall: while its token is on the board, no sandworms can"
+            " be summoned to a Conflict at Arrakeen, Spice Refinery or"
+            " Imperial Basin. Once it is removed, sandworms may be summoned"
+            " to any Conflict",
+        ),
+        "assembly_hall": (
+            "While your Agent is here: +1 Persuasion at your Reveal turn",
+        ),
+        # The original game's Hall of Oratory prints the same passive
+        # [DI p. 17].
+        "hall_of_oratory": (
+            "While your Agent is here: +1 Persuasion at your Reveal turn",
+        ),
+        # So does Rise of Ix's Tech Negotiation (docs/rules/rise-of-ix.md 8,
+        # [Rise of Ix pp. 4, 12]).
+        "tech_negotiation": (
+            "While your Agent is here: +1 Persuasion at your Reveal turn",
+        ),
+        "arrakeen": (
+            "Control: whenever an Agent is sent here, the controller"
+            " gains 1 solari",
+        ),
+        "spice_refinery": (
+            "Control: whenever an Agent is sent here, the controller"
+            " gains 1 solari",
+        ),
+        "imperial_basin": (
+            "Control: whenever an Agent is sent here, the controller"
+            " gains 1 spice",
+        ),
+        # The original game's third controllable space [DI p. 10].
+        "carthag": (
+            "Control: whenever an Agent is sent here, the controller"
+            " gains 1 solari",
+        ),
+    }
+)
+
+# "지배" is the glossary's plain word for Control ([Main p. 20]); ICON_RULES
+# has no rule for the English word "Control" at all (structs.py's own
+# conflict_reward_text_ko docstring notes this), so no {control} placeholder
+# is used even though one exists. "여기로 {agent}를 보낼 때마다" mirrors
+# glossary-ko.md's Send-an-Agent citation ([Main p. 9], 보내다) in the
+# recurring "때마다" shape (docs/rules/korean-card-style.md). "지배권을 가진 플레이어"
+# (rather than an invented "지배자") and the verb 얻다 (never Acquire's
+# 획득) both quote the Korean Board Guide itself: "아라킨 지배권을 가진
+# 플레이어는 1 솔라리를 얻습니다" [Board Guide p. 1], "제국 분지 지배권을
+# 가진 플레이어는 1 스파이스를 얻습니다" [Board Guide p. 2] (Spice
+# Refinery's printed line matches Arrakeen's verbatim per the same guide).
+#
+# The Swordmaster note is the Korean Board Guide's own cost line ("비용:
+# 아무도 소드마스터가 없다면 8 솔라리, 누군가가 소드마스터를 얻었다면 6
+# 솔라리" [Board Guide p. 2]); 소드마스터 is the glossary's word for the
+# piece a player gains ([Main p. 17]) and the board space's own Korean name
+# [Board Guide pp. 1-2]. The Shield Wall note follows the Korean rulebook's
+# own sentences
+# ("이 토큰이 놓여 있는 동안, 이렇게 보호받는 세 장소 중 어딘가에서 일어나는
+# 교전에서는 모래벌레를 부를 수 없습니다", "방어벽 토큰이 한번 제거되고
+# 나면, 이제 아무 교전에서든 모래벌레를 부를 수 있게 됩니다" [Main p. 10]):
+# a sandworm is called (부르다), never 소환, which recalls Agents and Spies.
+SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "swordmaster": (
+            "비용: 아무도 소드마스터가 없다면 {solari:8}, 누군가가 소드마스터를"
+            " 얻었다면 {solari:6}",
+        ),
+        "sietch_tabr": (
+            "{shield_wall}: 토큰이 게임판에 놓여 있는 동안 아라킨,"
+            " 스파이스 정제소, 제국 분지 {conflict}에서는 {sandworm}를"
+            " 부를 수 없음. 토큰이 제거되고 나면 아무 {conflict}에서든"
+            " {sandworm}를 부를 수 있음",
+        ),
+        "assembly_hall": (
+            "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
+            " +{persuasion:1}",
+        ),
+        "hall_of_oratory": (
+            "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
+            " +{persuasion:1}",
+        ),
+        "tech_negotiation": (
+            "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
+            " +{persuasion:1}",
+        ),
+        "arrakeen": (
+            "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
+            " {solari:1} 얻음",
+        ),
+        "spice_refinery": (
+            "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
+            " {solari:1} 얻음",
+        ),
+        "imperial_basin": (
+            "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
+            " {spice:1} 얻음",
+        ),
+        "carthag": (
+            "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
+            " {solari:1} 얻음",
+        ),
+    }
+)
+
+
+# English lines for the printed icons outside the automatic-effects table,
+# worded after docs/rules/board-spaces.md (Board Space Guide citations).
+_ICON_TEXTS: Mapping[str, str] = MappingProxyType(
+    {
+        BOARD_ICON_CONTRACT: (
+            "Take a face-up Contract (Gain 2 solari if none is available)"
+        ),
+        BOARD_ICON_HIGH_COUNCIL: (
+            "Seat your Councilor for +2 Persuasion at every Reveal turn"
+        ),
+        BOARD_ICON_SWORDMASTER: "Take your third Agent, usable from this round",
+        BOARD_ICON_SPY: "Place a Spy",
+        BOARD_ICON_TRASH: "You may trash a card",
+        BOARD_ICON_INFLUENCE: "Gain 1 Influence with a Faction of your choice",
+        # The original board's own icons [DI pp. 17-18] (docs/rules/
+        # imperium-base.md 8, 9) and Earl Memnon Thorvald's Connections, the
+        # Influence the seat he just took gives (imperium-base.md 12).
+        BOARD_ICON_FOLDSPACE: "Acquire a Foldspace card",
+        BOARD_ICON_MENTAT: (
+            "Take the Mentat if it is here: one of your Agents this round"
+        ),
+        BOARD_ICON_CONNECTIONS: "Gain 1 Influence with a Faction of your choice",
+    }
+)
+
+# "의원 토큰" (Councilor token) and "원로회" (High Council) quote
+# glossary-ko.md's High Council citation ([Board Guide p. 2]) the same way
+# the "high_council" row of _AUTHORED_OPTION_EFFECTS_KO above does.
+_ICON_TEXTS_KO: Mapping[str, str] = MappingProxyType(
+    {
+        BOARD_ICON_CONTRACT: _TAKE_CONTRACT_OR_SOLARI_KO,
+        BOARD_ICON_HIGH_COUNCIL: (
+            "매 {reveal_turn}마다 +{persuasion:2}를 위해 원로회에 의원 토큰 놓음"
+        ),
+        BOARD_ICON_SWORDMASTER: "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)",
+        BOARD_ICON_SPY: "{spy} 배치",
+        BOARD_ICON_TRASH: "카드 1장 {trash} 가능",
+        BOARD_ICON_INFLUENCE: "{influence_any:1} 선택",
+        # The English table's comment, in the Korean rulebook's words (the
+        # space lines above).
+        BOARD_ICON_FOLDSPACE: "접힘 공간 카드 {acquire}",
+        BOARD_ICON_MENTAT: (
+            "멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나"
+        ),
+        BOARD_ICON_CONNECTIONS: "{influence_any:1} 선택",
+    }
+)
+
+
+def board_icon_text(key: str, effects: tuple[AutomaticEffect, ...]) -> str:
+    """Render one printed icon of a visit as an English effect fragment.
+
+    Automatic icons read their amount from ``effects`` (the visit's entries
+    of the engine table); the choice and one-off icons use the authored
+    lines above.
+    """
+
+    for effect in effects:
+        if board_icon_for_effect(effect) == key:
+            return ", ".join(automatic_effect_texts(effect))
+    return _ICON_TEXTS[key]
+
+
+def board_icon_text_ko(key: str, effects: tuple[AutomaticEffect, ...]) -> str:
+    """Korean twin of ``board_icon_text``."""
+
+    for effect in effects:
+        if board_icon_for_effect(effect) == key:
+            return ", ".join(automatic_effect_texts_ko(effect))
+    return _ICON_TEXTS_KO[key]
+
+
+def board_effect_action_text(state: GameState, action: DomainAction) -> str | None:
+    """Describe a ``resolve_board_effect`` action by the icon it resolves.
+
+    Returns None for any other action or outside an Agent-turn effect frame.
+    """
+
+    if action.action_id != "resolve_board_effect":
+        return None
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    space_id = context.get("space_id")
+    cost_option = context.get("cost_option")
+    key = dict(action.arguments).get("effect")
+    if (
+        not isinstance(space_id, str)
+        or isinstance(cost_option, bool)
+        or not isinstance(cost_option, int)
+        or not isinstance(key, str)
+    ):
+        return None
+    effects = visit_board_effects(
+        state.players[action.actor],
+        space_id,
+        cost_option,
+        choam_module=state.config.choam_module,
+        immortality=state.config.immortality,
+    )
+    return board_icon_text(key, effects)
+
+
+def board_effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
+    """Korean twin of ``board_effect_action_text``.
+
+    ``display.actions.effect_action_text_ko`` wires this in for
+    ``resolve_board_effect`` (Step K4) the same way it already wires
+    ``agent_card_icon_text_ko`` in for ``resolve_agent_card_effect`` (Step
+    K2) — the client's ``detail_ko`` falls back to the English ``detail``
+    whenever a resolution has no Korean text yet, so this only needs to
+    exist, not backfill every historical action kind.
+    """
+
+    if action.action_id != "resolve_board_effect":
+        return None
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    space_id = context.get("space_id")
+    cost_option = context.get("cost_option")
+    key = dict(action.arguments).get("effect")
+    if (
+        not isinstance(space_id, str)
+        or isinstance(cost_option, bool)
+        or not isinstance(cost_option, int)
+        or not isinstance(key, str)
+    ):
+        return None
+    effects = visit_board_effects(
+        state.players[action.actor],
+        space_id,
+        cost_option,
+        choam_module=state.config.choam_module,
+        immortality=state.config.immortality,
+    )
+    return board_icon_text_ko(key, effects)
+
+
+def space_option_count(space_id: str) -> int:
+    """Return how many paid cost options the space offers (at least one)."""
+
+    return max(1, len(BOARD_SPACES_BY_ID[space_id].cost_options))
+
+
+def space_option_effects(
+    space_id: str,
+    *,
+    choam_module: bool,
+    immortality: bool = False,
+) -> tuple[str, ...]:
+    """Return one English effect line per cost option of the space.
+
+    ``immortality`` reads the engine's table for that ruleset, so the
+    Research Station overlay's "Draw two cards and research" [Immortality
+    pp. 5, 16] comes out of the same effects the engine executes.
+    """
+
+    authored = _AUTHORED_OPTION_EFFECTS.get(
+        (space_id, choam_module)
+    ) or _AUTHORED_OPTION_EFFECTS.get((space_id, None))
+    if authored is not None:
+        return authored
+    return tuple(
+        _automatic_option_text(
+            space_id, option, choam_module=choam_module, immortality=immortality
+        )
+        for option in range(space_option_count(space_id))
+    )
+
+
+def space_option_effects_ko(
+    space_id: str,
+    *,
+    choam_module: bool,
+    immortality: bool = False,
+) -> tuple[str, ...]:
+    """Korean twin of ``space_option_effects``."""
+
+    authored = _AUTHORED_OPTION_EFFECTS_KO.get(
+        (space_id, choam_module)
+    ) or _AUTHORED_OPTION_EFFECTS_KO.get((space_id, None))
+    if authored is not None:
+        return authored
+    return tuple(
+        _automatic_option_text_ko(
+            space_id, option, choam_module=choam_module, immortality=immortality
+        )
+        for option in range(space_option_count(space_id))
+    )
+
+
+def space_is_implemented(space_id: str, *, choam_module: bool) -> bool:
+    """Mirror the engine's placement gate for every option of the space."""
+
+    if space_id in CHOICE_DRIVEN_SPACE_IDS:
+        return True
+    for option in range(space_option_count(space_id)):
+        try:
+            static_board_effects(space_id, option, choam_module=choam_module)
+        except NotImplementedError:
+            return False
+    return True
+
+
+def space_notes(space_id: str) -> tuple[str, ...]:
+    """Return printed always-on facts that are not part of the visit effect."""
+
+    return SPACE_NOTES.get(space_id, ())
+
+
+def space_notes_ko(space_id: str) -> tuple[str, ...]:
+    """Korean twin of ``space_notes``."""
+
+    return SPACE_NOTES_KO.get(space_id, ())
+
+
+def _automatic_option_text(
+    space_id: str,
+    cost_option: int,
+    *,
+    choam_module: bool,
+    immortality: bool = False,
+) -> str:
+    fragments: list[str] = []
+    faction = BOARD_SPACES_BY_ID[space_id].faction
+    if faction is not None:
+        fragments.append(f"Gain 1 {FACTION_NAMES[faction]} Influence")
+    for effect in static_board_effects(
+        space_id,
+        cost_option,
+        choam_module=choam_module,
+        immortality=immortality,
+    ):
+        fragments.extend(automatic_effect_texts(effect))
+    return ", ".join(fragments)
+
+
+def automatic_effect_texts(effect: AutomaticEffect) -> tuple[str, ...]:
+    """Render one engine automatic effect as display fragments."""
+
+    match effect:
+        case GainResources():
+            return tuple(
+                f"Gain {amount} {resource}"
+                for resource, amount in (
+                    ("solari", effect.solari),
+                    ("spice", effect.spice),
+                    ("water", effect.water),
+                )
+                if amount
+            )
+        case RecruitTroops():
+            noun = "troop" if effect.count == 1 else "troops"
+            return (f"Recruit {effect.count} {noun}",)
+        case DrawPersonalCards():
+            noun = "card" if effect.count == 1 else "cards"
+            return (f"Draw {effect.count} {noun}",)
+        case DrawIntrigueCards():
+            noun = "Intrigue card" if effect.count == 1 else "Intrigue cards"
+            return (f"Draw {effect.count} {noun}",)
+        case Research():
+            return ("Research (advance your research token)",)
+        case _:
+            assert_never(effect)
+
+
+def _automatic_option_text_ko(
+    space_id: str,
+    cost_option: int,
+    *,
+    choam_module: bool,
+    immortality: bool = False,
+) -> str:
+    """Korean twin of ``_automatic_option_text``."""
+
+    fragments: list[str] = []
+    faction = BOARD_SPACES_BY_ID[space_id].faction
+    if faction is not None:
+        fragments.append(f"{{influence_{faction.value}:1}}")
+    for effect in static_board_effects(
+        space_id,
+        cost_option,
+        choam_module=choam_module,
+        immortality=immortality,
+    ):
+        fragments.extend(automatic_effect_texts_ko(effect))
+    return ", ".join(fragments)
+
+
+def automatic_effect_texts_ko(effect: AutomaticEffect) -> tuple[str, ...]:
+    """Korean twin of ``automatic_effect_texts``.
+
+    Every resource/count pair here has the digit directly adjacent to the
+    keyword in the matching English fragment ("Gain N solari", "Recruit N
+    troop(s)", "Draw N card(s)"/"Draw N Intrigue card(s)"), so each is a
+    *counted* ``{term:count}`` (``display/tokens_ko.py``'s module docstring
+    states this rule once for every generator that needs it). "(연구 토큰
+    전진)" is a terse paraphrase of the Research citation
+    (`[Immortality p. 16]`: "당신의 연구 토큰을 연구 트랙에서 오른쪽으로
+    1칸 전진시킵니다"), matching English's own short parenthetical
+    "(advance your research token)" rather than the full rulebook sentence.
+    """
+
+    match effect:
+        case GainResources():
+            return tuple(
+                f"{{{term}:{amount}}}"
+                for term, amount in (
+                    ("solari", effect.solari),
+                    ("spice", effect.spice),
+                    ("water", effect.water),
+                )
+                if amount
+            )
+        case RecruitTroops():
+            return (f"{{troop:{effect.count}}}",)
+        case DrawPersonalCards():
+            return (f"{{draw:{effect.count}}}",)
+        case DrawIntrigueCards():
+            return (f"{{intrigue:{effect.count}}}",)
+        case Research():
+            return ("{research} (연구 토큰 전진)",)
+        case _:
+            assert_never(effect)

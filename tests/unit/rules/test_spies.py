@@ -1,0 +1,229 @@
+"""Tests for Spy decisions around Agent placement."""
+
+from dataclasses import replace
+
+from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceOutcome,
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+)
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.spies import (
+    apply_gather_intelligence_action,
+    legal_gather_intelligence_actions,
+)
+
+ASSEMBLY_POST = "landsraad-assembly-hall-gather-support"
+
+
+def _instance(card_id: str) -> str:
+    return next(
+        instance_id
+        for instance_id in starting_deck_instance_ids(0)
+        if f":{card_id}:" in instance_id
+    )
+
+
+def _placed_state() -> tuple[GameState, str]:
+    dagger = _instance("dagger")
+    drawn = _instance("diplomacy")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        deck=(drawn,),
+        spies_supply=2,
+        spy_post_ids=(ASSEMBLY_POST,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    action = next(
+        candidate
+        for candidate in legal_agent_actions(state, 0)
+        if dict(candidate.arguments)["space_id"] == "assembly_hall"
+    )
+    return apply_agent_action(state, action).state, drawn
+
+
+def test_gather_intelligence_recall_draws_before_other_agent_effects() -> None:
+    state, drawn = _placed_state()
+    engine = UprisingRulesEngine()
+    engine_actions = engine.whole_actions(state, 0)
+
+    assert {action.action_id for action in engine_actions} == {
+        "decline_gather_intelligence",
+        "gather_intelligence",
+    }
+    # Stage B3a: the seat is offered the recall as the Spy recall of the
+    # visited space (the effect row), the post being its target row.
+    # Stage B3d-3: the pass is the refusal row naming the recall it declines.
+    shown = engine.legal_actions(state, 0)
+    assert {action.action_id for action in shown} == {"decline", "recall_spy"}
+    assert (
+        DomainAction(
+            action_id="decline",
+            actor=0,
+            arguments=(
+                ("of", "recall_spy"),
+                ("printed", "assembly_hall"),
+                ("source", "spy"),
+            ),
+        )
+        in shown
+    )
+    gather = next(
+        action for action in engine_actions if action.action_id == "gather_intelligence"
+    )
+    result = apply_gather_intelligence_action(state, gather)
+    owner = result.state.players[0]
+    context = dict(result.state.decision_stack[-1].context)
+
+    assert owner.hand == (drawn,)
+    assert owner.deck == ()
+    assert owner.spies_supply == 3
+    assert owner.spy_post_ids == ()
+    assert context["pending_gather_intelligence"] is False
+    assert context["pending_board_effect"] is True
+    assert result.events[0].kind == "gather_intelligence"
+
+
+def test_gather_intelligence_can_be_declined_without_recalling_spy() -> None:
+    state, _ = _placed_state()
+    decline = next(
+        action
+        for action in legal_gather_intelligence_actions(state, 0)
+        if action.action_id == "decline_gather_intelligence"
+    )
+
+    result = apply_gather_intelligence_action(state, decline)
+
+    assert result.state.players[0].spies_supply == 2
+    assert result.state.players[0].spy_post_ids == (ASSEMBLY_POST,)
+    assert (
+        dict(result.state.decision_stack[-1].context)["pending_gather_intelligence"]
+        is False
+    )
+    assert result.events == ()
+
+
+def test_unconnected_spy_does_not_open_gather_intelligence_window() -> None:
+    dagger = _instance("dagger")
+    owner = PlayerState(
+        player_id=0,
+        hand=(dagger,),
+        spies_supply=2,
+        spy_post_ids=("arrakis-deep-desert",),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    action = next(
+        candidate
+        for candidate in legal_agent_actions(state, 0)
+        if dict(candidate.arguments)["space_id"] == "assembly_hall"
+    )
+    state = apply_agent_action(state, action).state
+
+    assert legal_gather_intelligence_actions(state, 0) == ()
+
+
+def test_gather_intelligence_recalls_with_both_piles_empty() -> None:
+    """docs/rules/uprising-systems.md: "`Gather Intelligence`: Agent를 space에
+    놓은 직후, board space와 Agent card의 효과를 받기 전에 연결된 자기 Spy를
+    recall하면 card 1장을 draw한다." [Main p. 11]. With both personal piles
+    empty the recall is still offered and the draw finds nothing (OQ-099,
+    user ruling 2026-10-07 "허용 (앱처럼)"); the recall counts for "If you
+    recalled a Spy this turn" (OQ-101)."""
+
+    state, _ = _placed_state()
+    owner = replace(state.players[0], deck=(), discard_pile=())
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+
+    gather = DomainAction(
+        action_id="gather_intelligence",
+        actor=0,
+        arguments=(("post_id", ASSEMBLY_POST),),
+    )
+    assert gather in legal_gather_intelligence_actions(state, 0)
+    finished = apply_whole(engine, state, gather).state
+
+    assert finished.players[0].hand == ()
+    assert finished.players[0].spy_post_ids == ()
+    assert finished.players[0].spies_supply == 3
+    assert finished.players[0].spies_recalled_turn == 1
+    assert not legal_gather_intelligence_actions(finished, 0)
+
+
+def test_gaius_helen_mohiam_must_gather_with_both_piles_empty() -> None:
+    """Clandestine: "Whenever you could recall a Spy to Gather Intelligence,
+    you must" [Gaius Helen Mohiam card]. An empty deck and discard pile no
+    longer stop the recall (OQ-099, user ruling 2026-10-07), so she must
+    make it then too."""
+
+    state, _ = _placed_state()
+    owner = replace(
+        state.players[0], leader_id="gaius_helen_mohiam", deck=(), discard_pile=()
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+
+    assert [
+        action.action_id for action in legal_gather_intelligence_actions(state, 0)
+    ] == ["gather_intelligence"]
+
+
+def test_gather_intelligence_reshuffles_discard_before_drawing() -> None:
+    state, drawn = _placed_state()
+    owner = replace(
+        state.players[0],
+        deck=(),
+        discard_pile=(drawn,),
+    )
+    state = replace(state, players=(owner, *state.players[1:]))
+    engine = UprisingRulesEngine()
+    gather = next(
+        action
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == "gather_intelligence"
+    )
+
+    pending = apply_whole(engine, state, gather).state
+    decision = engine.current_decision(pending)
+    assert isinstance(decision, ChanceDecision)
+    finished = apply_whole(engine, 
+        pending,
+        ChanceOutcome(decision.decision_id, (drawn,)),
+    ).state
+
+    assert finished.players[0].hand == (drawn,)
+    assert finished.players[0].discard_pile == ()
+    assert finished.players[0].spies_supply == 3

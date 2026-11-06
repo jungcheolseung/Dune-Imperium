@@ -1,0 +1,65 @@
+# CHOAM Module
+
+CHOAM Module은 Uprising에 포함된 mini-expansion이다. 공식 룰북은 먼저 module 없이 게임에 익숙해진 뒤 추가하기를 권한다. 프로젝트의 첫 완성 룰셋도 module을 끄고, 이 문서의 규칙은 이후 `choam_module=True`일 때 적용한다. `[Main p. 16]`
+
+## module을 끈 게임
+
+- CHOAM 표시가 있는 Imperium card 4장과 Intrigue card 4장을 각 deck에서 제외한다. Leader로 Shaddam Corrino IV를 선택할 수 없다. `[Main pp. 3-4, 16]`
+- contract icon의 효과는 contract를 가져가는 대신 2 Solari다. `[Main pp. 16, 20]`
+
+## 추가 구성물과 setup
+
+- standard contract 20개를 face-down으로 shuffle한다. 그중 2개를 face-up으로 board의 표시된 두 칸에 놓고, 나머지 18개를 face-down bank에 둔다. `[Main p. 16]`
+- module 전용 Imperium card 4장을 Imperium Deck에, Intrigue card 4장을 Intrigue Deck에 섞는다. Shaddam Corrino IV를 Leader로 선택할 수 있지만 반드시 선택할 필요는 없다. `[Main p. 16]`
+- Uprising에 든 뒷면이 다른 Rise of Ix용 contract 10개와 그 setup은 Rise of Ix를 함께 쓸 때만 사용한다. `[Main p. 16]` (구현은 아래 "Rise of Ix와 함께" 절.)
+- 룰북은 어느 타일이 standard 20개인지 목록으로 적지 않는다. 구성물 표는 "20 Contract tokens"와 "10 Contract tokens with contrasting backs"("Used only with the RISE OF IX expansion")로 나누고, Rise of Ix용 타일은 "to compensate and jumpstart the completion of contracts" 들어 있다고 한다 `[Main p. 16]`. 카드 수량 기준인 BGG 카드 인벤토리 시트(에셋 저장소 `reference/bgg-card-inventory/`, Contracts 탭의 "Rise of Ix -Specific?"·Count 열)로 나누면 standard 20장은 **18종**이다: Acquire, Arrakeen 2종, Deliver Supplies, Espionage(3 Solari) **2장**, Harvest 3+(3 Solari) **2장**, Harvest 4+(4 Solari), Heighliner 2종, High Council 2종, Immediate, Research Station 2종, Sardaukar 2종, Spice Refinery 2종(카드 2장 뽑기 / 물 1). Rise of Ix용 10장(Dreadnought, Espionage, Harvest 3+, Harvest 4+, Heighliner, High Council, Interstellar Shipping, Secrets, Smuggling, Tech Negotiation)은 모두 보상에 "+1 Contract"가 있고(jumpstart) standard 타일에는 없어, 두 출처가 서로 맞는다. Dune Cards Hub는 28종 모두를 "Uprising contract", 한 장씩으로 적어 이 구분에 쓸 수 없다(2026-09-27 정정, lessons).
+
+## Rise of Ix와 함께 (2026-10-30 P7f-2)
+
+- 원문: "After setting up the 20 standard contracts, shuffle the 10 RISE OF IX contracts and give two to each player. Each player looks at the two they've been given, choosing simultaneously which contract they want to begin the game with (placing it face up in their supply). Return all of the unchosen RISE OF IX contracts to the box." `[Main p. 16]`
+- 까닭: "The RISE OF IX expansion replaces one of the locations on the UPRISING board where you can take a new contract" `[Main p. 16]`. 덮개가 덮는 칸은 [rise-of-ix.md](rise-of-ix.md) 17이 정한다. 절차는 인쇄대로 따른다.
+- **전사(Rise of Ix용 10장, 한 장씩).** 출처: Steam 앱의 Uprising 계약 정의(`ContractArchetypes.Uprising.ContractRoI_1`~`_10`: 칸, `SpiceCost`, `Solari`, `TechNegotiator`)와 카드 배치(`UI_crd_Contract_ROI_<n>`), Dune Cards Hub 앞면 그림(에셋 `cards/en/uprising/contract/`)으로 대조. 모두 보상에 "+1 Contract"가 있다.
+  | 타일 | 완료 조건 | 보상 |
+  | --- | --- | --- |
+  | Dreadnought | Dreadnought 칸 | Negotiator(Tech Negotiation 아이콘) + Contract |
+  | Espionage II | Espionage 칸 | Solari 1 + Contract |
+  | Harvest 3+ | Maker 칸, 그 turn spice 3 이상 | Contract |
+  | Harvest 4+ | Maker 칸, 그 turn spice 4 이상 | Solari 2 + Contract |
+  | Heighliner III | Heighliner 칸 | Solari 3 + Contract |
+  | High Council III | High Council 칸 | Negotiator + Contract |
+  | Interstellar Shipping | Interstellar Shipping 칸 | Negotiator + Contract |
+  | Secrets | Secrets 칸 | Contract |
+  | Smuggling | Smuggling 칸 | Contract |
+  | Tech Negotiation | Tech Negotiation 칸 | Contract |
+- **Negotiator 아이콘**은 Rise of Ix의 Tech Negotiation 아이콘이다 — "you may take a troop from your supply and place it on the Ix board" `[Rise of Ix p. 4]`([rise-of-ix.md](rise-of-ix.md) 4). "may"이므로 보상 창에서는 거절(`decline_contract_reward_icon`)이 함께 있고, 소유자의 turn 줄로 기다릴 때는 turn 종료를 막지 않고 누름에 사라진다(OQ-095 (2), `contract_reward_icon_lapsed`). supply에 troop이 없으면 거절만 남는다("supply가 비면 아무 일도 없다").
+- **구현(project convention이 든 곳, [OQ-161](open-questions.md#oq-161--uprising--rise-of-ix의-시작-계약과-scouts-rise-of-ix-임무의-엔진-처리)).** 10장은 bank에 들지 않는다. setup이 표준 계약 뒤에 따로 섞어(`setup:ix_contracts`, 이 조합만 뽑으므로 다른 판의 chance 흐름은 그대로) 상자(`GameState.contract_box`)에 두고, 모든 Leader가 정해진 뒤(Leader draft면 마지막 pick 뒤 — Epic의 setup Intrigue 1장과 같은 원칙 `[Rise of Ix p. 10]`) 맨 위 둘씩 First Player부터 시계 방향으로 나눈다(고르는 순서와 같고 앱도 같다, P7g A6). 룰북은 이 순서를 정하지 않는다. "동시에" 고르기는 First Player부터 시계 방향의 **봉인된** 선택으로 둔다(`FrameKind.STARTING_CONTRACT`, `choose_starting_contract`): 좌석의 두 장과 고른 것은 그 좌석만 알고(관측의 private 구간, 공개 판정표 `known_card_seats`, 서버 로그의 봉인 행동), 남은 좌석은 앞 좌석이 골랐다는 것만 안다. 마지막 선택이 모두를 공개해 고른 것은 각자의 앞면 Contract(active)가 되고, 고르지 않은 것은 상자로 뒷면으로 돌아간다(누구도 모름). 10장 모두 칸 방문이나 Harvest로 완료하므로 가져오는 즉시 완료되는 것은 없다. 구현 `rules/starting_contracts.py`, 테스트 `tests/unit/rules/test_uprising_ix_options.py`.
+
+## contract 가져오기
+
+- contract icon을 resolve하면 board의 face-up contract 하나를 골라 자신의 supply에 face-up으로 놓는다. face-down bank에 contract가 남아 있으면 그중 하나를 face-up으로 뒤집어 빈자리를 보충한다. `[Main p. 16]`
+- bank의 face-down stack이 비었더라도 board에 face-up contract가 남아 있으면 남은 contract를 가져간다. 모든 contract가 플레이어에게 넘어가 face-up contract도 남지 않았을 때 contract icon은 2 Solari로 돌아간다. `[Main p. 16]`
+- 시장에 face-up contract가 남아 있지만 그 전부를 소유자가 가져갈 수 없을 때(Bloodlines의 새 Immediate만 남고 trash할 Intrigue가 없을 때)는 2 Solari로 전환하지 않는다 — 전환 조건은 "모든 contract를 플레이어들이 가져갔을 때"다 `[Main p. 16]`. 아이콘은 turn 종료까지 보류하고 그때까지 불가능하면 불발한다([OQ-059](open-questions.md#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘), 사용자 판정 2026-09-10). 보류는 소유자가 시장 창에서 확인하고(`hold_contract_icons`, 사용자 판정 2026-09-30 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"), Conflict 보상의 아이콘은 그 좌석의 Conflict 보상이 모두 끝날 때까지 보류했다가 불발한다(사용자 판정 2026-10-02 L2-Q2 "보상 끝까지 보류 후 불발"). Combat Intrigue의 아이콘은 카드를 쓰는 그 시점에 가져가거나 확인으로 곧바로 불발하고, Arrakeen Scouts 단계에서 보류된 아이콘은 그 단계 안에서 Intrigue를 얻으면 다시 열리고 단계가 끝날 때 불발한다(둘 다 사용자 판정 2026-10-02, OQ-059 3·4항).
+
+## contract 완료 조건
+
+- 특정 board space 이름이 적힌 contract는 해당 space에 Agent를 보내면 완료한다. `[Main p. 16]`
+- Harvest contract는 Maker space에 Agent를 보내고, 그 turn에 모든 출처를 합쳐 contract에 표시된 양의 spice를 얻으면 완료한다. `[Main p. 16]`
+  - 원문: "A Harvest contract is completed by sending an Agent to a Maker board space and gaining the amount of spice shown during that turn (in total, including from sources other than the space itself)." `[Main p. 16]` 그 turn 전체를 세므로 소유자의 turn이 열린 때부터 얻은 spice가 모두 든다 — Agent를 보내기 전에 Plot(예: Crysknife의 spice 1)으로 얻은 spice도 센다. 나중에 spice를 써도 이미 채운 양은 줄지 않는다(획득 총량). 구현은 좌석 카운터 `spice_at_turn_start`·`spice_spent_turn`(`rules/effects.eligible_agent_contract_ids`)이고, 완료할 수 있는 contract는 여전히 Agent 배치 때 보유한 것뿐이다(아래 snapshot). 2026-10-06 전에는 Agent 배치 뒤에 얻은 spice만 셌다(Steam 앱 대조에서 발견; 보조 증거(공식 규칙 아님): 앱은 turn 전체를 센다, 로컬 분석 2026-10-06). 테스트: `tests/unit/rules/test_contracts.py`(`test_harvest_counts_plot_spice_gained_before_the_placement`, `test_harvest_ignores_spice_gained_on_an_earlier_turn_of_the_round`).
+- Immediate contract는 가져오는 즉시 완료한다. `[Main p. 16]`
+- Acquire The Spice Must Flow contract는 다음에 The Spice Must Flow를 acquire할 때 완료한다. `[Main p. 16]`
+- 이미 이번 turn에 Agent를 보낸 space와 관련된 contract를 그 turn 도중 새로 가져와도 소급해 완료하지 않는다. Agent를 보낼 당시 contract를 보유하고 있어야 하며, 아니면 이후 turn까지 기다린다. `[Main p. 16]`
+
+## 완료 처리
+
+- 조건을 만족한 contract는 반드시 완료한다. 같은 board space 조건의 contract를 여러 개 보유했다면 한 번의 Agent 방문으로 모두 완료한다. `[FAQ p. 1]`
+- 완료 사실을 알리고 표시된 reward를 받은 뒤 contract를 face-down으로 뒤집어 자신의 supply에 둔다. completed contract를 참조하는 카드가 있으므로 제거하지 않는다. `[Main p. 16]`
+- board space 방문형 contract 완료는 Agent turn의 효과다. contract 효과와 board space 효과, play한 card의 Agent box 효과는 플레이어가 순서를 정해 처리할 수 있다. `[FAQ p. 1]`
+- Gather Intelligence는 Agent를 놓은 직후 board space나 Agent card 효과보다 먼저 결정한다. 공식 문서는 이 즉시 window와 contract 완료의 상대 순서를 직접 명시하지 않는다. 공식 판정을 찾기 전 프로젝트 구현은 Gather Intelligence를 먼저 처리한다. 이 convention은 [OQ-011](open-questions.md#oq-011--gather-intelligence와-contract-완료의-상대-순서)로 남긴다. `[Main p. 11]` `[FAQ p. 1]`
+
+## Shaddam 관련 경계
+
+Shaddam이 선택된 setup은 셔플 전에 두 Sardaukar contract를 set aside하며, 그와만 acquire할 수 있다(게임 시작 시 보유하는 것은 아니다). FAQ는 Sardaukar Commander가 일반 face-up contract 대신 set-aside contract를 acquire할 선택권을 준다고 명확히 하고, Emperor of the Known Universe의 제한은 발동한 **그 turn**에만 적용되며 Signet Ring으로 Agent를 보낼 때 즉시 적용된다. `[Main p. 17]` `[FAQ p. 3]` 시장 고갈 뒤의 set-aside 접근은 [OQ-021](open-questions.md#oq-021--시장이-빈-뒤의-set-aside-sardaukar-contract-접근)의 convention을 따른다. 구현 세부는 Leader audit에 있다.
+
+## 구현 상태
+
+standard contract 20장의 identity·setup, 공개 시장의 take/refill·고갈, 모든 완료 조건과 인쇄 보상은 구현돼 있다. 공간 방문 시 보유하던 contract를 snapshot해 소급 완료를 막고, Harvest의 그 turn Spice 획득 합계와 The Spice Must Flow acquire trigger도 연결한다. CHOAM 전용 Imperium 4종은 completed Contract 수와 같은 시장 transition을 사용해 Agent·Reveal·acquisition 효과까지 실제 play할 수 있다. 전용 Intrigue 4종과 Shaddam의 set-aside Sardaukar contract 선택까지 실제 play된다. 세부 상태·관측·codec 경계는 Contract 구현 audit에 기록한다.

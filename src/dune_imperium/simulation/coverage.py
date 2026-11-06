@@ -1,0 +1,281 @@
+"""Content-coverage census over one finished, checked game (M7 tooling).
+
+``collect_game_coverage`` walks a finished game's recorded replay and its
+accumulated ``event_log`` and buckets what content the game actually touched:
+which action IDs were applied, which board spaces (and cost options) hosted
+an agent, which cards were played, acquired, or revealed, which Intrigue
+cards, Contracts, Conflicts, and Leader events fired, which expansion
+components (Tech tiles, Skills, Tleilaxu cards) were taken, and which
+chance decision families and event kinds occurred. ``merge_coverage`` sums two
+censuses together (e.g. across every game in a sweep), and ``zero_coverage``
+compares a merged census against the content catalogs the engine actually
+offers for one ruleset, reporting which catalog entries were never touched.
+
+This module is diagnostic tooling only: it never changes what the engine
+does, and a missing or empty census is not itself a bug — it just means the
+sampled games never reached that content.
+"""
+
+import re
+from collections.abc import Iterable
+from typing import Final
+
+from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.config import RulesetConfig
+from dune_imperium.content.bloodlines.sardaukar import SKILLS
+from dune_imperium.content.bloodlines.tech import tech_tiles_for
+from dune_imperium.content.core.board import BoardSpace
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.events import EventValue
+from dune_imperium.core.replay import ReplayStep
+from dune_imperium.core.state import GameState
+
+type Census = dict[str, dict[str, int]]
+
+# Per-copy instance IDs look like "imperium:<slug>:<copy>",
+# "reserve:<slug>:<copy>", "intrigue:<slug>:<copy>", "tleilaxu:<slug>:<copy>"
+# (Immortality Row cards are personal card instances too), or
+# "player:<seat>:starter:<slug>:<copy>"; every dimension that counts cards
+# instead of physical copies normalizes down to the shared "<slug>" identity.
+_INSTANCE_PREFIXES: Final = ("imperium:", "reserve:", "intrigue:", "tleilaxu:")
+_STARTER_INSTANCE: Final = re.compile(r"^player:\d+:starter:(?P<identity>.+):\d+$")
+_INTEGER_TOKEN: Final = re.compile(r":\d+")
+
+
+def normalize_instance_id(instance_id: str) -> str:
+    """Strip a per-copy instance ID down to its shared identity slug."""
+
+    starter_match = _STARTER_INSTANCE.match(instance_id)
+    if starter_match is not None:
+        return starter_match.group("identity")
+    for prefix in _INSTANCE_PREFIXES:
+        if instance_id.startswith(prefix):
+            rest = instance_id[len(prefix) :]
+            identity, separator, _copy = rest.rpartition(":")
+            return identity if separator else rest
+    return instance_id
+
+
+def _bump(census: Census, dimension: str, key: str) -> None:
+    bucket = census.setdefault(dimension, {})
+    bucket[key] = bucket.get(key, 0) + 1
+
+
+def _int_argument(arguments: dict[str, ActionValue], key: str) -> int:
+    value = arguments.get(key, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value
+
+
+def _leader_id_for_event(
+    final_state: GameState, payload: dict[str, EventValue]
+) -> str | None:
+    player = payload.get("player")
+    if isinstance(player, bool) or not isinstance(player, int):
+        return None
+    if not 0 <= player < len(final_state.players):
+        return None
+    return final_state.players[player].leader_id
+
+
+def collect_game_coverage(
+    final_state: GameState, steps: Iterable[ReplayStep]
+) -> Census:
+    """Bucket the content one finished, replayed game actually touched."""
+
+    census: Census = {}
+
+    for step in steps:
+        if isinstance(step, ChanceOutcome):
+            _bump(census, "chance_kinds", _INTEGER_TOKEN.sub("", step.decision_id))
+            continue
+        _bump(census, "action_ids", step.action_id)
+        arguments = dict(step.arguments)
+        if step.action_id == "choose_agent_card":
+            # Stage B1: the Agent turn's card pick, then its space pick.
+            card_id = arguments.get("card_id")
+            if isinstance(card_id, str):
+                _bump(census, "cards_played", normalize_instance_id(card_id))
+            continue
+        if step.action_id != "place_agent":
+            continue
+        space_id = arguments.get("space_id")
+        if isinstance(space_id, str):
+            cost_option = _int_argument(arguments, "cost_option")
+            _bump(census, "agent_placements", f"{space_id}:{cost_option}")
+
+    for event in final_state.event_log:
+        _bump(census, "event_kinds", event.kind)
+        payload = dict(event.payload)
+
+        if event.kind == "card_acquired":
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "cards_acquired", normalize_instance_id(named))
+        elif event.kind in ("personal_card_late_revealed", "card_grafted"):
+            # The Reveal-turn immediate reveal of an arriving card and a
+            # Graft partner (Immortality: a card without Agent icons, such
+            # as Clandestine Meeting, only ever plays this way) are the
+            # other places a specific personal card "plays" itself.
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "cards_played", normalize_instance_id(named))
+        elif event.kind == "intrigue_played":
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                identity = normalize_instance_id(named)
+                option = payload.get("option")
+                key = (
+                    f"{identity}:{option}"
+                    if isinstance(option, int) and not isinstance(option, bool)
+                    else identity
+                )
+                _bump(census, "intrigue_played", key)
+        elif event.kind in ("contract_taken", "contract_completed"):
+            contract_id = payload.get("contract_id")
+            if isinstance(contract_id, str):
+                _bump(census, "contracts", contract_id)
+        elif event.kind == "conflict_revealed":
+            conflict_id = payload.get("conflict_id")
+            if isinstance(conflict_id, str):
+                _bump(census, "conflicts", conflict_id)
+        elif event.kind == "tech_acquired":
+            # The only place a Tech tile leaves the Ixian Embassy stacks for
+            # a player's tableau [Bloodlines pp. 6-7].
+            tech_id = payload.get("tech_id")
+            if isinstance(tech_id, str):
+                _bump(census, "tech_acquired", tech_id)
+        elif event.kind == "tleilaxu_card_acquired":
+            # The payload already names the Row card's identity, not its
+            # copy, but normalizing keeps this dimension's keys shaped like
+            # every other card dimension's.
+            named = payload.get("card_id")
+            if isinstance(named, str):
+                _bump(census, "tleilaxu_acquired", normalize_instance_id(named))
+        elif event.kind == "skill_gained":
+            # Recruiting a Sardaukar Commander, and Plasteel Blades' trash,
+            # both take a face-up Skill through this one event
+            # [Bloodlines pp. 4, 7].
+            skill_id = payload.get("skill_id")
+            if isinstance(skill_id, str):
+                _bump(census, "skills_taken", skill_id)
+        elif event.kind.startswith("leader_") or event.kind == "feyd_token_advanced":
+            leader_id = _leader_id_for_event(final_state, payload)
+            if leader_id is not None:
+                _bump(census, "leader_events", f"{leader_id}:{event.kind}")
+
+    return census
+
+
+def merge_coverage(a: Census, b: Census) -> Census:
+    """Sum two censuses' counts, dimension by dimension and key by key."""
+
+    merged: Census = {dimension: dict(counts) for dimension, counts in a.items()}
+    for dimension, counts in b.items():
+        bucket = merged.setdefault(dimension, {})
+        for key, count in counts.items():
+            bucket[key] = bucket.get(key, 0) + count
+    return merged
+
+
+def _agent_placement_catalog(spaces: tuple[BoardSpace, ...]) -> frozenset[str]:
+    keys: set[str] = set()
+    for space in spaces:
+        if space.dynamic_cost is None and len(space.cost_options) > 1:
+            options: tuple[int, ...] = tuple(range(len(space.cost_options)))
+        else:
+            options = (0,)
+        keys.update(f"{space.space_id}:{option}" for option in options)
+    return frozenset(keys)
+
+
+def zero_coverage(
+    census: Census,
+    *,
+    choam_module: bool,
+    promo_cards: bool = False,
+    bloodlines: bool = False,
+    tech_module: bool = False,
+    immortality: bool = False,
+    epic_game: bool = False,
+    arrakeen_scouts: bool = False,
+) -> dict[str, list[str]]:
+    """Return, per dimension with a well-defined catalog, the untouched IDs.
+
+    Only dimensions backed by a fixed content catalog are reported: a
+    dimension with no catalog (``cards_played``, ``chance_kinds``,
+    ``event_kinds``) is skipped rather than guessed at.
+    """
+
+    config = RulesetConfig(
+        choam_module=choam_module,
+        promo_cards=promo_cards,
+        bloodlines=bloodlines,
+        tech_module=tech_module,
+        immortality=immortality,
+        # Epic Game Mode adds Control the Spice's templates to the catalog
+        # (ACTION_CODEC_VERSION 124).
+        epic_game=epic_game,
+        arrakeen_scouts=arrakeen_scouts,
+    )
+    codec = ActionCodec(config)
+    content = content_for(config)
+
+    zero: dict[str, list[str]] = {}
+
+    def _report(dimension: str, catalog: Iterable[str]) -> None:
+        seen = set(census.get(dimension, {}))
+        zero[dimension] = sorted(set(catalog) - seen)
+
+    def _report_by_identity(dimension: str, catalog: Iterable[str]) -> None:
+        seen_identities = {key.split(":", 1)[0] for key in census.get(dimension, {})}
+        zero[dimension] = sorted(set(catalog) - seen_identities)
+
+    _report(
+        "action_ids", {template.action_id for template in codec.catalog}
+    )
+    _report("agent_placements", _agent_placement_catalog(content.board_spaces))
+    imperium_identities = {
+        normalize_instance_id(instance_id)
+        for instance_id in content.imperium_deck_instance_ids
+    }
+    reserve_identities = {stack.card.card_id for stack in content.reserve_stacks}
+    _report("cards_acquired", imperium_identities | reserve_identities)
+    intrigue_identities = {
+        normalize_instance_id(instance_id)
+        for instance_id in content.intrigue_deck_instance_ids
+    }
+    _report_by_identity("intrigue_played", intrigue_identities)
+    _report("contracts", set(content.contract_instance_ids))
+    _report("conflicts", {conflict.card.card_id for conflict in content.conflicts})
+    # Each expansion catalog is the one ``rules.setup`` actually deals: the
+    # Tech stacks only hold CHOAM Transports with the CHOAM Module
+    # [Bloodlines pp. 2, 6], and the Tleilaxu deck only holds the promo with
+    # ``promo_cards``. Without the option the universe is empty, so the
+    # dimension is reported as fully covered instead of guessed at.
+    _report(
+        "tech_acquired",
+        {tile.tech_id for tile in tech_tiles_for(choam_module)} if tech_module else (),
+    )
+    _report(
+        "tleilaxu_acquired",
+        (
+            {
+                normalize_instance_id(instance_id)
+                for instance_id in tleilaxu_deck_instance_ids(promo_cards)
+            }
+            if immortality
+            else ()
+        ),
+    )
+    _report("skills_taken", {skill.skill_id for skill in SKILLS} if bloodlines else ())
+    _report_by_identity(
+        "leader_events",
+        {leader.leader_id for leader in content.leaders},
+    )
+
+    return zero

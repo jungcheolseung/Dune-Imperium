@@ -1,0 +1,8 @@
+<ol class="journal-list">
+  {{ range . }}
+    <li class="journal-entry">
+      <div class="journal-period">{{ partial "work-period.html" . }}</div>
+      <div><h3><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3><p>{{ .Description }}</p></div>
+    </li>
+  {{ end }}
+</ol>

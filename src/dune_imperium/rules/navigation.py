@@ -1,0 +1,424 @@
+"""Steersman Y'rkoon's Navigation cards [Steersman Y'rkoon card] [Bloodlines p. 12].
+
+Plot Course: at game start the shuffled deck deals a hand of five, four of
+which the owner places face down in order (``NAVIGATION_SETUP``); the rest
+return to the box. Whenever the owner reaches two Influence with a Faction
+the next slot's card is played: the engine opens a ``NAVIGATION_CHOICE``
+frame offering the card's playable options, which then resolve through the
+Intrigue choice machinery (the cards are transcribed in the effect DSL).
+"""
+
+from copy import replace
+
+from dune_imperium.content.core.effects import AcquireReserveCard, IntrigueOption
+from dune_imperium.content.registry.intrigue import intrigue_card_for_instance
+from dune_imperium.content.registry.reserve import reserve_printing
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.ability_executor import PendingAbility, intrigue_ref
+from dune_imperium.rules.acquisition import deck_top_offered
+from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.effect_interpreter import (
+    applicable_sections,
+    automatic_rewards,
+    choice_slots,
+    option_is_playable,
+    pay_cost,
+    resource_cost,
+)
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_int,
+    context_str,
+    owned_top_frame,
+    replace_player,
+)
+from dune_imperium.rules.intrigue import PENDING_ABILITY_KEY, finish_intrigue_play
+
+NAVIGATION_HAND = 5
+NAVIGATION_SLOTS = 4
+
+
+def assign_navigation_deck(state: GameState) -> GameState:
+    """Deal the shuffled Navigation deck to Steersman Y'rkoon's seat.
+
+    The owner then chooses four of the top five for the slots; the frame
+    pauses the game in SETUP until the choice is made.
+    """
+
+    if not state.navigation_stock:
+        return state
+    seat = next(
+        (
+            candidate
+            for candidate in state.players
+            if candidate.leader_id == "steersman_y_rkoon"
+        ),
+        None,
+    )
+    if seat is None:
+        return state
+    hand = state.navigation_stock[:NAVIGATION_HAND]
+    dealt = replace(seat, navigation_box=state.navigation_stock[NAVIGATION_HAND:])
+    frame = DecisionFrame(
+        kind=FrameKind.NAVIGATION_SETUP,
+        frame_id=f"setup:navigation:{seat.player_id}",
+        decision=PlayerDecision(
+            owner=seat.player_id,
+            prompt="Place four Navigation cards face down, in order",
+        ),
+        context=(
+            ("hand", ",".join(hand)),
+            ("player", seat.player_id),
+            ("resume_phase", state.phase.value),
+        ),
+    )
+    return replace(
+        state,
+        phase=GamePhase.SETUP,
+        players=replace_player(state.players, dealt),
+        navigation_stock=(),
+        decision_stack=(*state.decision_stack, frame),
+    )
+
+
+def legal_navigation_setup_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer every card still in the dealt hand for the next slot."""
+
+    frame = owned_top_frame(state, FrameKind.NAVIGATION_SETUP, player)
+    if frame is None:
+        return ()
+    hand = context_str(dict(frame.context), "hand", owner="Navigation setup frame")
+    return tuple(
+        DomainAction(
+            action_id="place_navigation_card",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in hand.split(",")
+        if card_id
+    )
+
+
+def apply_navigation_setup_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Put the chosen card in the next slot; the fifth pick closes the setup."""
+
+    if action not in legal_navigation_setup_actions(state, action.actor):
+        raise ValueError("action is not a legal Navigation setup choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = str(dict(action.arguments)["card_id"])
+    hand = tuple(
+        held
+        for held in context_str(context, "hand", owner="Navigation setup frame").split(
+            ","
+        )
+        if held and held != card_id
+    )
+    owner = state.players[action.actor]
+    placed = replace(owner, navigation_slots=(*owner.navigation_slots, card_id))
+    # Public: the card goes face down, so the payload names only the slot,
+    # whose count every seat already sees (``navigation_remaining``);
+    # "장수·수량만 담는 이벤트는 전원 공개다" (OQ-010 ruling 3; general rules
+    # audit 2026-10-25).
+    event = GameEvent(
+        event_id=f"{frame.frame_id}:slot:{len(placed.navigation_slots)}",
+        kind="navigation_card_placed",
+        payload=(("player", action.actor), ("slot", len(placed.navigation_slots))),
+    )
+    if len(placed.navigation_slots) < NAVIGATION_SLOTS:
+        context["hand"] = ",".join(hand)
+        next_frame = replace(frame, context=tuple(sorted(context.items())))
+        return RuleResult(
+            state=replace(
+                state,
+                players=replace_player(state.players, placed),
+                decision_stack=(*state.decision_stack[:-1], next_frame),
+            ),
+            events=(event,),
+        )
+    # "Return all others to the box."
+    boxed = replace(placed, navigation_box=(*placed.navigation_box, *hand))
+    resume = GamePhase(
+        context_str(context, "resume_phase", owner="Navigation setup frame")
+    )
+    return RuleResult(
+        state=replace(
+            state,
+            phase=resume,
+            players=replace_player(state.players, boxed),
+            decision_stack=state.decision_stack[:-1],
+        ),
+        events=(
+            event,
+            GameEvent(
+                event_id=f"{frame.frame_id}:done",
+                kind="navigation_setup_finished",
+                payload=(("player", action.actor), ("slots", NAVIGATION_SLOTS)),
+            ),
+        ),
+    )
+
+
+def navigation_play_is_queued(state: GameState) -> bool:
+    """Return whether an owed Navigation play can open now.
+
+    Queued plays open one at a time (OQ-012 re-review, OQ-039): while the
+    seat's previous Navigation card is still resolving (its slot stays
+    armed until ``finish_intrigue_play``), the next trigger waits, and a
+    pending chance frame always resolves first.
+    """
+
+    if not state.pending_navigation_plays:
+        return False
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if frame is not None and isinstance(frame.decision, ChanceDecision):
+        return False
+    player = state.pending_navigation_plays[0][0]
+    return state.players[player].navigation_active_slot == 0
+
+
+def begin_navigation_play(state: GameState) -> RuleResult:
+    """Open the oldest owed Navigation play, or drop it when no card is left.
+
+    The choice opens even when no option of the card can be played (user
+    ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    연다"): the owner then spends the card without effect with
+    ``decline_navigation`` (OQ-039 (b)), the only action offered.
+    """
+
+    if not state.pending_navigation_plays:
+        raise ValueError("there is no pending Navigation play")
+    player, faction, source = state.pending_navigation_plays[0]
+    remaining = replace(
+        state, pending_navigation_plays=state.pending_navigation_plays[1:]
+    )
+    owner = remaining.players[player]
+    if not owner.navigation_slots:
+        return RuleResult(
+            state=remaining,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:exhausted",
+                    kind="navigation_exhausted",
+                    payload=(("faction", faction), ("player", player)),
+                ),
+            ),
+        )
+    card_id = owner.navigation_slots[0]
+    armed = replace(
+        owner,
+        navigation_active_slot=len(owner.navigation_played) + 1,
+        navigation_trigger_faction=faction,
+    )
+    working = replace(remaining, players=replace_player(remaining.players, armed))
+    frame = DecisionFrame(
+        kind=FrameKind.NAVIGATION_CHOICE,
+        frame_id=f"{source}:choice",
+        decision=PlayerDecision(owner=player, prompt="Play the Navigation card"),
+        context=(
+            ("card_id", card_id),
+            ("faction", faction),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=working.push_decision(frame))
+
+
+def legal_navigation_play_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer each playable printed option of the slot's card.
+
+    Plot Course plays the card ("play the next Navigation card above"
+    [Steersman Y'rkoon card]), but an arrow cost stays optional: "If you
+    don't pay the cost, you don't get the effect. You do not have to pay
+    such a cost on a card." [Main p. 20] (OQ-058). So when every playable
+    option costs something (card 10's lose-one-Influence swap) the owner may
+    decline; the card is then spent without effect, as in OQ-039 (b). With
+    no playable option at all the decline is the only action: the card is
+    spent without effect (OQ-039 (b)) once the owner confirms it.
+    """
+
+    frame = owned_top_frame(state, FrameKind.NAVIGATION_CHOICE, player)
+    if frame is None:
+        return ()
+    card_id = context_str(dict(frame.context), "card_id", owner="Navigation frame")
+    options = intrigue_card_for_instance(card_id).options
+    playable = tuple(
+        (index, option)
+        for index, option in enumerate(options)
+        if option_is_playable(state, player, option)
+    )
+    plays = tuple(
+        play
+        for index, option in playable
+        for play in (
+            DomainAction(
+                action_id="play_navigation",
+                actor=player,
+                arguments=(("option", index),),
+            ),
+            *(
+                (
+                    DomainAction(
+                        action_id="play_navigation",
+                        actor=player,
+                        arguments=(("option", index), ("to_deck_top", True)),
+                    ),
+                )
+                if _deck_top_twin(state, player, option)
+                else ()
+            ),
+        )
+    )
+    if all(
+        any(section.costs for section in option.sections) for _, option in playable
+    ):
+        return (*plays, DomainAction(action_id="decline_navigation", actor=player))
+    return plays
+
+
+def _deck_top_twin(state: GameState, player: int, option: IntrigueOption) -> bool:
+    """Whether ``option`` is offered a second time with ``to_deck_top``: it
+    acquires a Reserve card with no choice of its own (Navigation card 4's
+    The Spice Must Flow) while a card the owner acquires may go on top of
+    their deck (``deck_top_offered``: Recruitment Mission in their Reveal
+    turn, "for each card acquired the owner chooses top of deck or discard
+    pile" [FAQ p. 3], docs/rules/imperium-base.md 13.2; Rise of Ix's
+    Spaceport). Plan 16.10 item 7: the gain was automatic, so the owner could
+    not choose; the twin is the choice, as an Intrigue card's acquisition
+    offers it (``ability_executor``'s ``to_deck_top`` rows)."""
+
+    sections = applicable_sections(state, player, option)
+    stacks = dict(state.reserve_stacks)
+    return (
+        deck_top_offered(state, player)
+        and not choice_slots(sections, shield_wall_present=state.shield_wall_present)
+        and any(
+            isinstance(reward, AcquireReserveCard)
+            and stacks.get(reserve_printing(reward.card_id, stacks), 0) > 0
+            for reward in automatic_rewards(sections)
+        )
+    )
+
+
+def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
+    """Pay for the chosen option and resolve it like an Intrigue play."""
+
+    if action not in legal_navigation_play_actions(state, action.actor):
+        raise ValueError("action is not a legal Navigation play")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    card_id = context_str(context, "card_id", owner="Navigation frame")
+    source = context_str(context, "source", owner="Navigation frame")
+    if action.action_id == "decline_navigation":
+        # The arrow cost was not paid [Main p. 20], or no option could be
+        # played at all (OQ-039 (b)): the card is still played and spent.
+        # The event says which: ``fizzled`` when nothing was playable.
+        owner = state.players[action.actor]
+        fizzled = not any(
+            option_is_playable(state, action.actor, option)
+            for option in intrigue_card_for_instance(card_id).options
+        )
+        spent = replace(
+            owner,
+            navigation_slots=owner.navigation_slots[1:],
+            navigation_played=(*owner.navigation_played, card_id),
+            navigation_active_slot=0,
+            navigation_trigger_faction="",
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(), players=replace_player(state.players, spent)
+            ),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:{'fizzled' if fizzled else 'declined'}",
+                    kind="navigation_card_played",
+                    payload=tuple(
+                        sorted(
+                            (
+                                ("card_id", card_id),
+                                ("fizzled" if fizzled else "declined", 1),
+                                ("faction", owner.navigation_trigger_faction),
+                                ("player", action.actor),
+                            )
+                        )
+                    ),
+                ),
+            ),
+        )
+    option_index = context_int(
+        dict(action.arguments), "option", owner="Navigation play"
+    )
+    player = action.actor
+    owner = state.players[player]
+    option = intrigue_card_for_instance(card_id).options[option_index]
+    sections = applicable_sections(state, player, option)
+    section_indexes = tuple(
+        index for index, section in enumerate(option.sections) if section in sections
+    )
+    cost = resource_cost(sections)
+    paid_owner = pay_cost(owner, cost)
+    popped = replace(
+        state,
+        players=replace_player(state.players, paid_owner),
+        decision_stack=state.decision_stack[:-1],
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:played",
+            kind="navigation_card_played",
+            payload=(
+                ("card_id", card_id),
+                ("faction", owner.navigation_trigger_faction),
+                ("option", option_index),
+                ("player", player),
+                ("slot", owner.navigation_active_slot),
+            ),
+        )
+    ]
+    if choice_slots(sections, shield_wall_present=state.shield_wall_present):
+        choice = DecisionFrame(
+            kind=FrameKind.INTRIGUE_CHOICE,
+            frame_id=f"{source}:choice_slots",
+            decision=PlayerDecision(
+                owner=player, prompt="Resolve the Navigation choice"
+            ),
+            context=(
+                ("card_id", card_id),
+                ("peeked_card_id", ""),
+                (
+                    PENDING_ABILITY_KEY,
+                    PendingAbility(
+                        Source.INTRIGUE,
+                        intrigue_ref(card_id, option_index),
+                        section_indexes,
+                        shield_wall=state.shield_wall_present,
+                    ).encode(),
+                ),
+                ("source", source),
+            ),
+        )
+        return RuleResult(state=popped.push_decision(choice), events=tuple(events))
+    finished = finish_intrigue_play(
+        popped,
+        player,
+        card_id,
+        sections,
+        source,
+        # The twin's Reserve card goes on top of the deck (``_deck_top_twin``).
+        reserve_to_deck_top=dict(action.arguments).get("to_deck_top") is True,
+    )
+    return RuleResult(state=finished.state, events=(*events, *finished.events))

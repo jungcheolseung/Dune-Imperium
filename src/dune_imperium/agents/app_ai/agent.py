@@ -1,0 +1,219 @@
+"""``AppAIAgent``: our port of the Steam app's computer opponent.
+
+The Steam "Dune: Imperium" app (4.1.2.1808) decides with
+``worm.canis.ai.WormAIProfile``: a one-step utility argmax over the choices
+the engine offers, valued by hand-tuned per-card data and 437 constants,
+with no search (``analysis/ai/ai-policy-report-ko.md`` in the assets
+checkout). This agent reproduces that policy inside our engine: each decision
+window is translated into the app prompt it corresponds to, answered with
+the ported value functions, and mapped back to one of our legal actions.
+
+Difficulty is the app's: level 0 Easy, 1 Medium, 2 Hard (the constant table
+is the only difference). Every decision is the app's (no heuristic is ever
+mixed in, user decision 2026-10-05): a decision no window mirrors is answered
+the way the app answers a forced prompt it cannot value
+(``PlayerEntity::DefaultRandomChoice``, a uniformly random legal action) and
+is counted in ``fallbacks``; the coverage census requires that count to be 0.
+
+A live game must never stall on an app_ai bug (user decision 2026-10-05, for
+the play UI): a window that raises, or that answers with an action outside
+the legal set, is answered the same way, counted in ``fallbacks`` under
+``error:<decision kind>`` and logged with the decision kind. The answer
+comes from the agent's own seeded RNG, so a save restore, which asks a fresh
+agent every AI step again, regenerates the same step. Every fallback logs a
+warning (or, for an error, an error) on this module's logger.
+
+The agent is a ``StateAgent`` because the app reads the open turn's context,
+the Reveal's Persuasion and deck multisets that ``PlayerView`` lacks; every
+read goes through ``AppContext``, which allows only what the seat may know.
+
+Concurrent games (the play server's threadpool) each hold their own agents.
+The package keeps no module-level state that a decision writes and a later
+decision reads: per-decision caches live on the ``Profile``, cross-decision
+memory on the agent, and module-level values are either built at import or
+pure ``functools.cache`` lookups of immutable values; ``abilities.UNPORTED``
+is a diagnostic counter updated under a lock
+(``tests/unit/agents/app_ai/test_app_ai_concurrency.py``).
+"""
+
+import logging
+import random
+from collections import Counter
+from typing import Final
+
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
+from dune_imperium.agents.app_ai.choice import default_random_choice
+from dune_imperium.agents.app_ai.context import AppContext
+from dune_imperium.agents.app_ai.data.constants import TABLES
+from dune_imperium.agents.app_ai.profile import Profile
+from dune_imperium.agents.app_ai.windows import DecisionRun, Memory, handler_for
+from dune_imperium.agents.app_ai.windows.common import TRIGGERED_DRAWS
+from dune_imperium.agents.engine_order import engine_order_answer
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.combat import REWARD_LINE_KINDS, legacy_combat_reward_icon
+
+LEVEL_NAMES = {0: "easy", 1: "medium", 2: "hard"}
+#: The ``fallbacks`` key prefix of a decision a window failed on.
+ERROR_PREFIX: Final = "error:"
+
+_LOGGER: Final = logging.getLogger(__name__)
+
+
+# Choices the project offers that the app has no counterpart for and never
+# takes: the app resolves a Scouts line's steps in printed order
+# (docs/app-ai/scouts.md), never the line's later rewards ahead of a pending
+# choice (OQ-100). Once the choice is made, a draw printed after it waits as
+# the same action alone (OQ-106), which the app's printed order then takes.
+_PROJECT_ONLY_ACTIONS: Final = frozenset({"scouts_rewards_first"})
+
+
+def _picks_reward_line(state: GameState, player: int) -> bool:
+    """Whether the open Conflict reward window waits on the pick of a line of
+    an "-OR-" or "Choose two:" row (the original game): the app asks those
+    through the place ability's own prompt (``windows.combat.
+    combat_reward_icons``), not in the engine's fixed order."""
+
+    legacy = legacy_combat_reward_icon(state, player)
+    return (
+        legacy is not None
+        and dict(legacy.arguments).get("effect") in REWARD_LINE_KINDS
+    )
+
+
+def app_offered(legal_actions: tuple[DomainAction, ...]) -> tuple[DomainAction, ...]:
+    """The decision as the app has it: without the project-only choices."""
+
+    return (
+        tuple(a for a in legal_actions if a.action_id not in _PROJECT_ONLY_ACTIONS)
+        or legal_actions
+    )
+
+
+class AppAIAgent:
+    """The app AI at one difficulty level, seeded for replayable games."""
+
+    def __init__(self, seed: int, level: int = 2) -> None:
+        if seed < 0:
+            raise ValueError("agent seed must not be negative")
+        if level not in TABLES:
+            raise ValueError(f"unknown app AI level {level}")
+        self.seed = seed
+        self.level = level
+        self._rng = random.Random(seed)
+        self.memory = Memory()
+        # The placement chosen at an Agent turn's card pick, for its space
+        # pick (stage B1, ``agents.agent_turn_steps``).
+        self._placements = PlacementMemory()
+        # Decisions answered at random, by decision kind: no window mirrors
+        # them (``<kind>``, ``view-only:<kind>``) or the window failed
+        # (``error:<kind>``).
+        self.fallbacks: Counter[str] = Counter()
+        # Decisions answered by the app mirror, by decision kind.
+        self.mirrored: Counter[str] = Counter()
+
+    def choose_action(
+        self, observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction:
+        """View-only call: without the state the app cannot be mirrored."""
+
+        key = f"view-only:{observation.decision_kind}"
+        _LOGGER.warning(
+            "%s answered a %s decision at random: no state was given",
+            self._name(observation.player),
+            observation.decision_kind,
+        )
+        return self._random_answer(key, legal_actions)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """The app AI's answer to the decision on top of ``state``. An
+        Agent-turn step (stage B1) is judged as the placements it stands
+        for, one decision per placement (``agents.agent_turn_steps``)."""
+
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None and not _picks_reward_line(state, observation.player):
+            # The app pays a Conflict reward without asking (stage B2 rows,
+            # ``agents.engine_order``).
+            return scripted
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self._choose_with_state(state, observation, actions),
+        )
+
+    def _choose_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        if not legal_actions:
+            raise ValueError("app_ai requires at least one legal action")
+        legal_actions = app_offered(legal_actions)
+        kind = observation.decision_kind
+        if len(legal_actions) == 1:
+            return legal_actions[0]
+        if all(action.action_id in TRIGGERED_DRAWS for action in legal_actions):
+            # Immediate triggered draws (OQ-106, user decision 2026-10-10)
+            # can be all a frame of any kind offers; the app draws them
+            # inside their trigger, in no order that matters.
+            return legal_actions[0]
+        action: DomainAction | None = None
+        try:
+            handler = handler_for(kind)
+            if handler is not None:
+                ctx = AppContext(state, observation.player, observation)
+                profile = Profile(ctx, TABLES[self.level], self._rng)
+                run = DecisionRun(ctx, profile, legal_actions, self._rng, self.memory)
+                action = handler(run)
+        except Exception:
+            # The window may have drawn from the RNG and written memory
+            # before it failed; it does so identically on a restore's replay.
+            _LOGGER.exception(
+                "%s failed on a %s decision (round %s); answering at random",
+                self._name(observation.player),
+                kind,
+                state.round_number,
+            )
+            return self._random_answer(f"{ERROR_PREFIX}{kind}", legal_actions)
+        if action is None:
+            _LOGGER.warning(
+                "%s answered an unmirrored %s decision at random",
+                self._name(observation.player),
+                kind,
+            )
+            return self._random_answer(str(kind), legal_actions)
+        if action not in legal_actions:
+            _LOGGER.error(
+                "%s chose an illegal action %r in a %s decision (round %s); "
+                "answering at random",
+                self._name(observation.player),
+                action,
+                kind,
+                state.round_number,
+            )
+            return self._random_answer(f"{ERROR_PREFIX}{kind}", legal_actions)
+        self.mirrored[str(kind)] += 1
+        return action
+
+    def _random_answer(
+        self, key: str, legal_actions: tuple[DomainAction, ...]
+    ) -> DomainAction:
+        """``DefaultRandomChoice`` from the agent's own RNG, counted under ``key``.
+
+        Deterministic given the agent's history, so a restored game asks a
+        fresh agent the same questions and gets the same answers.
+        """
+
+        self.fallbacks[key] += 1
+        return default_random_choice(legal_actions, self._rng)
+
+    def _name(self, seat: int) -> str:
+        return f"app_ai {LEVEL_NAMES.get(self.level, self.level)} seat {seat}"
