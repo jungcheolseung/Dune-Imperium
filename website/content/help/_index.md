@@ -2,12 +2,12 @@
 title = "도움말·문제 해결"
 description = "설치, 방 접속, 이미지, AI 선택과 저장에서 자주 묻는 질문을 모았습니다."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 60
 [params]
-source_ref = "81ca9468"
-sources = ["README.md", "docs/remote-play-host-guide.md", "docs/remote-play-player-guide.md", "docs/local-images.md", "docs/human-records.md"]
+source_ref = "5d2fea34"
+sources = ["README.md", "docs/remote-play-host-guide.md", "scripts/launcher/install.sh", "scripts/launcher/install.ps1", "docs/remote-play-player-guide.md", "docs/local-images.md", "docs/human-records.md"]
 +++
 
 ## 이 웹사이트에서 게임을 바로 실행하나요?
@@ -38,8 +38,16 @@ Uprising 게임이라면 호스트가 모델 파일과 추가 의존성을 준�
 
 ## 런처가 열리지 않거나 서버 시작에 실패합니다
 
-프로젝트 폴더를 준비했는지, `uv --version`이 실행되는지 확인하세요. 런처의 오류 문구를 읽고,
-터미널에서 진단하려면 프로젝트 폴더에서 다음을 실행합니다.
+런처의 오류 문구를 먼저 읽으세요. 포트 8000을 다른 프로그램이 쓰고 있다고 나오면 런처의 **빈 포트 찾기**로 다른 포트를 고릅니다.
+
+한 줄로 설치했다면 런처를 닫고 같은 설치 줄을 다시 실행해 보세요. 설치가 멈추면 마지막 줄에 이유가 나옵니다.
+터미널에서 진단하려면 게임 폴더에서 다음을 실행합니다(Windows는 `.venv\Scripts\python.exe`).
+
+```bash
+.venv/bin/python -m dune_imperium.launcher.cli --check
+```
+
+소스로 설치했다면 프로젝트 폴더를 준비했는지, `uv --version`이 실행되는지 확인하고, 프로젝트 폴더에서 다음을 실행합니다.
 
 ```bash
 uv run python -m dune_imperium.launcher.cli --check

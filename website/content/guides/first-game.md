@@ -1,22 +1,45 @@
 +++
 title = "처음 한 판 시작하기"
-description = "소스를 준비하고 서버를 켠 다음 사람 한 명과 AI 세 명으로 첫 게임을 만듭니다."
+description = "게임을 설치하고 서버를 켠 다음 사람 한 명과 AI 세 명으로 첫 게임을 만듭니다."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 10
 [params]
-source_ref = "81ca9468"
-sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-host-guide.md", "src/dune_imperium/cli/server.py", "src/dune_imperium/server/static/index.html", "src/dune_imperium/server/static/screens.js", "scripts/launcher/Install Launcher.command", "scripts/launcher/Install Launcher.cmd", "scripts/launcher/install-wsl.sh"]
+source_ref = "5d2fea34"
+sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-host-guide.md", "src/dune_imperium/cli/server.py", "src/dune_imperium/server/static/index.html", "src/dune_imperium/server/static/screens.js", "scripts/launcher/install.sh", "scripts/launcher/install.ps1", "scripts/launcher/Install Launcher.command", "scripts/launcher/Install Launcher.cmd", "scripts/launcher/install-wsl.sh"]
 +++
 
 처음에는 사람 한 명과 기본 AI 세 명으로 시작해 보세요. 학습 모델이나 카드·보드 이미지를
 준비하지 않아도 됩니다. PC의 브라우저와 게임 서버를 실행할 환경이 필요합니다.
 
 macOS, Windows 11(네이티브), Windows의 WSL2에서 런처와 서버 실행을 확인했습니다. 다른 PC에서 Windows·WSL 호스트로 접속하는 경우 같은
-일부 수동 확인이 남아 있고, Linux 데스크톱의 런처 창은 확인하지 않았습니다. [지원 현황]({{< relref "about/support.md" >}})
+일부 수동 확인이 남아 있고, Linux 데스크톱의 런처 창은 확인하지 않았습니다. 한 줄 설치는 2026-11-06에 Apple Silicon Mac과
+Windows 11에서 확인했습니다. [지원 현황]({{< relref "about/support.md" >}})
 
-## 1. Git과 uv 준비
+## 1. 한 줄로 설치하기 (Git·Python 없이)
+
+macOS와 Windows에서는 명령 한 줄로 설치할 수 있습니다. 게임 파일·uv·Python 3.14·서버 패키지가 홈 폴더의 `Dune Imperium` 폴더 하나에
+들어가고, 마지막에 런처 바로가기를 만든 뒤 런처를 엽니다.
+
+macOS: **터미널** 앱(응용 프로그램 → 유틸리티)을 열고 붙여 넣습니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.sh | sh
+```
+
+Windows: 시작 메뉴에서 **PowerShell**을 열고 붙여 넣습니다.
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.ps1 | iex"
+```
+
+업데이트할 때는 런처를 닫고 같은 줄을 다시 실행합니다. 저장 파일과 런처 설정은 그대로 남습니다. 지울 때는 폴더를 통째로 지웁니다.
+더 자세한 내용은 [다운로드·설치 준비]({{< relref "downloads/_index.md" >}})에 있습니다.
+
+한 줄로 설치했다면 2·3절은 건너뛰고 [4. 서버 켜기](#4-서버-켜기)로 갑니다. Linux와 WSL2에서는 아래처럼 소스로 설치합니다.
+
+## 2. 소스로 설치할 때: Git과 uv 준비
 
 Git으로 소스를 받고 uv로 Python과 실행 환경을 준비합니다. Git이 없다면
 [Git 공식 다운로드](https://git-scm.com/downloads)를 참고하세요.
@@ -43,7 +66,7 @@ winget install --id=astral-sh.uv -e
 
 설치한 뒤 터미널을 새로 열고 `uv --version`을 확인하세요.
 
-## 2. 프로젝트 폴더 준비
+## 3. 프로젝트 폴더 준비
 
 처음 설치하는 폴더에서 아래를 실행합니다. 이미 받은 프로젝트가 있다면 그 폴더를 사용하세요.
 
@@ -58,11 +81,13 @@ uv python install 3.14
 
 이후 명령과 런처 설치는 모두 받은 프로젝트 폴더를 기준으로 합니다.
 
-## 3. 서버 켜기
+## 4. 서버 켜기
 
 ### 창으로 실행하기
 
-프로젝트의 `scripts/launcher` 폴더에서 운영체제에 맞는 파일을 실행합니다.
+한 줄로 설치했다면 바로가기가 이미 있으니 아래 표는 건너뛰고, 게임 폴더의 **Dune Imperium Server**를 엽니다.
+
+소스로 설치했다면 프로젝트의 `scripts/launcher` 폴더에서 운영체제에 맞는 파일을 처음 한 번 실행합니다.
 
 | 운영체제 | 처음 한 번 실행할 파일 |
 | --- | --- |
@@ -79,7 +104,7 @@ uv python install 3.14
 
 ### 터미널로 실행하기
 
-런처 대신 다음을 프로젝트 폴더에서 실행할 수 있습니다. macOS·Linux 터미널과 Windows PowerShell에서 같은 명령을 씁니다.
+소스로 설치했다면 런처 대신 다음을 프로젝트 폴더에서 실행할 수 있습니다. macOS·Linux 터미널과 Windows PowerShell에서 같은 명령을 씁니다.
 
 ```bash
 uv sync --locked --extra ui
@@ -92,7 +117,7 @@ uv run dune-imperium-server --autosave
 위 의존성 명령은 새 플레이 환경을 위한 것입니다. 기존 개발·학습 환경에서는
 `uv sync --locked --extra rl --extra ui --extra train`으로 설치한 구성을 함께 유지하세요.
 
-## 4. 첫 게임 만들기
+## 5. 첫 게임 만들기
 
 1. **기본 판**에서 듄 임페리움: 봉기(Uprising)와 듄: 임페리움(원판) 가운데 하나를 고릅니다.
 2. 네 좌석 중 내 좌석 하나를 사람으로, 나머지를 앱 AI로 설정합니다.
@@ -106,7 +131,7 @@ Rise of Ix와 Tech를 함께 켜면 Rise of Ix를 얼마나 쓸지(전부, 지�
 
 앱 AI에는 별도 학습 모델이 필요하지 않습니다. 그림이 없으면 텍스트 카드·보드로 진행할 수 있습니다.
 
-## 5. 멈추고 이어 하기
+## 6. 멈추고 이어 하기
 
 게임을 마치기 전 **저장**을 누르세요. 런처와 위 터미널 명령은 자동 저장을 사용하지만,
 자동 저장은 턴이 넘어갈 때 이뤄져 진행 중인 한 턴의 선택이 모두 남는 것은 아닙니다.

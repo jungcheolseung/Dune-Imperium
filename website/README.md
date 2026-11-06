@@ -77,6 +77,9 @@ Linux에 필요한 시스템 라이브러리가 없으면 Playwright의 공식 �
 지원 현황·로드맵·다운로드·사용법·도움말을 고치고 업데이트 한 편과 개발일지 5편을 더했다. 새 게임 화면의 옵션과 좌석은
 `server/static/index.html`·`screens.js`·`server/seat_kinds.py`와 대조했다. 이 작업에서도 OS별 새 설치·게임 실행은 다시 따라가지 않았다.
 
+2026-11-06에 git·Python 없이 한 줄로 설치하는 방법(`scripts/launcher/install.sh`·`install.ps1`)을 다운로드·처음 한 판·도움말·소개에 넣고
+업데이트 한 편을 더했다. 한 줄 설치는 공개 저장소에서 실제 두 줄로 macOS(Apple Silicon)와 Windows 11에서 설치까지 따라갔다.
+
 ## 개발일지 추가하기
 
 한 작업에 딸린 구현·수정·문서 커밋은 한 편으로 묶는다. 며칠에 걸친 작업은 기간으로 표시한다.

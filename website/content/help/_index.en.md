@@ -2,12 +2,12 @@
 title = "Help and troubleshooting"
 description = "Answers to installation, connections, seats, AI models, and save-file questions."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 60
 [params]
-source_ref = "81ca9468"
-sources = ["README.md", "docs/remote-play-host-guide.md", "docs/remote-play-player-guide.md", "docs/local-images.md", "docs/human-records.md"]
+source_ref = "5d2fea34"
+sources = ["README.md", "docs/remote-play-host-guide.md", "scripts/launcher/install.sh", "scripts/launcher/install.ps1", "docs/remote-play-player-guide.md", "docs/local-images.md", "docs/human-records.md"]
 +++
 ## Can I play directly on this website?
 
@@ -31,7 +31,15 @@ In an original game this is expected: the search AI currently sits only at Upris
 
 ## The launcher will not open or the server fails to start
 
-Check that the project folder is present and `uv --version` works. Read the launcher's error message. For a terminal diagnosis, run from the project folder:
+Read the launcher's error message first. If it says another program is using port 8000, pick another port with the launcher's **빈 포트 찾기** (find a free port) button.
+
+After the one-line install, close the launcher and run the same install line again; if the install stops, its last line says why. For a terminal diagnosis, run this in the game folder (`.venv\Scripts\python.exe` on Windows):
+
+```bash
+.venv/bin/python -m dune_imperium.launcher.cli --check
+```
+
+After a source install, check that the project folder is present and `uv --version` works, then run from the project folder:
 
 ```bash
 uv run python -m dune_imperium.launcher.cli --check

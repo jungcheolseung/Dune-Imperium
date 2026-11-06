@@ -1,19 +1,39 @@
 +++
 title = "Your first game"
-description = "Prepare the source, start the server, and create a game with one human and three AI opponents."
+description = "Install the game, start the server, and create a game with one human and three AI opponents."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 10
 [params]
-source_ref = "81ca9468"
-sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-host-guide.md", "src/dune_imperium/cli/server.py", "src/dune_imperium/server/static/index.html", "src/dune_imperium/server/static/screens.js", "scripts/launcher/Install Launcher.command", "scripts/launcher/Install Launcher.cmd", "scripts/launcher/install-wsl.sh"]
+source_ref = "5d2fea34"
+sources = ["README.md", "pyproject.toml", ".python-version", "docs/remote-play-host-guide.md", "src/dune_imperium/cli/server.py", "src/dune_imperium/server/static/index.html", "src/dune_imperium/server/static/screens.js", "scripts/launcher/install.sh", "scripts/launcher/install.ps1", "scripts/launcher/Install Launcher.command", "scripts/launcher/Install Launcher.cmd", "scripts/launcher/install-wsl.sh"]
 +++
 Start with one human and three default AI opponents. You do not need model files or card and board images. You need a desktop browser and an environment that can run the game server.
 
-The launcher and server have been checked on macOS, native Windows 11 and WSL2 on Windows. A few manual checks remain (such as guests connecting from other PCs to a Windows or WSL host), and the launcher window on a Linux desktop has not been checked. [Validation scope]({{< relref path="about/support.md" lang="en" >}})
+The launcher and server have been checked on macOS, native Windows 11 and WSL2 on Windows. A few manual checks remain (such as guests connecting from other PCs to a Windows or WSL host), and the launcher window on a Linux desktop has not been checked. The one-line install was checked on an Apple Silicon Mac and on Windows 11 on 2026-11-06. [Validation scope]({{< relref path="about/support.md" lang="en" >}})
 
-## 1. Install Git and uv
+## 1. Install with one line (no Git or Python needed)
+
+On macOS and Windows one command line installs everything. The game files, uv, Python 3.14 and the server packages go into one `Dune Imperium` folder in your home folder; finally it makes the launcher shortcut and opens the launcher.
+
+macOS: open the **Terminal** app (Applications → Utilities) and paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.sh | sh
+```
+
+Windows: open **PowerShell** from the Start menu and paste:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.ps1 | iex"
+```
+
+To update, close the launcher and run the same line again; saves and launcher settings stay. To remove the game, delete the folder. More details are on [downloads and installation]({{< relref path="downloads/_index.md" lang="en" >}}).
+
+If you installed with one line, skip sections 2 and 3 and go to [4. Start the server](#4-start-the-server). On Linux and WSL2, install from source as below.
+
+## 2. Installing from source: Git and uv
 
 Use Git to obtain the source and uv to prepare Python and the environment. See the [official Git downloads](https://git-scm.com/downloads).
 
@@ -38,7 +58,7 @@ winget install --id=astral-sh.uv -e
 
 Reopen the terminal after installation and check `uv --version`.
 
-## 2. Prepare the project folder
+## 3. Prepare the project folder
 
 In the parent folder where you want to install, run:
 
@@ -52,11 +72,13 @@ Use your existing checkout if you already have one. uv prepares Python 3.14; you
 
 Run subsequent commands and launcher installation from this project folder.
 
-## 3. Start the server
+## 4. Start the server
 
 ### Using the launcher
 
-Open the appropriate file under `scripts/launcher`:
+After the one-line install the shortcut is already there: skip the table and open **Dune Imperium Server** in the game folder.
+
+After a source install, run the appropriate file under `scripts/launcher` once:
 
 | System | Run once |
 | --- | --- |
@@ -70,7 +92,7 @@ After installation, open the **Dune Imperium Server** shortcut in the project fo
 
 ### Using a terminal
 
-Alternatively, run the same commands in a macOS/Linux terminal or Windows PowerShell:
+After a source install you can instead run these commands in a macOS/Linux terminal or Windows PowerShell:
 
 ```bash
 uv sync --locked --extra ui
@@ -81,7 +103,7 @@ Open `http://127.0.0.1:8000` in your browser. This command enables autosave. Kee
 
 The dependency command above is for a new play environment. In an existing development/training environment, retain its dependencies with `uv sync --locked --extra rl --extra ui --extra train`.
 
-## 4. Create a game
+## 5. Create a game
 
 1. Under **Base game**, choose Dune: Imperium - Uprising or the original Dune: Imperium.
 2. Set one of the four seats to human and the other three to app AI.
@@ -93,7 +115,7 @@ With the original game chosen, the CHOAM and original-cards boxes are locked, an
 
 App AI needs no model file. Without images, the game uses text cards and board displays.
 
-## 5. Stop and continue
+## 6. Stop and continue
 
 Use **Save** before stopping. The launcher and the terminal command above enable autosave, but autosave occurs at turn handover and may not preserve every pending choice within a turn.
 

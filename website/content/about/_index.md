@@ -2,7 +2,7 @@
 title = "프로젝트 소개"
 description = "규칙을 지키며 끝까지 플레이하는 엔진, 함께 둘 수 있는 화면, 점점 나아지는 AI를 만듭니다."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 10
 [params]
@@ -47,7 +47,7 @@ Rise of Ix를 더했습니다. 지금은 두 기본 판 가운데 하나를 고�
 
 ## 지금 시작할 수 있는 범위
 
-현재는 소스 기반 설치를 안내합니다. 서버 런처는 macOS, Windows 11 네이티브, Windows의 WSL2에서
+macOS와 Windows에서는 Git·Python 없이 명령 한 줄로 설치하고, 그 밖에서는 소스로 설치합니다. 서버 런처는 macOS, Windows 11 네이티브, Windows의 WSL2에서
 동작합니다. macOS와 Windows 네이티브에서는 런처·서버 실행과 원격 좌석 참여를 확인했고, WSL2에서는 런처와
 같은 PC 안의 접속을 확인했습니다. Linux에서는 Ubuntu PC에서 터미널 서버를 상시 서비스로 운영하고 있습니다.
 다른 PC에서 Windows·WSL 호스트로 들어오는 접속과 Linux 데스크톱의 런처 창은 별도 확인이 남아 있습니다. 카드·보드 이미지 원본과 학습 모델은 소스에 포함하지 않으며, 텍스트 화면과

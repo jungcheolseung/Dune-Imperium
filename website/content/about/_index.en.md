@@ -2,7 +2,7 @@
 title = "About the project"
 description = "A rules engine, a browser interface, and AI opponents for four-player Dune: Imperium and Dune: Imperium - Uprising."
 date = 2026-10-20
-lastmod = 2026-11-03
+lastmod = 2026-11-06
 draft = false
 weight = 10
 [params]
@@ -33,7 +33,7 @@ Performance claims need the opponent, rules, model, and game count. Improvements
 
 ## Current availability
 
-Installation is currently from source. The server launcher runs on macOS, native Windows 11 and WSL2 on Windows. Launcher, server and remote seat joining have been checked on macOS and native Windows; on WSL2 the launcher and connections from the same PC have been checked. On Linux, a terminal server runs as an always-on service on an Ubuntu PC. Guests connecting from other PCs to a Windows or WSL host, and the launcher window on a Linux desktop, remain to be checked. Original card and board images and trained models are not included in the source. A text interface and the default AI work without them. Development targets wide desktop screens; playing a whole game on a phone alone has not been validated.
+On macOS and Windows one command line installs the game without Git or Python; elsewhere installation is from source. The server launcher runs on macOS, native Windows 11 and WSL2 on Windows. Launcher, server and remote seat joining have been checked on macOS and native Windows; on WSL2 the launcher and connections from the same PC have been checked. On Linux, a terminal server runs as an always-on service on an Ubuntu PC. Guests connecting from other PCs to a Windows or WSL host, and the launcher window on a Linux desktop, remain to be checked. Original card and board images and trained models are not included in the source. A text interface and the default AI work without them. Development targets wide desktop screens; playing a whole game on a phone alone has not been validated.
 
 [Supported features]({{< relref path="about/support.md" lang="en" >}}) · [Downloads and installation]({{< relref path="downloads/_index.md" lang="en" >}}) · [Roadmap]({{< relref path="about/roadmap.md" lang="en" >}})
 
