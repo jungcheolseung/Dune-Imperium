@@ -1,0 +1,215 @@
+# Bloodlines 확장
+
+Bloodlines는 Dune: Imperium — Uprising의 확장이다. 이 문서는 4인 Uprising 게임에 Bloodlines를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Bloodlines 룰북](sources.md)이며, `[Bloodlines p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(bloodlines=True)` 옵션으로, 함께 든 Tech Module을 `tech_module=True` 옵션(Bloodlines 필요)으로 취급하며 둘 다 기본값은 꺼짐이다. 공식 문서가 침묵하는 Tech Module 판정은 [open-questions.md](open-questions.md)의 OQ-040~044다.
+
+범위 밖: 1·2인 Rivals 규칙 `[Bloodlines pp. 8-9]`, 6인 팀전 `[Bloodlines p. 10]`. 원본 Dune: Imperium과의 조합 `[Bloodlines p. 3]`(2a)과 Rise of Ix와의 조합 `[Bloodlines p. 7]`([rise-of-ix.md](rise-of-ix.md) 10a)은 P7c에서 원판 쪽을 구현했다(Uprising + Ix는 P7f). 2025-01-13 FAQ에는 Bloodlines 항목이 없다(2026-09-07 확인; "Sardaukar Commander" 검색 결과는 Shaddam Corrino IV의 능력명뿐이다).
+
+## 1. 구성물
+
+- Imperium 카드 32장(그중 5장은 CHOAM Module 전용, 2장은 Tech Module 전용), Intrigue 카드 18장(1장 CHOAM 전용, 2장 Tech 전용), Conflict 카드 2장(Conflict I 1장, Conflict II 1장), Sardaukar Commander 7개(플라스틱 7·나무 7 중 한 종류만 사용), Sardaukar Commander Skill 14장, Leader 9장(1장은 Tech Module 전용). `[Bloodlines p. 2]`
+- Leader 전용 구성물: Esmar Tuek의 Tuek's Sietch board space, Piter De Vries의 Twisted Intrigue 12장, Steersman Y'rkoon의 Navigation 카드 10장, Chani의 Tactics token. `[Bloodlines p. 2]`
+- CHOAM Module과 함께 쓸 때: Imperium 5장을 Imperium deck에, Intrigue Coercive Negotiation을 Intrigue deck에, contract token 8개를 기존 contract에 섞는다. Tech Module도 쓰면 CHOAM Transports Tech tile을 다른 Tech tile과 섞는다. `[Bloodlines p. 2]`
+- 새 contract 중 Earn any Alliance는 아직 갖고 있지 않은 Alliance token을 다음에 가져갈 때 완료된다. 새 Immediate contract는 trash할 Intrigue 카드가 없으면 가져갈 수 없다. `[Bloodlines p. 2]`
+- 룰북 밖의 프로모 Imperium 1장(Ruthless Leadership)은 `promo_cards` 옵션을 함께 켤 때만 Imperium deck에 섞는다. 근거는 카드면뿐이다([sources.md](sources.md) "프로모 카드의 출처"). `[card face]`
+
+### CHOAM Module contract token 8개
+
+CHOAM Module과 함께 쓸 때만 기존 contract 20개에 섞는 token 8개다(1개씩; BGG 카드 인벤토리 시트와 일치). 아래 표는 에셋 저장소 `cards/en/bloodlines/contract/*.webp`의 인쇄면을 판독해 전사했고, 아이콘은 5절 Tech tile 전사와 같은 Uprising 아이콘 기준을 썼다(회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, X 카드 = trash). Dune Cards Hub는 Bloodlines 카탈로그를 클라이언트에서 그려 카드 페이지 ID를 얻을 수 없어 카드면 이미지 URL을 참조로 둔다. `[Bloodlines p. 2]` `[contract token faces]`
+
+| token | 완료 조건 | 보상 | 메모 |
+| --- | --- | --- | --- |
+| Deliver Supplies | Deliver Supplies에 Agent | Solari 1, Spy with Deep Cover 1 | Deep Cover 배치는 4절: 상대 Spy 무시, 자기 Spy가 있는 post만 제외 |
+| Earn Any Alliance | 아직 갖고 있지 않은 Alliance token을 가져갈 때 | Solari 2, troop 2 | 아래 "Earn Any Alliance" 참조 |
+| Harvest 3+ | Maker space에 Agent, 그 turn spice 3+ | Solari 2, Spy 1 | Uprising Harvest와 같은 조건 `[Main p. 16]` |
+| Harvest 4+ | Maker space에 Agent, 그 turn spice 4+ | Solari 3, Spy 1 | |
+| High Council | High Council에 Agent | Agent 1 recall | Sardaukar II와 같은 보상; 방금 보낸 Agent는 대상이 아니다 `[Main p. 20]`. Duncan Idaho(Bloodlines)의 Into the Fray로 이전 turn에 Conflict에 보낸 Agent도 "자신의 Agent" 중 하나라 recall 대상이 되며, 방금 보낸 Agent는 여전히 제외된다(2026-09-26 사용자 판정, OQ-068) |
+| Immediate ("Requires an Intrigue card") | 가져오는 즉시 | Intrigue 카드 1장 trash → Intrigue 1 + draw 1 | 아래 "새 Immediate" 참조 |
+| Secrets | Secrets에 Agent | Solari 2, draw 1 | |
+| Spice Refinery | Spice Refinery에 Agent | troop 2 | |
+
+- **Earn Any Alliance**: 완료 조건은 Agent 방문이 아니라 Alliance token 자체다. 따라서 Uprising의 "Agent를 보낼 당시 보유해야 한다"는 소급 금지 `[Main p. 16]`는 적용되지 않고, 같은 turn에 이 token을 가져온 뒤 그 turn의 Influence 상승으로 Alliance를 얻어도 완료된다(디자이너 판정, [designer-rulings-audit.md](designer-rulings-audit.md)). 이미 갖고 있는 진영의 Influence가 더 올라가는 것은 "새 token"이 아니므로 완료하지 않는다. 상대가 Influence를 잃어 token이 자신에게 넘어오는 경우도 "token을 가져가는" 것으로 본다([OQ-056](open-questions.md#oq-056--earn-any-alliance의-완료-시점과-alliance-이전) project convention). `[Bloodlines p. 2]` 완료는 token을 가져간 엔진 단계의 끝이다(2026-10-09 사용자 결정 "2번-A: 늘 정리 전", OQ-056·OQ-103). Combat 보상으로 가져가면 정리 전이므로, 보상의 troop은 그때 supply에 있는 만큼만 받고 모자란 몫은 다른 Conflict 보상처럼 버린다 — 정리에서 Conflict의 troop이 supply로 돌아오는 것은 모든 보상을 준 뒤다 `[Main p. 14]`, recruit는 supply에서만 온다 `[Main p. 10]` `[FAQ p. 4]`(부족분 처리는 OQ-030의 2026-10-04 재판정, project convention).
+- **새 Immediate**: hand에 trash할 Intrigue 카드가 없으면 가져갈 수 없다. (원문은 이 한 문장뿐이다; 시장의 다른 token을 고를 수 있다는 것은 프로젝트 해석이고, 고를 token이 **하나도** 없을 때의 판정은 [OQ-059](open-questions.md#oq-059--시장에-face-up-contract가-남았지만-아무것도-가져갈-수-없을-때의-contract-아이콘)다.) 가져오면 hand의 Intrigue 카드 하나를 골라 trash하고 즉시 완료하며, Intrigue 1장과 카드 1장을 뽑는다. 구현은 trash할 카드를 고르는 동안만 token을 active 영역에 두고(그동안 다른 효과가 이 token을 건드릴 수 없다) 고르면 completed로 옮긴다. `[Bloodlines p. 2]` `[Main p. 16]`
+- 보상의 troop은 다른 turn 중 recruit와 같이 그 turn의 배치 몫에 들어가고(Agent turn의 `troops_recruited`, Reveal turn의 Combat 아이콘 몫), Deep Cover Spy·recall·draw 보상은 Uprising contract와 같은 frame으로 해결한다.
+
+## 2. Setup 변경
+
+Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
+
+1. Sardaukar Commander 7개 중 다섯 개를 board의 Sardaukar, Dutiful Service, Deliver Supplies, High Council, Gather Support에 하나씩 놓는다(Agent를 놓을 자리는 남긴다). 4인 게임에서는 여섯 번째를 Assembly Hall에 놓는다. 마지막 하나는 bank에 둔다(Imperium 카드 Sardaukar Standard가 사용). `[Bloodlines p. 3]`
+2. Skill 14장을 face-down으로 shuffle해 board 옆에 stack으로 두고, 그중 4장을 face-up으로 deal한다. `[Bloodlines p. 3]`
+3. 새 Conflict 카드 2장을 기존 카드에 더한다. Conflict deck은 여전히 Conflict I 1장(맨 위), II 5장, III 4장(맨 아래)의 10장으로 만들고, 쓰지 않은 카드는 보지 않고 box로 돌려보낸다. `[Bloodlines p. 3]`
+4. Intrigue 15장을 Intrigue deck에, Imperium 25장을 Imperium deck에(Imperium Row를 만들기 전에) 섞고, 새 Leader 8장을 기존 Leader에 더한다. Leader는 새 것과 기존 것을 자유롭게 조합해 고를 수 있다. `[Bloodlines p. 3]`
+
+### 2a. 원판(Dune: Imperium)과 함께 (`[Bloodlines p. 3]`, P7)
+
+룰북 p. 3의 "When playing BLOODLINES with DUNE: IMPERIUM" 상자(2026-10-30, P7a에서 로컬 룰북의 그 쪽만 읽음 — 2026-10-29 사용자 "assets/rulebooks 에 룰북
+다 있을텐데"):
+
+- setup 1단계: Sardaukar Commander 다섯을 원판 칸 Conspire, Wealth, Foldspace, High Council, Rally Troops에 하나씩 둔다. 4인이면 여섯째를 Hall of
+  Oratory에 둔다(Uprising판의 Sardaukar·Dutiful Service·Deliver Supplies·High Council·Gather Support와 Assembly Hall 대신).
+- 2단계: "Fierce" Sardaukar Commander Skill 둘을 뺀다.
+- 3단계를 건너뛴다: Bloodlines의 새 Conflict 카드를 넣지 않는다.
+- 4단계: CHOAM 모듈 구성물을 모두 빼고, Intrigue 다섯(False Orders, Grasp Arrakis, Insider Information, Ripples in the Sand, Sleeper Unit), Imperium
+  일곱(Arrakis Observer, Eliminate Allies, Holy War, Intelligence Training 둘, Pointing the Way, Shrouded Counsel), 지도자 셋(Count Hasimir Fenring,
+  Gaius Helen Mohiam, Liet Kynes)을 뺀다.
+- Steersman Y'rkoon을 쓰면 Spy를 놓거나 회수하는 Navigation 카드를 뺀다.
+- Rise of Ix를 모두 쓰면 덮개가 Rally Troops·Hall of Oratory를 덮으므로 그 둘의 Commander를 Dreadnought와(4인) Tech Negotiation으로 옮긴다
+  (`[Bloodlines p. 7]`, rise-of-ix.md 10a).
+- 구현 (P7c, `3b15a8f7`): setup이 원판에서 `bloodlines`·`tech_module`을 받는다(`choam_module`은 계속 거절, 계획 19.4 P7-1). Commander 자리는 판과
+  Rise of Ix의 순수 함수 `commander_setup_space_ids`(Uprising + Ix면 Gather Support → Dreadnought, Assembly Hall → Tech Negotiation — 그 결합은 setup이
+  아직 거절), Skill은 "Fierce" 둘을 뺀 12장, Navigation 카드는 카드 2를 뺀 9장, 카드·지도자 빼기는 `content.rulesets`의
+  `BLOODLINES_*_LEFT_OUT_OF_ORIGINAL`. Tuek's Sietch는 원판 보드에도 놓인다(Esmar Tuek이 있을 때만). Navigation 카드 4의 The Spice Must Flow는 그 판
+  Reserve의 인쇄를 얻고(원판은 `imperium_the_spice_must_flow` — 두 인쇄를 함께 읽는 `ReserveCostDiscount`와 같은 읽기), Recruitment Mission·Spaceport가
+  있으면 덱 위를 고른다(`50307916`, 계획 16.10 7). 관측 v40(`b27818d2`): Commander 자리 구간을 두 판 자리의 합집합 14칸으로 넓혔다.
+
+## 3. Sardaukar Commander
+
+### 획득과 recruit
+
+- 자신의 turn에 Sardaukar Commander가 있는 board space에 Agent를 보내면, 2 Solari를 지불해 그 Commander를 acquire하고 즉시 recruit할 수 있다. 이것은 그 space의 효과이며, 다른 board space·카드 효과와 원하는 순서로 처리한다. `[Bloodlines p. 4]`
+- Commander를 acquire할 때마다 Skill 하나를 얻는다. face-up 4장 중 하나를 골라 자신의 supply에 놓고(모두에게 공개), 이미 supply에 있는 것과 같은 Skill은 고를 수 없다. 고른 뒤 stack에서 한 장을 face-up으로 보충한다. `[Bloodlines p. 4]`
+- supply의 Commander는 일반 수단으로 recruit할 수 없다. 대신 turn(Agent 또는 Reveal)마다 한 번, 2 Solari를 지불해 supply의 Commander 하나를 garrison으로(이번 turn에 Combat space에 Agent를 보냈다면 Conflict로) recruit할 수 있다. 이때는 acquire가 아니므로 Skill을 고르지 않는다. 한 turn에 4 Solari로 두 개를 recruit할 수는 없다. `[Bloodlines p. 4]` 엔진은 이것을 garrison으로의 recruit와 그 뒤의 배치로 나눠 모델링한다: recruit한 Commander는 "You may place it in your garrison or … deploy it to the Conflict" `[Bloodlines p. 4]`(아래 '유닛으로서의 취급')이므로 Conflict로 보낼지는 소유자가 고르고, 그 배치 몫은 Commander 몫으로 남아 있어 troop이 먼저 가져가지 못한다([OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)). 배치가 막힌 turn(예: Emperor of the Known Universe의 배치 금지)에는 garrison에 남는다.
+
+### 유닛으로서의 취급
+
+- recruit한 Commander는 대부분 다른 유닛과 같이 쓴다. garrison에 두거나, 이번 turn에 Combat space에 Agent를 보냈다면 Conflict에 deploy할 수 있다. 나중에 garrison에 있을 때 Combat space에 Agent를 보내면 garrison에서 deploy하는 `up to two` 유닛 중 하나가 될 수 있다. `[Bloodlines p. 4]` 이번 turn에 recruit한 Commander의 배치 몫은 Commander만 채운다 — garrison의 troop이 그 몫을 대신 차지할 수 없고, recruit한 troop의 몫도 Commander가 차지할 수 없다. garrison 몫(최대 두 개)은 두 종류가 함께 쓴다(사용자 판정, [OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)).
+- Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다. `[Bloodlines p. 4]`
+- Combat이 해결되고 보상이 지급되면 Commander는 소유자의 supply로 돌아간다. `[Bloodlines p. 4]`
+- Endgame의 최종 tiebreaker "garrison의 troop 수" `[Main p. 15]`에는 garrison에 있는 Commander도 troop으로 센다. 공식 문서는 이 경우를 다루지 않으며, "Commander는 troop이다"의 연장으로 프로젝트가 확정했다(OQ-047 project convention). supply나 Conflict에 있는 Commander는 세지 않는다.
+
+### Sardaukar Commander Skill
+
+- Conflict에 자신의 Commander가 하나 이상 있는 동안 자신의 모든 Skill 효과가 활성이다. 각 Skill은 Reveal turn의 보너스이거나 Combat 해결 때의 추가 strength다. Commander가 여러 개여도 각 Skill은 라운드당 한 번만 작동한다. `[Bloodlines p. 4]`
+- Commander를 모두 retreat시키면 Conflict에 Commander가 없어져 Skill의 추가 strength(예: Canny)를 받지 못한다. `[Bloodlines p. 4]`
+- Skill 14장은 7종 2장씩이다(원본 Dune: Imperium과 쓸 때 "Fierce 2장"을 제외하라는 지시에서 확인). 각 tile의 인쇄 효과는 다음과 같다. Landsraad와 Emperor 아이콘은 에셋 저장소의 아이콘과 대조했다. `[Bloodlines p. 3]` `[Skill tile faces]`
+
+| Skill | 인쇄 효과 | 종류 |
+| --- | --- | --- |
+| Canny | Landsraad board space에 자신의 Agent가 있으면 strength 2 | Combat strength |
+| Charismatic | Reveal Turn: Persuasion 1 | Reveal 보너스 |
+| Desperate | Reveal Turn: 이 tile을 trash → strength 3 | Reveal 보너스(선택형 arrow) |
+| Driven | Reveal Turn: spice 1 | Reveal 보너스 |
+| Fierce | strength 1; 상대 누군가의 sandworm이 Conflict에 있으면 strength 1 추가 | Combat strength |
+| Hardy | Reveal Turn: troop 1 (recruit — 회색 정육면체, "Troop. Recruit one troop" `[Main p. 20]`; 2026-09-26 정정, 이전 전사는 water 1) | Reveal 보너스 |
+| Loyal | Emperor Influence 3 이상이면 strength 2 | Combat strength |
+
+## 4. 새 아이콘과 용어
+
+- **Spy with Deep Cover**: 일반 규칙대로 Spy 하나를 놓되, 놓을 때 상대의 Spy를 무시할 수 있다. 자신의 Spy가 이미 있는 post에는 놓을 수 없다. `[Bloodlines pp. 5, 12]`
+- **Command (6+)**: Reveal box에 적힌 효과로, 그 Reveal turn에 Persuasion을 6 이상 생성했을 때만 사용한다(그 카드 자신의 Persuasion 포함). `[Bloodlines pp. 5, 12]` Desert Power(Persuasion 2 -OR- sandworm)처럼 선택형인 카드는 그 선택이 아직 안 끝났으면 자신의 Persuasion을 생성한 것으로 치지 않는다 — Persuasion 갈래를 고른 뒤부터 세고, sandworm 갈래를 고르면 끝내 세지 않는다(OQ-069, 사용자 판정 2026-09-26; `player-turns.md`의 Desert Power 항목).
+- **Combat 아이콘**: Combat space에 Agent를 보낸 것처럼 이번 turn에 troop을 Conflict에 deploy할 수 있다 — 이번 turn에 recruit한 유닛 전부와 garrison에서 최대 두 개. 한 turn에 이 아이콘이 둘 이상이어도 garrison에서 deploy하는 수는 두 개를 넘지 못한다. Reveal turn에서도 쓸 수 있다(Disruption Tactics 예시). `[Bloodlines pp. 5, 12]` recruit한 유닛의 몫은 종류별이다 — 이번 turn에 recruit한 Commander의 몫은 Commander만 채운다(3절, OQ-070).
+- **wild battle icon(clarification)**: Endgame에서 wild battle icon은 supply의 다른 아무 battle icon과 짝지을 수 있다 — 세 표준 아이콘 중 하나 또는 또 다른 wild. 짝지은 두 장을 face-down으로 뒤집고 1 VP를 얻는다. Uprising Main p. 20의 "세 종류 중 하나"는 wild가 하나뿐이던 시절의 서술이다. `[Bloodlines p. 5]`
+- **Trash an Intrigue card**: hand의 Intrigue 카드 1장을 trash한다. `[Bloodlines p. 12]`
+- **Discard**: hand의 카드 1장을 discard한다. 명시하지 않는 한 Intrigue 카드는 대상이 아니다. `[Bloodlines p. 12]`
+- **Bloodlines 아이콘**: 구성물 오른쪽 아래의 표시로 참고용일 뿐이다. **Tech Module 아이콘**은 Tech Module에서만 쓰는 카드, **Twisted Intrigue** 표시는 Piter De Vries 전용 Intrigue를 뜻한다. `[Bloodlines p. 12]`
+
+## 5. Tech Module
+
+### Setup
+
+- Ixian Embassy board를 game board 옆에 놓는다. Tech tile 18장을 face-down으로 shuffle해 6장씩 세 stack으로 나눠 Ixian Embassy board의 세 칸에 놓고 각 stack의 맨 위를 face-up으로 뒤집는다. 제외한 tile이 있으면 최대한 고르게 나눈다. `[Bloodlines p. 6]`
+- CHOAM Module 없이 쓰면 CHOAM Transports를 제외한다. Tech 전용 Intrigue 2장과 Imperium 2장을 각 deck에 섞고, Kota Odax of Ix를 Leader로 고를 수 있다. `[Bloodlines p. 6]`
+- 원판과 쓰면 Advanced Data Analysis, Forbidden Weapons, Ornithopter Fleet, Panopticon, Spy Drones를 제외한다("If you are playing with the original DUNE: IMPERIUM rather than UPRISING, exclude …" `[Bloodlines p. 6]`). 원판에는 CHOAM이 없으므로(2a) CHOAM Transports도 빠져 12장이 남는다.
+- 구현 (P7c, `3b15a8f7`): 타일 묶음은 순수 함수 `tech_tile_pool`(원판 12장, 세 더미 4·4·4). Landsraad 방문의 Acquire Tech는 Ixian Embassy가 있을 때만
+  (`ixian_embassy_in_play`) 그 판 보드의 Landsraad 칸에서 열린다 — 원판은 Hall of Oratory, Rally Troops, Mentat, Swordmaster, High Council 다섯 —, High
+  Council 할인은 원판 High Council 자리에도 준다. Reveal 도중 얻은 Self-Destroying Messages·Forbidden Weapons·Panopticon도 그 turn에 듣는다(`33b063ba`,
+  OQ-150 (2) — Uprising + Tech에서는 Reveal turn에 Plot으로 쓴 Rapid Engineering이 유일한 길).
+
+### Tech tile 획득
+
+- Acquire Tech 아이콘이 Tech tile을 얻는 유일한 방법이다. 기본 경로는 Ixian Embassy board 위에 적혀 있다: Landsraad board space에 Agent를 보낸 turn에 Tech tile 하나를 acquire할 수 있다. 보유 수 제한은 없다. `[Bloodlines pp. 7, 12]` Landsraad 공간 다섯 곳(Assembly Hall, Gather Support, High Council, Imperial Privilege, Swordmaster) 모두이며, 처음 자리를 얻는 High Council 방문도 포함한다 — 룰북 예시: "High Council is a Landsraad board space, so Brennen can use the Ixian Embassy to acquire a Tech tile. Because he now has a High Council seat, the Tech tile costs him 1 less Spice" `[Bloodlines p. 7]`.
+- acquire할 때는 세 stack 맨 위의 face-up tile 중 하나를 골라 표시된 spice 비용을 내고 자신의 supply(공개)에 둔 뒤 그 stack의 다음 tile을 face-up으로 뒤집는다. stack이 비면 남은 게임 동안 선택지가 줄어든다. `[Bloodlines p. 7]`
+- 비용 감소는 두 가지이며 비용은 0 아래로 내려가지 않는다. High Council 자리가 있으면 Ixian Embassy board의 할인으로 tile마다 spice 1을 덜 낸다. 카드의 Tech Discount 아이콘은 tile 하나를 spice 1 할인으로 acquire하게 하며 High Council 할인과 합칠 수 있지만, Tech Discount 아이콘 둘 이상을 합칠 수는 없다. `[Bloodlines pp. 7, 12]` Intrigue 카드(Battlefield Research·Rapid Engineering)의 Tech Discount 아이콘은 play한 뒤 살 수 있는 tile이 있으면 반드시 acquire한다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)); Landsraad 방문의 Acquire Tech만 "할 수 있다"다. 남은 tile이 하나도 없어도 창은 열리고 거절만 제시된다(2026-09-30 사용자 판정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다", 2026-10-02 구현; 전에는 창 없이 `tech_acquisition_unavailable`을 남겼다, OQ-057 (9)). Imperium Ceremony(Immortality)의 "keep one"은 Intrigue draw라 Suspensor Suits의 troop을 낸다(같은 OQ).
+
+### Tech tile 사용
+
+- Tech tile의 능력은 Reveal turn, Conflict 승리, 게임 종료 등 여러 시점에 작동한다. Flip 아이콘이 있는 능력은 자신의 turn에 사용하며 라운드당 한 번뿐이다. 사용하면 tile을 face-down으로 뒤집고, 다음 라운드의 Round Start에 다시 face-up으로 돌린다. `[Bloodlines pp. 7, 12]`
+- tile의 구성: spice 비용, 이름, acquire 효과(acquire할 때 한 번만; 없는 tile도 있다), 능력, Rival Tech 표시(솔로 전용). `[Bloodlines p. 7]`
+- 프로젝트 판정(2026-10-05 사용자 요청, OQ-098): 구매는 비용 지불·소유권 이전·다음 tile 공개까지 처리하고, 획득 효과의 각 아이콘은 그 turn 안에서 다른 효과와 원하는 순서로 해결한다. Glowglobes·Navigation Chamber의 Influence 진영과 Gene-Locked Vault의 draw/Intrigue는 구매 뒤 효과를 해결할 때 고른다. 의무 보상을 마치기 전에는 turn을 끝낼 수 없다. 선택 아이콘(Forbidden Weapons의 Shield Wall 파괴, Planetary Array·Disposal Facility의 trash)은 자기 turn 안에서 거절 없는 줄 하나로 제시되고, turn 종료를 막지 않으며, 쓰지 않으면 턴 종료 누름에 `tech_acquire_effect_lapsed`로 사라진다(OQ-095 (2)·(7), 2026-11-09 사용자 판정, 인쇄 효과 감사 F-1). Combat의 구매 뒤 효과 창에서는 "유지"를 그대로 고른다(OQ-095 (2) (d)). 공식 룰북의 "획득할 때 한 번"과 Glowglobes 예시의 "immediately"에서 자유 순서 보류까지 도출한 공식 판정은 아니다. `[Bloodlines p. 7]` `[Main p. 9]`
+- Forbidden Weapons에서 strength 3 선택지를 고르면 Influence가 1 이상인 Faction에서 Influence 1을 잃어야 한다(가능하면). `[Bloodlines p. 12]`
+- Ornithopter Fleet을 가진 동안 자신의 모든 battle icon(wild 포함)은 Ornithopter로 취급한다. acquire하는 순간 battle icon 일치가 일어날 수 있고, Crysknife·Desert Mouse Intrigue로 VP를 얻을 수 없다. `[Bloodlines p. 12]`
+
+### Tech tile 18장
+
+에셋 저장소 `cards/en/bloodlines/tech/*.webp`의 tile 면을 직접 판독해 전사했다(2026-09-07). 아이콘은 Uprising 아이콘 가이드와 대조했다: 갈색·금색 반지 = Signet Ring, 회색 정육면체 = troop, 초록 줄무늬 카드 = draw, 금색 카드 = Intrigue, 회색 원기둥 = Spy, 노란 후드가 붙은 원기둥 = Spy with Deep Cover, 흰 X 검 = Combat 아이콘, 황갈색 벽 조각 + 붉은 파편 = Shield Wall 파괴, X 카드 = trash, 금색 ? 마름모 = Influence 1 선택. 오른쪽 아래 조개 표시는 솔로 전용 Rival Tech 표시다. `[Tech tile faces]` `[Bloodlines p. 7]`
+
+| Tile | 비용 | 획득 효과(1회) | 능력 |
+| --- | --- | --- | --- |
+| Advanced Data Analysis | 3 | 획득 조건: 보드의 자기 Spy 하나를 trash(box로) | Flip → Intrigue 1 |
+| CHOAM Transports (CHOAM 전용) | 6 | contract 1 | contract를 완료할 때마다 draw 1. 소유자 자신의 turn 안에서는 완료 바로 다음의 소유자 단계(`draw_owed_card`)로 — 그 계약 보상 창의 모든 줄보다 먼저([OQ-112](open-questions.md#oq-112--보상-한-줄-안의-아이콘-순서), 사용자 결정 2026-10-19) —, 사이에 다른 행동이 들지 않아 디자이너 판정 "can't be deferred"를 지키면서 완료는 되돌릴 수 있다([OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 곧바른 단계, 사용자 결정 2026-10-10 "가 로 가자"); turn 밖의 완료(Conflict 보상, Scouts 단계)는 완료 단계 뒤 엔진이 뽑는다. Endgame: 완료 contract 4+면 VP 1 |
+| Delivery Bay | 3 | draw 1 | Reveal Turn: Command (6+): Solari 2 |
+| Forbidden Weapons | 2 | Shield Wall 파괴(선택) + troop 1 | Reveal Turn: 반드시 선택 — 검 3(+ Influence 1 이상인 진영에서 Influence 1 잃기, 가능하면) 또는 spice 전부 잃고 이 tile trash |
+| Gene-Locked Vault | 2 | Intrigue 1 또는 draw 1 | 자신의 Intrigue 카드는 5장 이상일 때만 도둑맞는다 |
+| Glowglobes | 2 | Influence 1 선택 | 언제든 자기 덱 맨 위 카드를 볼 수 있다. 덱이 비면 볼 카드가 없고, 보기는 뽑기가 아니라 버림 더미를 섞지 않는다(`[Main p. 6]`의 재구성은 뽑을 때만; 2026-10-14 사용자 판정 "덱이 없으면 볼 게 없으니까 뭐 아무것도 안 보이는거지") |
+| Navigation Chamber | 5 | Influence 1 선택 | board space 비용이 spice 1 또는 Solari 1 줄어든다 |
+| Ornithopter Fleet | 4 | troop 2 | 자신의 모든 battle icon은 Ornithopter |
+| Panopticon | 5 | — | Reveal Turn: Spy 배치 + troop 1. Endgame: Influence 1 이하인 진영마다 Influence 1 |
+| Planetary Array | 2 | trash 1(선택) | Conflict에서 이길 때마다 draw 1(sandworm으로 두 배가 되지 않는다 — Conflict 카드의 보상이 아니다, [combat-and-round-end.md](combat-and-round-end.md) 4절 `[Main p. 14]`) |
+| Plasteel Blades | 3 | Solari 4 | Sardaukar Commander를 recruit할 때마다: 이 tile trash → Skill 1 추가 획득 |
+| Rapid Dropships | 4 | troop 2 | Agent Turn: Flip → Combat 아이콘 |
+| Sardaukar High Command | 7 | VP 1 | Commander recruit(획득 포함) 비용 Solari 1 감소 |
+| Self-Destroying Messages | 4 | Intrigue 2 | Reveal Turn: Persuasion 1 |
+| Servo-Receivers | 2 | Leader의 Signet Ring 능력 1회 사용 — 갈색·금색 반지 = Signet Ring 아이콘 "you use the Signet Ring ability … on your Leader" `[Main p. 20]` (2026-09-26 정정, 이전 전사는 Shield Wall 파괴; 해결 시점은 [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력)) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
+| Spy Drones | 5 | Spy with Deep Cover 2 | Flip → Solari 1; 이번 turn Spy를 recall했으면 trash 1(선택) |
+| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 recruit해 Conflict에 배치(막히면 garrison, supply 부족분은 같은 turn 안에 보충 — OQ-042 2026-10-25 재판정, codec v154에서 엔진 반영) |
+| Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
+
+- Navigation Chamber의 감소는 의무다. spice와 Solari를 함께 받는 칸에서만 어느 쪽을 줄일지 고르고(4인 보드에는 그런 칸이 없다), Spice Refinery·Gather Support의 화살표 비용 옵션(`[Board Guide pp. 1-2]`)에도 닿는다. 타일 문장(may 없음)을 읽은 project reading이며 공식 판정은 아니다([OQ-104](open-questions.md#oq-104--navigation-chamber의-할인은-의무인가)).
+
+### Tech 전용 카드와 Leader
+
+- **Ixian Ambassador ×2**(Imperium, 4, 진영 없음, Landsraad 아이콘): Agent: spice 1. Reveal: Persuasion 1; Tech tile 2장 이상이면 Influence 1 선택. `[card face]`
+- **Battlefield Research**(Intrigue, Combat/Endgame): Combat에는 troop 1~2 retreat → Acquire Tech(spice 1 할인) — OR — Endgame에는 Tech tile 3장 이상이면 VP 1. 두 띠의 색(빨강/짙은 녹색)과 바닥글 "COMBAT / ENDGAME"이 띠마다 시점을 하나씩 정한다("Each Intrigue card indicates when it can be played" `[Main p. 7]`; Grasp Arrakis·Tenuous Bond도 같다, 2026-09-26 사용자 판정). `[card face]`
+- **Rapid Engineering**(Intrigue, Plot): 카드 1장 discard → Acquire Tech(spice 1 할인) — OR — Tech tile 3장 이상이면 네 진영 중 둘을 골라 Influence 1씩. `[card face]`
+- **Kota Odax of Ix**(Leader, Tech Module 전용 `[Bloodlines p. 6]`): **Secret Project** — "Game Start: 각 stack의 맨 아래 Tech tile을 본다. 하나를 face-down으로 여기에 둔다. Tech tile을 acquire할 수 있을 때마다 이 tile을 고를 수 있고, 비용이 spice 1 적다." **Reverse Engineering(Signet)** — spice 1 — OR — 자신의 Tech tile 하나를 trash → Intrigue 1 + draw 1. `[card face]` (2026-10-10, project convention [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다): tile trash를 한 단계로 내고, Intrigue 1과 draw 1은 각자의 단계로 순서 자유.)
+
+## 6. Leader 관련 clarification
+
+- Chani: setup 때 Leader에 인쇄된 track의 인원수 칸에 Tactics token을 놓는다. token이 맨 오른쪽 칸에 도달하면 시작 칸으로 되돌려 reset한다. track 끝을 넘길 만큼 troop을 잃거나 retreat해도 시작 칸으로 reset할 뿐 초과분만큼 더 나아가지 않는다. `[Bloodlines p. 12]` FAQ: "When resolving combat, troops that return to your supply are considered 'lost.' Each different source of retreating or losing troops is handled separately." — Combat 정리에서 supply로 돌아가는 troop(Commander 포함, `[Bloodlines p. 4]`)도 잃은 것이고, 한 출처(정리 한 번, "troop 2개 잃기" 비용 하나)는 한 번에 전진한다. `[FAQ p. 1]`
+- Count Hasimir Fenring: Intrigue 카드를 trash할 때 Solari를 얻지 않는다. `[Bloodlines p. 12]`
+- Duncan Idaho: Into the Fray로 Conflict에 보낸 Agent는 여전히 자신의 Agent라서 뒤의 turn에 Imperial Privilege의 recall 대상이 된다(디자이너 판정, [OQ-037](open-questions.md#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기)(d)). `[Board Guide p. 2]` `[Duncan Idaho card]`
+- Esmar Tuek: setup 때 Tuek's Sietch board space를 game board 옆에 놓는다. Maker board space이므로 spice가 쌓인다. Signet Ring으로 Tuek's Sietch에 bonus spice를 놓고 같은 turn에 그곳으로 보낸 Agent로 그 spice를 가져갈 수 있다. `[Bloodlines p. 12]`
+  - Tuek's Sietch의 인쇄된 속성: Agent 아이콘 Spice Trade, Combat space, Maker space, 비용 없음, 효과 "1 spice —OR— draw 1 card"(Maker 칸이므로 쌓인 bonus spice도 가져간다). Esmar Tuek이 게임에 있을 때만 쓰는 칸이다. `[Tuek's Sietch board tile]` `[Bloodlines p. 12]`
+  - harvest 보정(2026-10-30, [OQ-157](open-questions.md#oq-157--tueks-sietch와-carryallthumperspice-addict-bloodlines) 사용자 확정 "닿음", 프로젝트 관례): Maker 칸이므로 인쇄된 1 spice는 Carryall이 두 배로 하는 base spice, 쌓인 bonus spice는 Thumper가 두 배로 하는 bonus spice이고, spice를 가져가면 harvest라 Countess Ariana의 Spice Addict가 1 덜 주고 카드 1장을 준다. 카드를 고르고 bonus spice도 없으면 harvest가 아니다(FAQ의 Countess Ariana 항목). 원판 카드·지도자가 Uprising 판에 들 때(P7e)와 원판 위 Bloodlines(P7c)에서 닿는다. 구현 `45b93387`.
+- Steersman Y'rkoon: 자신의 face-down Navigation 카드를 언제든 볼 수 있다. Influence를 잃었다가 다시 얻으면 같은 Faction에서 Influence 2에 여러 번 도달할 수 있고, 그때마다 Navigation 카드를 play한다. `[Bloodlines p. 12]`
+- Navigation Card 3의 slot 4 효과 "For the rest of the game, during each of your Reveal turns, [1 Persuasion]" `[Navigation Card 3 card]`는 자기 공개 차례 도중에 나오면 그 공개에도 1을 준다(2026-10-19 사용자 판정, [OQ-110](open-questions.md#oq-110--공개-차례-도중에-나온-운항-카드-3의-설득력) — project convention).
+- Steersman Y'rkoon의 Hungry for Spice가 그의 turn 안에서 준 카드는 그 spice를 준 단계에서 뽑지 않고 그의 단계 `draw_owed_card`로 남는다 — 그 전에 버림 더미의 카드를 trash할 수 있게(2026-10-10 사용자 판정, [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 8 — project convention; OQ-063).
+
+## 7. 기존 명세와의 관계
+
+- Commander는 [player-turns.md](player-turns.md)의 recruit·deploy 규칙과 [combat-and-round-end.md](combat-and-round-end.md)의 strength·정리 규칙 위에 얹힌다. 이 문서가 다르게 정한 것(supply에서의 recruit는 지불식·turn당 1회, 정리 때 supply로 복귀)만 우선한다.
+- wild battle icon의 Endgame 매칭은 [combat-and-round-end.md](combat-and-round-end.md) 5절의 Main p. 20 문장을 이 문서 4절의 clarification으로 넓힌다. 옵션을 끈 게임에서는 wild가 Propaganda 하나뿐이라 결과가 같다.
+- 공식 문서가 침묵하는 판정은 [open-questions.md](open-questions.md)에 기록한다.
+
+## 8. 구현 상태
+
+- 2026-10-18(정리-2, 브랜치 `cleanup2`, codec v149, 사용자 결정 "그래 둘다 B가 맞겠다", [OQ-108](open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)): Planetary Array의 "When you win a Conflict: draw a card"는 승자가 Conflict 카드를 가져가는 순간 — 보상을 다 준 뒤, troop 반환과 Conflict 끝 창 전 — 에 뽑는다([Main p. 14]의 순서). 전에는 정리에서 카드를 빚져 대개 다음 라운드 패 5장 뒤에 뽑았다(판정 없이 엔진 흐름에서 생긴 시점).
+  - 재판정(2026-10-25, 사용자 "PA는 승자의 창 (추천)", OQ-108·[OQ-121](open-questions.md#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 2):
+    카드는 **승자의 창**(1위 보상 창의 자동 줄, 2위 보상 전)에서 뽑는다. Ix의 Windtraps와 같은 "When you win a Conflict" Tech이므로 같은 때이고,
+    Conflict 카드와 battle icon은 그대로 모든 순위 보상 뒤다. codec v154에서 구현(승자 창의 줄, 고정 순서의 맨 끝).
+- 2026-10-17(정리-2b, 브랜치 `cleanup2`, codec v149, 사용자 결정 — composed-effects-plan.md 5절 "정한 규칙 판단" 1번, [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상)): Glowglobes·Navigation Chamber의 획득 "Influence 1 선택"은 이미 6인 진영을 내지 않는다. 모두 6이면 turn 안에서는 회색 "기다림" 줄로 남아 턴 종료를 막지 않고 누름에 `tech_acquire_effect_lapsed`로 사라지며, Combat의 획득 효과 frame(Battlefield Research)에서는 확인 줄 `resolve_tech_influence_without_faction`을 낸다. 같은 결정으로 Shipping의 Influence 선택도 네 진영이 모두 6이면 아무 진영도 내지 않고 기다리다 누름에 사라진다(이전의 "알려진 경계" 폐지).
+- 2026-10-17(정리-2b, 브랜치 `cleanup2`, codec v149, 사용자 결정 — composed-effects-plan.md 5절 "정한 규칙 판단" 2번): 소유자 자신의 Agent·Reveal turn 안에서 얻은 선택 "[trash a card]" 아이콘은 창(`optional_trash` frame) 대신 turn의 줄로 기다리고(카드마다 `trash_optional_card`, 거절 `decline_optional_trash` 없음), 쓰지 않으면 턴 종료 누름에 `optional_trash_lapsed`("{trash}: 쓰지 않음")로 사라진다 — 선택 효과는 "턴 종료를 막지 않고 거절도 없으며 누름이 소멸시킨다"(OQ-095 (2)). 줄 하나는 가장 나중에 생긴 trash를 쓴다(쌓인 창이 답하던 순서); 고른 카드의 자기 box가 연 trash가 있으면 그것을 쓴다(OQ-022의 자기 trash). Planetary Array의 획득 trash와 뒤집는 Tech tile의 trash가 여기에 든다. Liet Kynes의 Arrakis Planetologist는 대체마다 trash 줄과 Intrigue 카드 줄(`draw_planetologist_intrigue`, 의무라 턴 종료를 막음)이 turn에 기다린다([OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 3). Combat·Arrakeen Scouts 단계·Scouts 줄의 창은 그대로다. 구현 `rules/optional_trash.py`(`open_optional_trash`, `open_planetologist_replacement`), `rules/turn_rows.py`.
+- 2026-09-07 슬라이스 1: `RulesetConfig(bloodlines=True)`·`tech_module=True` 옵션과 이 명세.
+- 2026-09-07 슬라이스 2: 3절의 Sardaukar Commander 전부 — setup(6칸 + bank, Skill 14장 셔플·4장 공개), 방문한 space의 Commander를 2 Solari에 획득하며 Skill 선택(`acquire_sardaukar_commander`, 거절 `decline_sardaukar_commander`), supply에서 turn당 1회 지불 recruit(`recruit_sardaukar_commander`, Agent turn의 효과 frame과 Reveal turn), 기본 배치·회수에 Commander 포함(`deploy_commanders`/`withdraw_commanders`, garrison 2개 한도 공유), strength 2와 Skill의 Combat strength(Canny·Fierce·Loyal, 조건 변화 시 재계산), Reveal 보너스(Charismatic·Driven·Hardy), Desperate의 trash(`trash_skill_for_strength`), Combat 정리 때 supply 복귀, 관측 v6, codec v90. 세부와 미완 경계는 implementation-audits/bloodlines.md. 남은 3절 항목: 기존 "troop" 효과(Intrigue retreat, Desert Scouts, lose a troop 등)에 Commander를 포함하는 것은 슬라이스 3에서 새 아이콘과 함께 처리한다.
+- 2026-09-07 슬라이스 3: (a) 기존 "troop" 효과에 Commander 포함 — Intrigue의 retreat(Go to Ground, Tactical Option 등)·garrison 배치(Alliance 계열 Plot), Chani의 "troop 2개 retreat → 검 4", Desert Scouts가 Commander를 고를 수 있다(`commanders` 인자, `retreat_leader_commander`). (b) 2절의 Conflict 카드 2장(Skirmish I·Storms in the South II, 둘 다 wild battle icon)을 옵션 setup 풀에 추가했다. (c) 4절의 wild battle icon clarification: 이긴 wild Conflict 카드는 도착 시 즉시 매칭하지 않고(`[Main p. 20]`), Endgame에서 표준 아이콘 또는 다른 wild와 짝지을 수 있다.
+- 2026-09-07 슬라이스 4a: 카드 26+18종을 카탈로그에 올렸다(수량은 Dune Cards Hub 카탈로그, 룰북 p. 2의 25+5+2 / 15+1+2와 일치). 전사가 끝난 카드만 옵션 덱에 들어간다.
+- 2026-09-07 슬라이스 4b: Imperium 12종 15장 — Quash Rebellion, Shrouded Counsel, Eliminate Allies, Imperial Throneship, Intelligence Training, Command Center, I Believe, Pointing the Way, Sandwalk, Fremen War Name, Corrupt Bureaucrat(CHOAM), Mercantile Affairs(CHOAM). 4절의 **Command (6+)**를 구현했다: Reveal turn의 Persuasion 합계가 6 이상일 때 자동 효과는 지급되고 선택 효과는 열리며, 6 미만이면 선택은 미뤄졌다가 같은 Reveal에서 Persuasion이 6에 도달하면 다시 열린다(OQ-033). 세부는 implementation-audits/bloodlines.md.
+- 2026-09-07 슬라이스 4c-1: Intrigue 10장 — Desert Support, Ripples in the Sand, Return the Favor, Sacred Pools, Seize Production, Sleeper Unit, Tenuous Bond, The Strong Survive, Withdrawal Agreement, Grasp Arrakis(effect DSL 전사; 새 노드는 audit 참조).
+- 2026-09-07 슬라이스 4c-2a: Intrigue 3장 — Honor Guard(troop + 이번 turn Commander 비용 1 감소), Insider Information(Spy recall → trash + draw / 이번 turn Influence 요구 무시), Emperor's Invitation(draw / 이번 turn play한 카드에 Emperor 아이콘). 세 효과는 turn 한정 좌석 상태로 두고 TURN frame이 열릴 때 지운다.
+- 2026-09-07 슬라이스 4c-2b: 4절의 **Combat 아이콘**을 구현했다. Agent turn에서는 효과 frame의 기본 배치 창을 열거나 garrison 몫을 2로 넓히고(아이콘이 여럿이어도 2), 배치 전에 얻으면 좌석에 대기했다가 배치 때 적용되며, Reveal turn에서는 이번 turn에 recruit한 유닛 전부 + garrison 2개 한도의 배치 창이 열린다(그 Reveal 전에, 배치 전 turn frame에서 recruit한 유닛도 포함 — 2026-09-26 정정, OQ-062)(`deploy_troops`/`deploy_commanders`, strength 즉시 반영; 회수 없음 — OQ-034). 카드: Adaptive Tactics(Intrigue), Elite Forces, Disruption Tactics(Agent box의 상대 troop 강제 retreat 포함, OQ-034).
+- 2026-09-07 슬라이스 4d-1: 4절의 **Spy with Deep Cover**를 구현했다(자신의 Spy가 없는 모든 post가 후보; 상대 Spy는 무시). 카드: Arrakis Observer, Bombast(Command 지급 후 자기 trash), Engineered Miracle(Command: 자기 trash → Imperium Row 카드 무료 획득), Southern Faith, Possible Futures(BG Bond면 Influence + troop 2 모두).
+- 2026-09-07 슬라이스 4d-2: Urgent Shigawire(round 한정 좌석 플래그, 관측 v7; 2026-10-10부터 Agent box에 더해진 draw는 배치와 따로 자기 단계 — [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다); 2026-10-12부터 Immortality의 graft 상대인 Bene Gesserit 카드도 play한 카드로 부스트를 받는다, 사용자 판정 "1. 짝도 받음" — [OQ-107](open-questions.md#oq-107--urgent-shigawire의-부스트와-graft-상대인-bene-gesserit-카드)), Sardaukar Standard(trash 트리거 → 대기열 → Skill 선택 frame; 고를 Skill이 없으면 Skill 없이 Commander만, OQ-031·OQ-035 — 2026-10-02 사용자 판정 L2-Q3 "①②는 확인 창, ③은 회색 줄만"의 ①로 그때도 Skill 선택 frame이 열려 `resolve_commander_without_skill`로 확인한다), Litany Against Fear(turn 시작 대체 행동), Delivery Logistics(contract 아이콘 차용, Persuasion/contract 선택), CHOAM Demands(contract 임의 완료, 4 진영 Influence trash 선택).
+- 2026-09-07 슬라이스 4d-3: Holy War(상대가 zone·종류를 고르는 유닛 손실 + Spy 강제 이동, OQ-036; Fremen Bond Combat 아이콘), False Orders(Spy 강제 이동 뒤 자기 Spy 배치), Coercive Negotiation(배치 3+ trigger → bank contract 3장 공개·1장 획득·2장 `contract_trash`). 이로써 Tech 전용 카드를 뺀 Bloodlines Imperium 25종·Intrigue 16장이 모두 play된다.
+- 2026-09-07 슬라이스 5a: 6절의 Leader 중 Chani(Tactics track, `rules/tactics.py`), Count Hasimir Fenring, Duncan Idaho(OQ-037), Gaius Helen Mohiam, Liet Kynes(sandworm 대체, `rules/planetologist.py`)를 구현했다(관측 v8). 전사와 구현 노트는 Leader audit의 Bloodlines 절.
+- 2026-09-07 슬라이스 5b: Esmar Tuek과 Tuek's Sietch board space(Esmar가 있을 때만 존재하는 4번째 Maker space).
+- 2026-09-07 슬라이스 5c: Piter De Vries와 Twisted Intrigue 12장(전용 덱, round마다 1장; effect DSL에 troop 손실·Intrigue 증여·Intrigue trash 비용과 peek·pass turn 보상 추가; 4절의 Trash an Intrigue card 아이콘 포함), OQ-038.
+- 2026-09-07 슬라이스 5d: Steersman Y'rkoon과 Navigation 10장(setup의 slot 선택 frame, Influence 2 도달 trigger 대기열, OQ-012 재검토·OQ-039). 이로써 6절의 Leader 8종이 모두 play된다.
+- 2026-09-07 슬라이스 6a: 5절의 Ixian Embassy — setup의 세 stack(6·6·6, CHOAM 없이는 6·6·5), Landsraad 방문마다 자유 순서 효과로 열리는 Acquire Tech(`acquire_tech`/`decline_tech`, High Council 할인, 하한 0), 다음 tile 공개, 획득 효과 18종(Spy trash·Influence 선택·Intrigue/draw 선택·Shield Wall 파괴·선택 trash·Deep Cover Spy 2·Ornithopter Fleet의 즉시 매칭 포함), 카드의 Tech Discount 아이콘이 여는 `tech_acquisition` frame. 관측 v9, codec v91.
+- 2026-09-07 슬라이스 6b: 위 표의 능력 18종 전부 — 상시 효과(Navigation Chamber·Servo-Receivers·Sardaukar High Command·Gene-Locked Vault·Glowglobes·Ornithopter Fleet), Reveal turn 효과(Self-Destroying Messages·Delivery Bay·Training Depot의 Command (6+)와 늦은 지급·Panopticon의 Spy·Forbidden Weapons의 의무 선택 — 둘 다 Reveal 안에서 소유자가 순서를 고른다), trigger(Planetary Array·CHOAM Transports·Suspensor Suits·Plasteel Blades), Flip 3종과 Round Start 복귀, Endgame 효과(OQ-040). 카드 밖에서 생성된 Persuasion(Skill·Navigation·tile)도 Command (6+) 판정에 센다(OQ-043).
+- 2026-09-08: Endgame tiebreaker의 garrison troop 수에 Commander를 포함(OQ-047, 3절). 같은 날 프로모 Ruthless Leadership(1절; Agent: Conflict에 Commander가 있으면 trash 아이콘 2개, Reveal: 1 Persuasion + 검 1, Command: Combat 아이콘)을 `promo_cards`+`bloodlines` 옵션 콘텐츠로 구현했다.
+- 2026-09-07 슬라이스 6c·6d: Tech 전용 카드 3종(effect DSL `TechTilesAtLeast`·`AcquireTech`)과 Kota Odax of Ix(Secret Project의 `tech_secret_project` setup frame, 비공개 tile, 할인 후보, Reverse Engineering Signet). 이로써 Bloodlines 구성물 전부가 play된다; 남은 것은 슬라이스 7(UI 표시·heuristic 가중치·대규모 소크·학습 재개)이다. 세부는 implementation-audits/bloodlines.md의 Tech Module 절.
+- 2026-09-09: 1절의 CHOAM Module contract token 8개를 전사·구현했다(`ContractConditionKind.EARN_ALLIANCE`·`IMMEDIATE_INTRIGUE_TRASH`, 보상 필드 `intrigue_cards`·`deep_cover_spies`, `contract_intrigue_trash` frame, Alliance 이벤트 후속 hook `complete_alliance_contracts`; 관측 v16, codec v98; OQ-056). 세부는 Bloodlines audit의 "Contract token" 절.
+- 2026-09-09: 디자이너 판정 채택(OQ-057) — 카드 출처 Acquire Tech의 거절 제거(살 수 있을 때), Imperium Ceremony의 Suspensor troop, Combat 보상 동률의 turn 순서(OQ-002).
+- 2026-09-26 (카드 전사 감사): Command (6+)를 그 Reveal에 생성한 Persuasion으로 판정한다(구매로 줄지 않음, OQ-033 보강). Reveal 도중 Conflict에 처음 들어온 Commander가 Charismatic·Driven·Hardy의 Reveal 보너스를 그때 한 번 지급한다(OQ-028 (c)). 3절의 "Commander는 troop"을 Shadout Mapes의 "deploy or retreat one of your troops"에도 적용했다.
+- 2026-09-26 카드면 감사 정정: Servo-Receivers의 획득 효과는 Signet Ring 아이콘(Leader의 Signet Ring 능력 1회, [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력))이고 Hardy는 Reveal turn의 troop recruit이다(둘 다 2026-09-07 전사에서 아이콘 오독). 단일 키 공간(첫 High Council 방문·Imperial Privilege·Swordmaster)도 Acquire Tech와 대기 중인 Commander를 받는다. Suspensor Suits는 자기 turn의 모든 Intrigue draw를 센다(Bene Gesserit 4단계 보너스, Imperial Birthright, Sardaukar Soldier의 trash, Overthrow의 획득, Spy Network의 Reveal 포함). Chani의 Tactics token은 Combat 정리로 supply에 돌아가는 유닛만큼 전진하고, 한 출처가 여러 troop을 잃어도 한 번만 전진한다 `[FAQ p. 1]`.
+- 2026-09-26 (사용자 판정 [OQ-070](open-questions.md#oq-070--이번-turn에-recruit한-sardaukar-commander의-배치-몫)): 이번 turn에 recruit한 Commander는 troop과 따로 센다(`commanders_recruited`·`reveal_commanders_recruited`). 배치는 종류별 recruit 몫 + 함께 쓰는 garrison 몫으로 판정한다(`combat_deployment.deployment_rooms`; Agent turn의 기본 배치와 Combat 아이콘, Reveal의 Combat 아이콘). 전에는 한도 하나를 공유해 Commander를 recruit하면 garrison의 troop 셋이 대신 deploy할 수 있었다.

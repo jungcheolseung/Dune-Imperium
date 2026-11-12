@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 100 100">
+  <!-- Log: Tech, a plain gear on an olive tile. Drawn by hand for the public build. -->
+  <defs><linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a9a3a"/><stop offset="1" stop-color="#3e4a14"/></linearGradient></defs>
+  <rect x="6" y="6" width="88" height="88" rx="10" fill="url(#tile)" stroke="#e2cf6a" stroke-width="3"/><polygon points="44.5,27.9 45.1,20.4 54.9,20.4 55.5,27.9 61.8,30.5 67.4,25.6 74.4,32.6 69.5,38.2 72.1,44.5 79.6,45.1 79.6,54.9 72.1,55.5 69.5,61.8 74.4,67.4 67.4,74.4 61.8,69.5 55.5,72.1 54.9,79.6 45.1,79.6 44.5,72.1 38.2,69.5 32.6,74.4 25.6,67.4 30.5,61.8 27.9,55.5 20.4,54.9 20.4,45.1 27.9,44.5 30.5,38.2 25.6,32.6 32.6,25.6 38.2,30.5" fill="#e8cf6a" stroke="#3a3a12" stroke-width="2.1" stroke-linejoin="round"/><circle cx="50" cy="50" r="9" fill="#3a3a12"/><circle cx="50" cy="50" r="16.8" fill="none" stroke="#3a3a12" stroke-width="1.8" opacity=".45"/>
+</svg>

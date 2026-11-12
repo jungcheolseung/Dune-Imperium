@@ -1,0 +1,258 @@
+# 출처와 작성 원칙
+
+## 규칙 권위
+
+현재 규칙 명세는 다음 공식 자료만을 규칙 근거로 사용한다. 앞의 세 문서가 4인 Uprising 기본 룰셋의 근거이고, Bloodlines 룰북은 2026-09-07에 추가된 `bloodlines`·`tech_module` 옵션의, Immortality 룰북은 2026-09-08에 추가된 `immortality` 옵션과 2026-09-28에 추가된 `go_to_11` 옵션의, Rise of Ix 룰북은 2026-09-28에 추가된 `epic_game` 옵션의 근거다. 원판 Dune: Imperium 룰북과 Player Aid는 2026-10-22에 등록했고, 원판 판(edition)과 그 위의 Rise of Ix 확장(base-game-and-ix-plan.md, P1부터 구현)의 근거다. 그 명세는 [imperium-base.md](imperium-base.md)와 [rise-of-ix.md](rise-of-ix.md)다.
+
+| 식별자 | 공식 자료 | 확인한 버전 | 현재 범위 |
+| --- | --- | --- | --- |
+| `Main` | [Uprising Main Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Main_Rulebook_23-10-12.pdf) | 공식 asset 이름 `23-10-12`, 20쪽 | 규범 규칙 pp. 3-17, 20; 범위·권위 확인 pp. 2, 18 |
+| `Board Guide` | [Uprising Rules Supplements](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_UPRISING_Rules_Supplements_23-10-12.pdf) | 공식 asset 이름 `23-10-12`, 14쪽 | pp. 1-2 |
+| `FAQ` | [Errata and Frequently Asked Questions](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_FAQ_25-1-13.pdf) | 문서 표기 `Last Updated January 13, 2025`, 4쪽 | 4인 Uprising에 적용되는 항목; 원판 판·원판 위 Rise of Ix에는 그 제품의 항목(2026-10-22) |
+| `Bloodlines` | [Bloodlines Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_BLOODLINES_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2024, 12쪽 | `bloodlines`/`tech_module` 옵션의 규범 규칙 pp. 2-7, 12; 범위 밖 pp. 8-10 |
+| `Immortality` | [Immortality Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_IMMORTALITY_Rulebook.pdf) | 공식 asset 이름에 날짜 없음, © 2022, 16쪽 | `immortality`/`go_to_11` 옵션의 규범 규칙 pp. 3-12, 14, 16; 범위 밖 p. 13 |
+| `Rise of Ix` | [Rise of Ix Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_RISE_OF_IX_Rulebook_22-2-11.pdf) | 공식 asset 이름 `22-2-11`, © 2021, 12쪽 | `epic_game` 옵션의 규범 규칙 p. 10(구성물·아이콘 pp. 2, 12). 원판 위의 Rise of Ix 확장에는 pp. 2-7, 10, 12가 규범(2026-10-22); 범위 밖 pp. 8-9(1·2인) |
+| `DI` | [Dune: Imperium Rulebook](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_Rules_2020_10_26.pdf) | 공식 asset 이름 `2020_10_26`, © 2020, 20쪽 | 원판 판의 규범 규칙 pp. 3-13, 16-18; 범위·권위 확인 pp. 2, 14; 범위 밖 pp. 19-20(House Hagal) |
+| `DI Aid` | [Dune: Imperium Player Aid (Icons and Board Spaces)](https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_Player_Aid_Icons_and_Board_Spaces.pdf) | 공식 asset 이름에 날짜 없음, © 2020, 2쪽 | 확인용 pp. 1-2(DI pp. 16-18과 같은 글) |
+
+공식 진입점은 [Dire Wolf Digital 리소스 페이지](https://www.direwolfdigital.com/dune-imperium/resources/)와
+[Uprising 룰북 페이지](https://www.direwolfdigital.com/dune-imperium/resources/diu_rules)다.
+위 버전은 2026-08-26에 공식 진입점에서 다시 확인했으며, 세 PDF의 SHA-256도
+고정 manifest와 모두 일치했다.
+
+확인한 공식 파일의 SHA-256은 다음과 같다. 공식 URL의 파일이 같은 이름으로
+교체되었는지 판별할 때 사용한다.
+
+| 식별자 | SHA-256 |
+| --- | --- |
+| `Main` | `0a8daa36f73c09316143d05bbd5d845183d1ae6f56ce211d93c59b360074f7db` |
+| `Board Guide` | `454ea3ef442f0622f4bf5b83b8368b24e34aaf4f0dc0f02d93dfba66e690c075` |
+| `FAQ` | `7b54c283357244e5107d1d0f4e87817d39297e914c2014239acbb2c460c0c6b9` |
+| `Bloodlines` | `5f0b4646ab59f467a1027b95e2b6f67809c77c224d98ddab26dd661d7e2b042a` |
+| `Immortality` | `2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79` |
+| `Rise of Ix` | `ca010552db0b043cb8630352f95eafb06bfe50ba4dc5a7bd318eb5b24a03658f` |
+| `DI` | `a689f19e7bda36ec03240ba19cbc481dd4d681f55837529cd8170ec9d19be6db` |
+| `DI Aid` | `b191bffe4658bacc3ae5626312ef4fc83c51134aeb007daffa171bb85c9ba44d` |
+
+같은 URL과 checksum은 자동 검증 도구가 읽는
+[`scripts/official-rule-sources.json`](../../scripts/official-rule-sources.json)에
+machine-readable 형태로 보관한다. 공식 문서가 갱신되면 manifest와 이 표를 같은
+변경에서 갱신하고, 기존 규칙 명세와의 차이를 먼저 검토한다.
+
+Main은 최신 판정과 clarification을 FAQ에서 확인하라고 안내한다. 따라서 FAQ의
+명시적인 수정·clarification을 함께 적용한다. 두 공식 문서가 실제로 충돌한다고
+판단되는 경우 어느 한쪽을 조용히 버리지 않고 `open-questions.md`에 기록한다.
+`[Main p. 18]`
+
+### Bloodlines 룰북
+
+Bloodlines 룰북은 공식 리소스 페이지의 "Bloodlines Rules" 링크에서 2026-09-07에
+받아 위 checksum을 고정했다. 4인 게임에 적용되는 규칙(pp. 2-7)과 아이콘·용어·
+clarification(p. 12)만 [bloodlines.md](bloodlines.md)에 반영하며, Rivals(pp. 8-9),
+6인(p. 10), 원본 Dune: Imperium·Rise of Ix 조합 규칙은 범위 밖이다. 2025-01-13
+FAQ의 새 항목(`*` 표시) 세 개 — Chani (Leader) `[FAQ p. 1]`, False Orders·Litany Against Fear `[FAQ p. 2]` — 는
+모두 Bloodlines 구성물을 다룬다(2026-09-26 정정 — 이전에는 없다고 적었다; False Orders의 Spy 이동 목적지는 OQ-036 (b)로 반영). Skill tile, Tech tile, 카드의 인쇄 텍스트는
+프로모 카드와 같이 카드면(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
+
+### Immortality 룰북
+
+Immortality 룰북은 공식 리소스 페이지의 "Immortality Rules" 링크(위 URL)에서
+2026-09-08에 받아 위 checksum을 고정했다. Uprising Main Rulebook p. 18의 "Adding
+Immortality"가 Uprising과의 조합을 공식 지원하므로(Research Station overlay만
+지시) 4인 게임에 적용되는 규칙(pp. 3-12)과 clarification(p. 14), 아이콘 정의
+(p. 16)를 [immortality.md](immortality.md)에 반영하며, 솔로 규칙(p. 13)은 범위
+밖이다. p. 12의 Go to 11 변형은 2026-09-28부터 `go_to_11` 옵션이고(OQ-091), 같은
+쪽의 Rise of Ix Epic Game Mode 조합 문단은 같은 날부터 `epic_game` 옵션과 함께
+적용한다([epic-game-mode.md](epic-game-mode.md) 4절). 2025-01-13 FAQ의 Immortality 항목
+(Beguiling Pheromones, Chairdog, Ghola, Tleilaxu track)은 적용한다. Bene
+Tleilax board의 research·Tleilaxu track은 룰북에 실린 공식 board 그림
+(`[Immortality p. 3 board artwork]`)에서 전사했고, 카드의 인쇄 텍스트는 카드면
+(`SourceDocument.CARD_FACE`)을 근거로 전사한다.
+
+### Rise of Ix 룰북
+
+Rise of Ix 룰북은 공식 리소스 페이지의 영어판 링크(위 URL)에서 2026-09-28에 받아
+위 checksum을 고정했다. 원판 Dune: Imperium용 확장이며, 이 프로젝트는 확장 전체가
+아니라 **Epic Game Mode**(p. 10)만 `epic_game` 옵션으로 쓴다(OQ-092). 그 쪽의 규칙과
+구성물 목록(p. 2), Epic Game Only 아이콘 정의(p. 12)를 [epic-game-mode.md](epic-game-mode.md)에
+반영하며, Uprising과의 조합은 Main p. 18의 "Adding Rise of Ix"(Economic Supremacy를
+다섯 번째 Conflict III로)를 따른다. Ix board·Tech tile·dreadnought·Rise of Ix 카드와
+Leader, 1·2인 규칙, p. 10의 카드 clarification은 범위 밖이다. Control the Spice와
+Economic Supremacy의 인쇄 텍스트는 카드면(`SourceDocument.CARD_FACE`)에서 전사한다.
+
+2026-10-22부터는 원판 위의 Rise of Ix 확장 전체를 구현 대상으로 삼는다(계획
+base-game-and-ix-plan.md P4, 명세 [rise-of-ix.md](rise-of-ix.md)).
+그 규범 범위는 구성물(p. 2), setup(p. 3), Tech tile(p. 4), Shipping track(p. 5),
+dreadnought와 unit(p. 6), Discard·Unload·Infiltration(p. 7), Epic Game Mode와
+clarification(p. 10), 새 아이콘·용어·보드 칸(p. 12)이다. 1·2인 규칙(pp. 8-9)과 p. 10의
+Arrakeen Scouts 언급은 범위 밖이다. 이 PDF(`22-2-11`)는 2025-01-13 FAQ의 Ix 룰북
+errata 두 건을 이미 반영한 판이다: p. 4의 뒤집는 Tech 능력은 "during one of your
+turns"(첫 영어판은 Agent turn만)이고, p. 8에 House Hagal의 Hall of Oratory·Rally
+Troops 제거 문장이 있다 `[FAQ p. 1]`.
+
+### Dune: Imperium 룰북과 Player Aid
+
+원판 룰북(`DUNE_IMPERIUM_Rules_2020_10_26.pdf`)과 Player Aid는 공식 리소스 페이지의
+영어 "Rules"·"Player Aids" 링크(위 URL)에서 2026-10-22에 받아 checksum을 고정했다.
+manifest 키는 `imperium`·`imperium-player-aid`, 인용 이름은 Uprising의 `Main`과
+갈라 `[DI p. N]`·`[DI Aid p. N]`이다.
+
+- **규범 범위.** 구성물(p. 3), 4인 setup(pp. 4-5), 개념(pp. 6-7), 라운드와 두 종류의
+  turn(pp. 8-11), Combat(p. 12), Makers·Recall·Endgame·clarification(p. 13), 아이콘·
+  용어(p. 16), 보드 칸 22개(pp. 17-18)다. p. 2는 세계관 설명과 지도자 조합에 대한
+  안내 한 문단, p. 14는 전략 조언과 FAQ 안내다. House Hagal(1·2인, pp. 19-20)은 범위
+  밖이다(계획 9절 5).
+- **Player Aid.** 두 쪽이 룰북 p. 16(아이콘·용어)과 pp. 17-18(보드 칸)의 글과 같다
+  (2026-10-22 낱말 단위로 대조: 다른 것은 줄바꿈과, Player Aid에 없는 룰북 p. 17의 머리
+  문단 — 알파벳순 안내와 전투 칸 배치 규칙의 되풀이 — 뿐). 그래서 명세는 룰북 쪽을 인용하고
+  Player Aid는 확인용으로 둔다. 보드 칸의 순서는 두 문서 모두 영어 이름의 알파벳순이다.
+- **룰북에 글로 없는 값.** 영향력 트랙 4칸의 보너스(`[DI p. 7]` "the bonus shown on
+  that space of the track")와 Sell Melange의 spice → Solari 교환표(`[DI p. 18]` "the
+  amount of Solari shown")는 보드 그림에만 인쇄돼 있다. 이 값은 Uprising에서 작은
+  그림으로 읽다 틀린 적이 있으므로(`docs/lessons.md` 2026-09-19) 명세에서 출처를 따로
+  적는다([imperium-base.md](imperium-base.md) "글로 없는 값").
+- **FAQ.** 2025-01-13 FAQ의 원판 항목은 원판 판에 적용한다. Missionaria Protectiva의
+  진영 errata(Bene Gesserit, 2장) `[FAQ p. 1]`도 원판 카드다.
+- **Bindu Suspension의 문구 차이(2026-10-22, 출처 2026-10-23 확인).** 고정 PDF p. 13은 의무 종료 문장("then immediately end
+  your turn")이지만, 사용자가 제시한 문장은 뽑은 뒤 pass 또는 정상 진행을 고르게 한다("then you may choose to pass your turn or
+  play your turn normally"). 그 문장의 출처는 커뮤니티 정리본(elessar, 2026-06-07판)의 "Bindu Suspension" 항목이고, 정리본은 출처를
+  "Dune Imperium Rulebook"과 "BGG Forum (Note Paul's correction on the language of the link above)" 두 줄로 적는다 — 룰북 clarification의
+  문구를 디자이너가 BGG에서 고친 것이다(그 BGG 글 자체는 열지 않았다). 공식 문서의 새 판본이 아니라 디자이너 정정이므로 `[DI p. 13]`의
+  인용으로 바꾸어 적지 않고, manifest의 파일 버전·checksum도 바꾸지 않는다. 적용 판정은
+  [OQ-117](open-questions.md#oq-117--bindu-suspension을-reveal-turn-대신-낼-수-있는가)의 C다.
+
+### Arrakeen Scouts (Dire Wolf Game Room 컴패니언 앱)
+
+`arrakeen_scouts` 옵션(M15, 2026-09-28)의 근거는 룰북이 아니라 Steam의 **Dire Wolf
+Game Room**에 들어 있는 Dune: Imperium 컴패니언 앱이다. 이 모드에는 공식 룰북이
+없어서, 앱의 도움말과 항목 표시(문구·아이콘), 앱이 일정을 만들고 라운드를 진행하는
+방식이 출처다. 명세는 [arrakeen-scouts.md](arrakeen-scouts.md)다.
+
+- **기준 판.** 2026-09-26에 설치한 macOS 판을 기준으로 삼았다. 앱의 문구와 그림은
+  Dire Wolf Digital의 저작물이라 **어느 저장소에도 넣지 않는다.**
+- **의역 원칙.** 이 저장소에는 항목 이름, 수치(비용·보상·라운드·가중치), 효과의 의역,
+  우리 말로 쓴 절차만 둔다. 앱 문구(영·한)와 도움말 원문은 옮겨 적지 않는다.
+- **권위 순서.** 앱의 영어 문구와 아이콘이 효과를, 앱 도움말이 절차를 정한다. 항목이
+  부르는 기본 행동은 여전히 Main·Board Guide·FAQ가 정한다. 앱의 한국어는 용어로만
+  쓴다(`[KO app: <loc key>]`; 한국어판의 오역은 OQ-086).
+- **코드의 출처 표기.** `SourceDocument.ARRAKEEN_SCOUTS_APP`(인용 태그는
+  [arrakeen-scouts.md](arrakeen-scouts.md) 1절, page 1 관례)이며, 항목마다 앱의 항목
+  이름(`AppDefinition`)을 남겨 앱과 하나씩 대조할 수 있게 한다.
+- **앱이 업데이트되면.** 항목 정의나 일정 풀이 바뀌었는지 다시 대조하고, 바뀌었으면
+  규칙 변경으로 다루어 같은 변경에서 이 절의 기준 판을 갱신한다.
+
+### 한국어 룰북 (UI 용어집 전용, 규칙 근거 아님)
+
+공식 리소스 페이지는 같은 룰북의 한국어판도 배포한다(국내 유통 Korea
+Boardgames). 2026-09-20에 아래 문서 넷을, 2026-09-28에 Rise of Ix를, 2026-10-22에 원판 룰북을 받아 checksum을 고정하고 manifest에
+`*-ko` 항목으로 더했다. 용도는 **브라우저 UI의 한국어 용어를 정하는 것 하나**이며,
+[`glossary-ko.md`](glossary-ko.md)가 그 대조표다.
+
+| 식별자 | 공식 자료 | 쪽수 | SHA-256 |
+| --- | --- | --- | --- |
+| `main-ko` | [KR] Uprising Rules | 20 (EN과 동일) | `b9fe3a4c4f9fd4b40c9573a9dc8242e268db35ef1fff753898087b234957b6b6` |
+| `board-guide-ko` | [KR] Uprising Supplements | 14 (EN과 동일) | `cd763a87485bbf795f556ed03e84f9191b7d7a10e9aedc6ef7b256717996b774` |
+| `bloodlines-ko` | [KR] Bloodlines Rules | 12 (EN과 동일) | `d65509007618c81971e652d45e84fb2b36a2eb7ff38525214daaad03aac0fc21` |
+| `immortality-ko` | [KR] Immortality Rules | 16 (EN과 동일) | `b02ff637ee480d9e58ffc758f30c6bfc02bbfa88bb5d8491bc328be70d7a737b` |
+| `rise-of-ix-ko` | [KR] Rise of Ix Rules | 12 (EN과 동일) | `177a00b5efa4a0fec42f02e34314dcbb9c37bab9429448d76a82addba9529bfb` |
+| `imperium-ko` | [KR] Dune: Imperium Rules | 20 (EN과 동일) | `f3bf683902763491cc7e37a0ffbc279ec085c8cc88c3f2253e92afee66fe0700` |
+
+URL은 모두 `https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_...pdf`이고
+manifest에 적혀 있다. **한국어 FAQ는 존재하지 않는다**(FAQ는 영어판만 배포된다).
+
+여섯 문서 모두 영어판과 **쪽수가 정렬돼 있어** 같은 쪽에 같은 내용이 온다. 그래서
+`glossary-ko.md`의 인용 `[Main p. N]`은 EN·KR 두 룰북의 같은 쪽을 함께 가리킨다.
+원판 한국어판도 쪽마다 영어판과 같은 내용이다(2026-10-22 확인). 다만 pp. 17-18의
+보드 칸 설명은 한국어 이름의 가나다순이라 쪽 안의 순서가 영어판과 다르다.
+원판 한국어판은 공식 한국어 용어의 출처이기도 하다(계획 2.3절: 한국어는 공식 한글판에서만).
+
+**규칙 판정 근거는 영어판이다.** 한국어판은 번역본이므로 두 판이 어긋나 보이면
+영어판을 따르고, 그 차이가 규칙에 영향을 준다고 판단되면
+[`open-questions.md`](open-questions.md)에 기록한다. 한국어판은 화면에 쓸 단어를
+고르는 데에만 쓴다.
+
+### 프로모 카드의 출처
+
+Uprising 프로모 Imperium 3장(Arrakis Revolt, The Beast's Spoils, Pivotal
+Gambit)은 위 세 공식 문서 어디에도 실리지 않았다. 이 카드들의 유일한 근거는
+인쇄된 카드면이며, 콘텐츠 메타데이터에서는 `SourceDocument.CARD_FACE`(인용
+`[card face]`, page 1)로 표시한다. 카드면이 답하지 않는 상호작용은 공식 아이콘
+정의(`[Main p. 20]`)와 Combat·Endgame 규칙으로 풀되, 남는 공백은
+`open-questions.md`의 OQ-024~026에 project convention으로 기록했다. 카드
+이미지는 비공개 에셋 저장소 `cards/en/uprising/promo/`에 있다.
+
+Bloodlines 프로모 Imperium 1장(Ruthless Leadership, 2026-09-08 구현)도 같은
+방식이다: Bloodlines 룰북에 실리지 않았고 근거는 카드면뿐이며(`[card face]`),
+Sardaukar Commander를 읽는 Agent box 때문에 `promo_cards`와 `bloodlines`
+옵션을 함께 켤 때만 덱에 들어간다. 아이콘 해석은 공식 정의(`[Main p. 20]`의
+검은 trash 아이콘, `[Bloodlines pp. 5, 12]`의 Command (6+)·Combat 아이콘)를
+따르고, 조건 판정 시점은 OQ-028을 따른다. 이미지는 비공개 에셋 저장소
+`cards/en/bloodlines/promo/`에 있다.
+
+## 페이지와 인용
+
+- Main의 `[Main p. N]`은 표지 PDF 페이지가 아니라 본문에 인쇄된 쪽수를
+  가리킨다. 인쇄 p. 2부터 PDF 페이지와 번호가 일치한다.
+- Board Guide, FAQ, Bloodlines는 PDF 페이지 번호를 그대로 쓴다(Bloodlines는 인쇄
+  쪽수와 PDF 페이지가 같다).
+- `[DI p. N]`은 원판 룰북의 쪽이다. 인쇄 쪽수와 PDF 페이지가 같다(p. 1 표지에는 번호가
+  없다). `[DI Aid p. N]`과 `[Rise of Ix p. N]`은 PDF 페이지 번호다.
+- 한 bullet의 모든 문장이 같은 근거를 공유하면 끝에 한 번 인용한다. 서로 다른
+  출처를 결합한 경우 두 출처를 모두 붙인다.
+- 이 문서는 원문을 길게 복제하지 않고 규칙의 의미만 간결하게 바꾸어 적는다.
+  카드명, 공간명, 아이콘명처럼 구현 ID가 될 고유 명칭은 영어 원명을 유지한다.
+
+## 포함·제외 기준
+
+- Main의 4인 setup, 공통 개념, 라운드, Agent/Reveal, Combat, Makers, Recall,
+  Endgame, CHOAM Module, Uprising clarification, icon/term guide를 포함한다.
+- Board Guide의 4인 보드 공간 22개만 포함한다. 같은 PDF의 pp. 3-6 Rivals와
+  pp. 7-14 6인 팀전은 포함하지 않는다.
+- FAQ는 모든 제품을 다루므로 일반 규칙 또는 현재 Uprising 구성물에 적용되는
+  항목만 규범 규칙으로 반영한다. 다른 제품의 리더·카드·Tech·Rivals 판정은
+  현재 룰셋에 끌어오지 않는다.
+- Main p. 18의 혼합 규칙 가운데 Immortality 조합(Research Station overlay)은
+  `immortality` 옵션으로 포함하고, Rise of Ix와 원본 Dune: Imperium 혼합은 현재
+  구현 범위 밖이다(계획의 마지막 조합 단계 P7).
+- 원판 판은 DI의 4인 규칙(위 규범 범위)과 FAQ의 원판 항목을, 원판 위의 Rise of Ix는
+  Rise of Ix 룰북의 규범 범위와 FAQ의 Ix 항목을 포함한다. 두 룰북의 House Hagal·Rivals
+  (1·2인)는 포함하지 않는다.
+- Main의 전략 조언과 세계관 설명은 규칙이 아니므로 명세에서 제외한다.
+
+## 로컬 PDF와 보조 자료
+
+`assets/rulebooks/` 아래 PDF(비공개 에셋 체크아웃)는 사용자의 로컬 열람 사본이다. 이 명세를 작성하면서 해당
+파일을 읽거나 추출하지 않았다. 공식 URL의 파일만 임시 작업 위치에서 확인했으며,
+공식 원문 PDF나 추출 텍스트를 저장소에 복사하지 않는다.
+
+[Dune Cards Hub](https://dunecardshub.com/uprising)는 이후 카드 식별과 이미지
+확인에만 사용한다. 규칙 권위가 아니며, 이미지 파일을 저장하거나 재배포하기
+전에는 이용 조건을 따로 확인한다.
+
+BGG 사용자의 [Dune_Imperium_Card_Inventory 시트](https://docs.google.com/spreadsheets/d/e/2PACX-1vQFH3aNsVktHt0FmbbN5fzXjZsa1GwgvLgrMl3amCd4UTMiCmnPls_hdeatdkSZN2Kk2_9QY0XluMkA/pubhtml)는
+세트별 **카드 사본 수**(`Count`)와 호환 표기(`Compatibility`)의 참고 자료다(2026-09-08, 사용자 제공).
+Uprising·Bloodlines의 수량이 우리 전사와 정확히 일치해 Immortality의 룰북 총량(30·15장)을 이 시트로 맞췄다.
+탭별 CSV 사본과 알려진 오탈자 목록은 에셋 저장소 `reference/bgg-card-inventory/`에 있다. 규칙 권위가 아니다.
+
+[Dire Wolf의 Uprising Design Diary 2](https://news.direwolfdigital.com/dune-imperium-uprising-design-diary-2-sandworms-conflicts-and-the-shield-wall/)는
+Objective 카드의 battle icon, 인원 표시, First Player 표시처럼 룰북 본문에서
+개별 카드별로 열거하지 않은 **구성물 식별**을 공식 이미지와 대조하는 데만
+사용한다. 이 글의 설계 설명을 Main·Board Guide·FAQ보다 높은 규칙 판정 근거로
+사용하지 않는다.
+
+Objective 카드의 인쇄 문구와 인원 표시는 2026-10-04 사용자가 제공한 한국어판·영어판 카드
+사진으로 확인했다(인용 `[Objective card]`). 다섯 장 모두 하단에 "This counts as a Conflict
+card you've already won."(한국어판 "이 카드를 당신이 이미 가져온 교전 카드로 간주함.")이
+인쇄돼 있고, 인원 표시는 Crysknife 한 장과 Desert Mouse 한 장이 "4/6P", Ornithopter가 "1-3P"이며
+First Player marker는 표시 없는 Desert Mouse에 있다. Design Diary 이미지만으로는 Crysknife의
+"4/6P"와 하단 문구를 놓쳤다(OQ-005 재판정).
+
+## 변경 절차
+
+새 FAQ나 룰북이 나오면 다음 순서로 갱신한다.
+
+1. 공식 리소스 페이지에서 문서와 날짜를 확인한다.
+2. 이 파일의 버전과 확인일을 바꾼다.
+3. `source-map.md`와 `official-rulings-index.md`를 대조한다.
+4. 의미가 달라진 규칙과 `open-questions.md`를 갱신한다.
+5. 영향을 받는 scenario test와 콘텐츠 출처 메타데이터를 함께 갱신한다.

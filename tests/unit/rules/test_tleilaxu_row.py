@@ -1,0 +1,507 @@
+"""Tests for the Tleilaxu Row, Reclaimed Forces, and the first Tleilaxu cards.
+
+Rule source: ``docs/rules/immortality.md`` section 4 [Immortality pp. 6, 8-9]
+and the card faces of Contaminator, From the Tanks, and Subject X-137.
+"""
+
+from dataclasses import replace
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.immortality.tleilaxu import (
+    tleilaxu_card_for_instance,
+    tleilaxu_deck_instance_ids,
+)
+from dune_imperium.content.registry.conflicts import CONFLICTS
+from dune_imperium.content.registry.imperium import imperium_deck_instance_ids
+from dune_imperium.content.registry.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+)
+from dune_imperium.rules import tleilaxu_row
+from dune_imperium.rules.acquisition import AcquireBlock, AcquisitionBonus
+from dune_imperium.rules.agent_effects import resolve_agent_card_effect
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.reveal_turn import begin_reveal_turn
+from dune_imperium.rules.setup import create_initial_state
+from dune_imperium.rules.tleilaxu_row import (
+    apply_tleilaxu_acquisition,
+    legal_tleilaxu_acquisitions,
+    reclaimed_forces_block,
+)
+from dune_imperium.simulation.sweep import run_checked_game
+
+IMMORTALITY = RulesetConfig(immortality=True)
+LEADERS = (
+    "feyd_rautha_harkonnen",
+    "gurney_halleck",
+    "lady_amber_metulli",
+    "lady_jessica",
+)
+CONTAMINATOR = "tleilaxu:contaminator:0"
+FROM_THE_TANKS = "tleilaxu:from_the_tanks:0"
+SUBJECT = "tleilaxu:subject_x_137:0"
+
+
+def _owner(**overrides: object) -> PlayerState:
+    deck = starting_deck_instance_ids(0, immortality=True)
+    values: dict[str, object] = {
+        "player_id": 0,
+        "hand": deck[:5],
+        "deck": deck[5:],
+        "resources": Resources(solari=4, spice=2, water=2),
+        "research_space": RESEARCH_START_ID,
+        "family_atomics": True,
+        "specimens": 3,
+        "troops_supply": 6,
+    }
+    values.update(overrides)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def _seat(seat: int) -> PlayerState:
+    return PlayerState(
+        player_id=seat, research_space=RESEARCH_START_ID, family_atomics=True
+    )
+
+
+def _reveal_state(owner: PlayerState, **overrides: object) -> GameState:
+    imperium = imperium_deck_instance_ids(False)
+    values: dict[str, object] = {
+        "config": IMMORTALITY,
+        "seed": 1,
+        "phase": GamePhase.PLAYER_TURNS,
+        "round_number": 1,
+        "current_conflict_ids": (CONFLICTS[0].card.card_id,),
+        "intrigue_deck": intrigue_deck_instance_ids(False)[:6],
+        "imperium_row": imperium[:5],
+        "imperium_deck": imperium[5:20],
+        "tleilaxu_row": (CONTAMINATOR, SUBJECT),
+        "tleilaxu_deck": (FROM_THE_TANKS,),
+        "tleilaxu_track_spice": 2,
+        "players": (owner, *(_seat(seat) for seat in range(1, 4))),
+        "decision_stack": (
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    }
+    values.update(overrides)
+    state = GameState(**values)  # type: ignore[arg-type]
+    return begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+
+def _actions(state: GameState) -> dict[str, DomainAction]:
+    keyed: dict[str, DomainAction] = {}
+    for action in legal_tleilaxu_acquisitions(state, 0):
+        arguments = dict(action.arguments)
+        if action.action_id == "acquire_reclaimed_forces":
+            keyed[f"reclaimed:{arguments['choice']}"] = action
+        else:
+            suffix = ":top" if arguments.get("to_deck_top") else ""
+            keyed[f"{arguments['instance_id']}{suffix}"] = action
+    return keyed
+
+
+def test_the_three_cards_have_the_printed_data_and_join_the_deck() -> None:
+    assert {CONTAMINATOR, FROM_THE_TANKS, SUBJECT} <= set(tleilaxu_deck_instance_ids())
+    contaminator = tleilaxu_card_for_instance(CONTAMINATOR)
+    assert contaminator.specimen_cost == 1 and contaminator.reveal_persuasion == 1
+    subject = tleilaxu_card_for_instance(SUBJECT)
+    assert subject.has_acquisition_bonus and subject.specimen_cost == 2
+
+
+def test_setup_shuffles_the_deck_and_deals_two_to_the_row() -> None:
+    state = create_initial_state(IMMORTALITY, 7, LEADERS).state
+    assert len(state.tleilaxu_row) == 2
+    assert len(state.tleilaxu_deck) == len(tleilaxu_deck_instance_ids()) - 2
+    assert set(state.tleilaxu_row) | set(state.tleilaxu_deck) == set(
+        tleilaxu_deck_instance_ids()
+    )
+
+
+def test_acquisitions_need_the_specimens_and_the_deck_top_needs_a_marker() -> None:
+    poor = _reveal_state(_owner(specimens=1, troops_supply=8))
+    assert set(_actions(poor)) == {CONTAMINATOR}
+    rich = _reveal_state(_owner())
+    assert set(_actions(rich)) == {
+        CONTAMINATOR,
+        SUBJECT,
+        "reclaimed:troops",
+        "reclaimed:tleilaxu",
+    }
+    marked = _reveal_state(_owner(research_space="c4r4"))
+    assert f"{CONTAMINATOR}:top" in _actions(marked)
+    # Nobody else may buy during this Reveal.
+    assert legal_tleilaxu_acquisitions(marked, 1) == ()
+
+
+def test_acquiring_pays_specimens_refills_the_row_and_pays_the_acquire_box() -> None:
+    state = _reveal_state(_owner())
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[SUBJECT])
+
+    owner = result.state.players[0]
+    assert owner.specimens == 1 and owner.troops_supply == 8
+    assert owner.discard_pile[-1] == SUBJECT
+    assert owner.tleilaxu_space == 1  # the acquire box
+    assert result.state.tleilaxu_row == (CONTAMINATOR, FROM_THE_TANKS)
+    assert result.state.tleilaxu_deck == ()
+    assert result.events[0].kind == "tleilaxu_card_acquired"
+
+
+def test_an_empty_tleilaxu_deck_leaves_the_row_short() -> None:
+    # The Row is refilled "from the top of the Tleilaxu deck" [Immortality
+    # p. 9]; nothing reshuffles into an empty one. OQ-136 (user decision
+    # 2026-10-26, like OQ-004 for the Imperium deck): the Row goes on short,
+    # and Reclaimed Forces, which never leaves it, is still offered.
+    state = _reveal_state(_owner(), tleilaxu_deck=())
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[SUBJECT])
+
+    assert result.state.tleilaxu_row == (CONTAMINATOR,)
+    assert result.state.tleilaxu_deck == ()
+    empty = _reveal_state(_owner(), tleilaxu_row=(), tleilaxu_deck=())
+    assert sorted(_actions(empty)) == ["reclaimed:tleilaxu", "reclaimed:troops"]
+
+
+def test_a_future_troop_acquire_box_fails_loudly_instead_of_dropping_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No shipped Tleilaxu card recruits a troop in its acquire box, but a
+    # future one would repeat the exact defect this sweep fixed for Arrakis
+    # Revolt's and Occupation's Imperium acquire boxes -- a troop reaching
+    # the garrison without ever joining the owner's turn allowance
+    # [Main p. 10] [FAQ p. 4] -- if this guard did not fail loudly instead.
+    state = _reveal_state(_owner())
+
+    def fake_bonus(
+        state: GameState, player: int, instance_id: str, next_owner: PlayerState
+    ) -> AcquisitionBonus:
+        return AcquisitionBonus(
+            owner=next_owner,
+            intrigue_deck=state.intrigue_deck,
+            events=(),
+            places_spy=False,
+            takes_contract=False,
+            recruited=1,
+        )
+
+    monkeypatch.setattr(tleilaxu_row, "resolve_acquisition_bonus", fake_bonus)
+
+    with pytest.raises(NotImplementedError):
+        apply_tleilaxu_acquisition(state, _actions(state)[CONTAMINATOR])
+
+
+def test_a_tleilaxu_acquisition_fires_call_to_arms() -> None:
+    # "During your Reveal turn this round, whenever you acquire a card:
+    # [troop]" [Call to Arms card]; "Tleilaxu cards are similar to Imperium
+    # cards. You acquire them during your Reveal turn" [Immortality p. 8].
+    # A Tleilaxu Row acquisition used to recruit nothing.
+    from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
+    garrison = state.players[0].troops_garrison
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[CONTAMINATOR])
+
+    owner = result.state.players[0]
+    assert owner.troops_garrison == garrison + 1
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    # The card still waits for the rest of the Reveal turn, then expires.
+    assert owner.intrigue_faceup == (call_to_arms,)
+    # "You may deploy any units you recruit this turn and up to two more
+    # from your garrison" [Bloodlines p. 5]: the trigger's troop is
+    # recruited during this Reveal turn, so a Combat icon's deployment
+    # allowance must count it -- a Row-card acquisition used to leave
+    # ``reveal_troops_recruited`` at 0 and cap the deploy at 2.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
+    expired = expire_reveal_faceup_intrigue(result.state, 0).state
+    assert expired.players[0].intrigue_faceup == ()
+    assert call_to_arms in expired.intrigue_discard
+
+
+def test_a_tleilaxu_acquire_box_choice_holds_call_to_arms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No shipped Tleilaxu acquire box opens a decision (Subject X-137's
+    # advances the Tleilaxu token at once), but Call to Arms comes after the
+    # acquired card's own acquisition effects, also after their choices
+    # (OQ-012, user ruling 2026-10-04, "선택 뒤로 맞춤"): a box that researched
+    # like Spiritual Fervor's would hold it until the direction is chosen.
+    from dune_imperium.content.core.cards import ImperiumCardEntry
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.immortality import advance_research
+
+    def research_box(
+        state: GameState,
+        player: int,
+        definition: ImperiumCardEntry,
+        *,
+        source: str,
+    ) -> RuleResult:
+        return advance_research(state, player, source=f"{source}:acquisition_bonus")
+
+    monkeypatch.setattr(tleilaxu_row, "apply_acquisition_track_effects", research_box)
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), research_space="c1r3")
+    )
+    garrison = state.players[0].troops_garrison
+    engine = UprisingRulesEngine()
+
+    bought = apply_whole(engine, state, _actions(state)[CONTAMINATOR])
+    assert "intrigue_triggered" not in [event.kind for event in bought.events]
+    assert bought.state.decision_stack[-1].kind == "research_advance"
+    assert bought.state.players[0].troops_garrison == garrison
+
+    chosen = apply_whole(
+        engine,
+        bought.state,
+        DomainAction(
+            action_id="choose_research_space",
+            actor=0,
+            arguments=(("space_id", "c2r4"),),
+        ),
+    )
+    kinds = [event.kind for event in chosen.events]
+    assert kinds[0] == "research_advanced" and kinds[-1] == "intrigue_triggered"
+    assert chosen.events[-1].event_id == (
+        f"round:1:player:0:acquire_tleilaxu:{CONTAMINATOR}"
+        f":reveal_trigger:{call_to_arms}"
+    )
+    assert chosen.state.players[0].troops_garrison == garrison + 1
+    context = dict(chosen.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert "deferred_acquisition_triggers" not in context
+
+
+def test_past_the_first_marker_the_card_may_go_on_top_of_the_deck() -> None:
+    state = _reveal_state(_owner(research_space="c4r4"))
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[f"{CONTAMINATOR}:top"])
+
+    owner = result.state.players[0]
+    assert owner.deck[0] == CONTAMINATOR
+    assert CONTAMINATOR not in owner.discard_pile
+
+
+def test_reclaimed_forces_stays_and_offers_troops_or_tleilaxu() -> None:
+    state = _reveal_state(_owner())
+
+    troops = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:troops"])
+    owner = troops.state.players[0]
+    assert owner.specimens == 0
+    assert owner.troops_garrison == 5 and owner.troops_supply == 7
+    assert troops.state.tleilaxu_row == (CONTAMINATOR, SUBJECT)
+    assert dict(troops.state.decision_stack[-1].context)["reveal_troops_recruited"] == 2
+
+    tleilaxu = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:tleilaxu"])
+    assert tleilaxu.state.players[0].tleilaxu_space == 1
+
+
+def test_reclaimed_forces_offers_no_tleilaxu_step_at_the_track_end() -> None:
+    # On the track's last space the advance does nothing (OQ-048), so the
+    # specimens would buy nothing there (OQ-071, user decision 2026-09-29):
+    # only the troops remain. Those always recruit, since the three spent
+    # specimens return to the supply first ("Whenever you spend a specimen,
+    # return it to your supply" [Immortality p. 8]), even from an empty one.
+    state = _reveal_state(
+        _owner(tleilaxu_space=7, troops_supply=0, troops_garrison=9)
+    )
+
+    actions = _actions(state)
+
+    assert "reclaimed:tleilaxu" not in actions
+    assert reclaimed_forces_block(state.players[0], "tleilaxu") is (
+        AcquireBlock.TLEILAXU_TRACK_END
+    )
+    assert reclaimed_forces_block(state.players[0]) is None
+    troops = apply_tleilaxu_acquisition(state, actions["reclaimed:troops"])
+    owner = troops.state.players[0]
+    assert owner.specimens == 0
+    assert owner.troops_garrison == 11 and owner.troops_supply == 1
+
+
+def test_reclaimed_forces_troops_choice_fires_call_to_arms() -> None:
+    # User ruling (2026-09-26, OQ-066): "acquire 발동하지. 룰북 보면 acquire는
+    # 하지만 카드 열에서 안 없어지는걸로 표현되어 있지 않나" -- choosing an
+    # effect on Reclaimed Forces is still acquiring a card, just one that is
+    # "left in place" instead of taken [Immortality p. 9], same as any other
+    # Tleilaxu card ("You acquire them during your Reveal turn"
+    # [Immortality p. 8]). So a face-up Call to Arms ("During your Reveal
+    # turn this round, whenever you acquire a card:" [Call to Arms card])
+    # fires for it too. It used to fire only for Row cards, not for
+    # Reclaimed Forces.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:troops"])
+
+    owner = result.state.players[0]
+    # Reclaimed Forces' own 2 troops, plus 1 more from Call to Arms.
+    assert owner.troops_garrison == 6
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    assert owner.intrigue_faceup == (call_to_arms,)
+    # The trigger's troop joins the Reveal turn's recruit count exactly like
+    # Reclaimed Forces' own troops -- "You may deploy any units you recruit
+    # this turn" [Bloodlines p. 5] does not distinguish who or what
+    # recruited them. 2 (Reclaimed Forces) + 1 (Call to Arms) = 3.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 3
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3, 4, 5}
+
+
+def test_reclaimed_forces_tleilaxu_choice_fires_call_to_arms() -> None:
+    # Same ruling as above (OQ-066), exercised on the Tleilaxu-track choice:
+    # Call to Arms fires for any acquisition, not only the troops effect.
+    from dune_imperium.rules.reveal_turn import legal_reveal_deployments
+
+    call_to_arms = "intrigue:call_to_arms:0"
+    state = _reveal_state(
+        _owner(intrigue_faceup=(call_to_arms,), combat_icon_turn=True)
+    )
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)["reclaimed:tleilaxu"])
+
+    owner = result.state.players[0]
+    assert owner.tleilaxu_space == 1
+    assert owner.troops_garrison == 4
+    assert "intrigue_triggered" in [event.kind for event in result.events]
+    assert owner.intrigue_faceup == (call_to_arms,)
+    # The Tleilaxu-track branch recruits none of its own, so the recruit
+    # count on the Reveal frame comes only from Call to Arms's troop -- it
+    # must still join "You may deploy any units you recruit this turn"
+    # [Bloodlines p. 5] the same way the troops-choice branch's does.
+    context = dict(result.state.decision_stack[-1].context)
+    assert context["reveal_troops_recruited"] == 1
+    assert {
+        dict(action.arguments)["count"]
+        for action in legal_reveal_deployments(result.state, 0)
+        if action.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
+def _agent_turn(card_id: str, space_id: str, **overrides: object) -> GameState:
+    deck = starting_deck_instance_ids(0, immortality=True)
+    owner = _owner(hand=(card_id,), deck=deck, **overrides)
+    imperium = imperium_deck_instance_ids(False)
+    state = GameState(
+        config=IMMORTALITY,
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+        intrigue_deck=intrigue_deck_instance_ids(False)[:6],
+        imperium_row=imperium[:5],
+        imperium_deck=imperium[5:20],
+        tleilaxu_track_spice=2,
+        players=(owner, *(_seat(seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == space_id
+    )
+    return apply_agent_action(state, placement).state
+
+
+def test_contaminator_advances_the_tleilaxu_token() -> None:
+    state = _agent_turn(CONTAMINATOR, "fremkit")
+    result = resolve_agent_card_effect(state)
+    assert result.state.players[0].tleilaxu_space == 1
+
+
+def test_from_the_tanks_recruits_two_troops() -> None:
+    state = _agent_turn(FROM_THE_TANKS, "assembly_hall")
+    result = resolve_agent_card_effect(state)
+    assert result.state.players[0].troops_garrison == 5
+
+
+def test_subject_x_137_needs_the_first_genetic_marker() -> None:
+    unmarked = resolve_agent_card_effect(_agent_turn(SUBJECT, "assembly_hall"))
+    assert unmarked.state.players[0].tleilaxu_space == 0
+    assert unmarked.events[0].kind == "agent_card_effect_unavailable"
+    marked = resolve_agent_card_effect(
+        _agent_turn(SUBJECT, "assembly_hall", research_space="c4r2")
+    )
+    assert marked.state.players[0].tleilaxu_space == 1
+
+
+def test_the_codec_holds_row_and_reclaimed_forces_choices() -> None:
+    codec = ActionCodec(IMMORTALITY)
+    state = _reveal_state(_owner(research_space="c4r4"))
+    # Stage B3b-2: the Reveal frame offers a purchase as its effect row and
+    # target rows (``effect_steps.steps_for``); the whole templates left.
+    for action in legal_tleilaxu_acquisitions(state, 0):
+        for row in steps_for(action):
+            assert codec.decode(codec.encode(row), action.actor) == row
+    base = {template.action_id for template in ActionCodec(RulesetConfig()).catalog}
+    assert not {"acquire_tleilaxu", "acquire_reclaimed_forces"} & base
+
+
+@pytest.mark.parametrize("policy", ["random", "heuristic"])
+def test_checked_games_buy_from_the_row(policy: str) -> None:
+    acquired = 0
+    for seed in range(3):
+        report = run_checked_game(
+            IMMORTALITY,
+            seed,
+            900_000 + seed,
+            policy=policy,
+            soundness_interval=25,
+            collect_coverage=True,
+        )
+        assert report.winner is not None
+        assert report.coverage is not None
+        acquired += report.coverage["event_kinds"].get("tleilaxu_card_acquired", 0)
+    assert acquired > 0
+
+
+def test_the_engine_deals_the_row_and_plays_a_game() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(IMMORTALITY, seed=9)
+    assert len(state.tleilaxu_row) == 2
+    assert all(isinstance(replace(seat).research_space, str) for seat in state.players)

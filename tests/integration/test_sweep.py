@@ -1,0 +1,984 @@
+"""Tests for the M7 verification sweep and its invariant checks."""
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.cli.sweep import main as sweep_main
+from dune_imperium.content.bloodlines import SKILLS, tech_tiles_for
+from dune_imperium.content.immortality import tleilaxu_cards_for
+from dune_imperium.content.registry.conflicts import CONFLICTS_BY_ID
+from dune_imperium.core import GamePhase, GameState
+from dune_imperium.core.observation import observe_state
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.simulation import (
+    CardCensus,
+    InvariantViolation,
+    check_event_visibility,
+    check_observation_privacy,
+    check_state_invariants,
+    merge_coverage,
+    normalize_instance_id,
+    run_checked_game,
+    run_sweep,
+    sweep_specs,
+    zero_coverage,
+)
+from dune_imperium.simulation.invariants import _scramble_hidden_information
+
+
+def test_checked_game_passes_every_invariant() -> None:
+    report = run_checked_game(
+        RulesetConfig(),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=5,
+    )
+
+    assert report.ruleset == "uprising-4p-base"
+    assert report.steps > 100
+    assert report.rounds >= 1
+    assert 0 <= report.winner < 4
+
+
+@pytest.mark.parametrize("game_seed", [485, 563])
+def test_mid_frame_reward_reshuffle_seeds_run_to_finished(game_seed: int) -> None:
+    # In these rotated-leader random games Cunning's owner resolved the
+    # automatic draw first (OQ-015) while the personal deck was empty; the
+    # queued reshuffle chance frame must stack on the updated choice frame
+    # instead of being overwritten, or the stale frame finishes the card a
+    # second time (2026-09-02 sweep).
+    import random
+
+    from dune_imperium.content.registry.leaders import leaders_for_choam
+
+    leader_ids = tuple(
+        random.Random(game_seed).sample(
+            [leader.leader_id for leader in leaders_for_choam(False)], k=4
+        )
+    )
+    report = run_checked_game(
+        RulesetConfig(),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+        engine=UprisingRulesEngine(leader_ids=leader_ids),
+    )
+
+    assert report.rounds >= 8
+
+
+def test_checked_heuristic_game_passes_every_invariant() -> None:
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=5,
+        policy="heuristic",
+    )
+
+    assert report.ruleset == "uprising-4p-choam"
+    assert report.steps > 100
+    assert 0 <= report.winner < 4
+
+
+@pytest.mark.parametrize("game_seed", [97, 901])
+def test_special_mission_spy_deadlock_seeds_run_to_finished(game_seed: int) -> None:
+    # These CHOAM heuristic games stranded the Special Mission PlaceSpy slot
+    # before the optional decline existed [Main pp. 11, 20].
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+        policy="heuristic",
+    )
+
+    assert report.rounds >= 1
+
+
+def test_self_trash_board_collision_seed_runs_to_finished() -> None:
+    # In this CHOAM random game Dangerous Rhetoric was played onto Desert
+    # Tactics via its Spy icon and board-trashed before its self-trash
+    # Agent box resolved; the un-activated box now expires under the
+    # OQ-022 designer ruling (2026-09-01 sweep).
+    report = run_checked_game(
+        RulesetConfig(choam_module=True),
+        game_seed=2735,
+        policy_seed=702_735,
+        privacy_interval=0,
+    )
+
+    assert report.rounds >= 8
+
+
+@pytest.mark.parametrize(
+    ("choam_module", "game_seed"), [(False, 2934), (True, 2590)]
+)
+def test_bond_source_trashed_seeds_run_to_finished(
+    choam_module: bool, game_seed: int
+) -> None:
+    # In these random games a Bene Gesserit Bond card was trashed by a
+    # freely ordered effect before its Bond box resolved; the un-activated
+    # box now expires under the OQ-022 designer ruling (2026-09-01 sweep).
+    report = run_checked_game(
+        RulesetConfig(choam_module=choam_module),
+        game_seed=game_seed,
+        policy_seed=700_000 + game_seed,
+        privacy_interval=0,
+    )
+
+    assert report.rounds >= 1
+
+
+def test_checked_leader_draft_game_passes_every_invariant() -> None:
+    # The census is fixed after setup, so Staban's printed starting-card
+    # removal during the draft cannot trip card conservation.
+    report = run_checked_game(
+        RulesetConfig(choam_module=True, leader_draft=True),
+        game_seed=70,
+        policy_seed=7070,
+        privacy_interval=5,
+        policy="heuristic",
+    )
+
+    assert report.ruleset == "uprising-4p-choam"
+    assert report.steps > 100
+    assert 0 <= report.winner < 4
+
+
+def test_unknown_sweep_policy_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown sweep policy"):
+        run_checked_game(RulesetConfig(), game_seed=1, policy_seed=1, policy="best")
+    with pytest.raises(ValueError, match="unknown sweep policy"):
+        sweep_specs(games=1, rulesets=(False,), start_seed=1, policy="best")
+
+
+def test_sweep_specs_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(ValueError, match="Go to 11 variant requires the Immortality"):
+        sweep_specs(games=1, rulesets=(False,), start_seed=1, go_to_11=True)
+
+
+def test_go_to_11_sweep_runs_to_finished() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=70,
+        immortality=True,
+        go_to_11=True,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-base+immortality+go11"
+
+
+def test_epic_game_sweep_runs_to_finished() -> None:
+    # Epic Game Mode needs no other option (OQ-092).
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=72,
+        epic_game=True,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-base+epic"
+
+
+@pytest.mark.parametrize("policy", ["random", "heuristic"])
+def test_rise_of_ix_sweep_runs_the_original_game_to_finished(policy: str) -> None:
+    # The original game plays Rise of Ix since stage P4c-5, and Uprising plus
+    # Rise of Ix since stage P7f.
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=7,
+        policy=policy,
+        base_game=BaseGame.IMPERIUM,
+        rise_of_ix=True,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "imperium-4p-base+ix"
+    uprising = run_sweep(
+        sweep_specs(games=1, rulesets=(False,), start_seed=7, rise_of_ix=True)
+    )
+    assert uprising.failures == ()
+    assert uprising.games[0].ruleset == "uprising-4p-base+ix"
+
+
+def test_the_sweep_cli_takes_rise_of_ix_for_the_original_game() -> None:
+    common = [
+        "--games",
+        "1",
+        "--ruleset",
+        "base",
+        "--start-seed",
+        "7",
+        "--privacy-interval",
+        "0",
+        "--skip-replay",
+        "--rise-of-ix",
+    ]
+    assert sweep_main([*common, "--base-game", "imperium"]) == 0
+    # With Uprising too since stage P7f.
+    assert sweep_main(common) == 0
+
+
+def test_the_original_cards_sweep_in_an_uprising_game() -> None:
+    # Stage P7e (docs/rules/imperium-base.md 13.4, OQ-155): the original
+    # cards and Leaders shuffled into Uprising, its Leaders rotated in; the
+    # sweep CLI takes the option, which the original game refuses.
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=11,
+        promo_cards=True,
+        imperium_cards=True,
+        rotate_leaders=True,
+        privacy_interval=10,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-base+imperium-cards+promo"
+    common = [
+        "--games",
+        "1",
+        "--ruleset",
+        "base",
+        "--start-seed",
+        "11",
+        "--privacy-interval",
+        "0",
+        "--skip-replay",
+        "--imperium-cards",
+    ]
+    assert sweep_main(common) == 0
+    assert sweep_main([*common, "--base-game", "imperium"]) == 1
+
+
+def test_epic_game_with_arrakeen_scouts_runs_to_finished() -> None:
+    # Rise of Ix recommends the companion app's Arrakeen Scouts mode for a
+    # longer Epic game [Rise of Ix p. 10] (docs/rules/epic-game-mode.md
+    # section 2): the Scouts schedule follows the round number, so it runs
+    # over Epic's Conflict II/III deck unchanged. With Immortality, Control
+    # the Spice starts in the discard pile [Immortality p. 12]. The two
+    # options were built on separate branches; this pins the merged line,
+    # Round Start order included (reveal -> Control defense -> draw).
+    specs = sweep_specs(
+        games=1,
+        rulesets=(True,),
+        start_seed=73,
+        immortality=True,
+        epic_game=True,
+        arrakeen_scouts=True,
+        privacy_interval=10,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "uprising-4p-choam+immortality+epic+scouts"
+
+
+def test_small_sweep_covers_both_rulesets() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False, True),
+        start_seed=62,
+        privacy_interval=10,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert {game.ruleset for game in report.games} == {
+        "uprising-4p-base",
+        "uprising-4p-choam",
+    }
+    assert report.total_steps > 200
+
+
+def _expansion_state() -> GameState:
+    """A fresh setup with every expansion zone the census now covers filled."""
+
+    return UprisingRulesEngine().reset(
+        RulesetConfig(bloodlines=True, tech_module=True, immortality=True), seed=68
+    )
+
+
+def test_census_detects_a_vanished_card() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=63)
+    census = CardCensus.from_state(state)
+
+    lightened = replace(state.players[0], hand=state.players[0].hand[1:])
+    corrupted = replace(state, players=(lightened, *state.players[1:]))
+
+    with pytest.raises(InvariantViolation, match="instances changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_cross_player_duplication() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=64)
+    census = CardCensus.from_state(state)
+    stolen = state.players[0].hand[0]
+
+    duplicated = replace(
+        state.players[1], hand=(*state.players[1].hand, stolen)
+    )
+    corrupted = replace(
+        state,
+        players=(state.players[0], duplicated, *state.players[2:]),
+    )
+
+    with pytest.raises(InvariantViolation, match="two zones"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_twisted_card_in_the_shared_intrigue_deck() -> None:
+    # Twisted cards stay in the discard when it is reshuffled (OQ-097, user
+    # ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so
+    # one in the shared deck is a broken state even though no card is lost.
+    state = UprisingRulesEngine(
+        ("piter_de_vries", "gurney_halleck", "chani", "lady_jessica")
+    ).reset(RulesetConfig(bloodlines=True), seed=69)
+    census = CardCensus.from_state(state)
+    piter = state.players[0]
+    assert piter.twisted_deck
+    card = piter.twisted_deck[0]
+    check_state_invariants(
+        replace(
+            state,
+            intrigue_discard=(card,),
+            players=(
+                replace(piter, twisted_deck=piter.twisted_deck[1:]),
+                *state.players[1:],
+            ),
+        ),
+        census,
+    )
+
+    corrupted = replace(
+        state,
+        intrigue_deck=(*state.intrigue_deck, card),
+        players=(
+            replace(piter, twisted_deck=piter.twisted_deck[1:]),
+            *state.players[1:],
+        ),
+    )
+    with pytest.raises(InvariantViolation, match="Twisted"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_vanished_tech_tile() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert any(state.tech_stacks)
+
+    head, *rest = state.tech_stacks
+    corrupted = replace(state, tech_stacks=(head[:-1], *rest))
+
+    with pytest.raises(InvariantViolation, match="Tech tile instances changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_vanished_skill_tile() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert state.skill_stack
+
+    corrupted = replace(state, skill_stack=state.skill_stack[1:])
+
+    with pytest.raises(InvariantViolation, match="Skill tile instances changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_census_detects_a_lost_sardaukar_commander() -> None:
+    state = _expansion_state()
+    census = CardCensus.from_state(state)
+    assert state.sardaukar_commanders_bank
+
+    corrupted = replace(
+        state, sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1
+    )
+
+    with pytest.raises(InvariantViolation, match="Sardaukar Commander count changed"):
+        check_state_invariants(corrupted, census)
+
+
+def test_privacy_scramble_changes_hidden_state_but_not_the_view() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=65)
+
+    scrambled = _scramble_hidden_information(state, observer=0)
+
+    # The scramble must really move hidden cards, or the check is vacuous.
+    assert scrambled.intrigue_deck != state.intrigue_deck
+    assert scrambled.imperium_deck != state.imperium_deck
+    assert scrambled.players[1].hand != state.players[1].hand
+    assert scrambled.players[0].hand == state.players[0].hand
+
+    assert observe_state(scrambled, 0) == observe_state(state, 0)
+    check_observation_privacy(state)
+
+    # A publicly known hand card must survive the scramble in the hand.
+    known = state.players[1].hand[0]
+    marked = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(state.players[1], hand_public=(known,)),
+            *state.players[2:],
+        ),
+    )
+    scrambled_marked = _scramble_hidden_information(marked, observer=0)
+    assert known in scrambled_marked.players[1].hand
+    assert scrambled_marked.players[1].hand_public == (known,)
+    check_observation_privacy(marked)
+
+
+def test_privacy_scramble_keeps_the_public_deck_tops_in_place() -> None:
+    # OQ-145: cards put face up on top of a deck are known to every seat, so
+    # the scramble leaves them on top in order, the observer's own deck and an
+    # opponent's alike, and reorders only what lies below them.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=65)
+    mine, rival = state.players[0], state.players[1]
+    marked = replace(
+        state,
+        players=(
+            replace(mine, deck_public_top=mine.deck[:2]),
+            replace(rival, deck_public_top=rival.deck[:2]),
+            *state.players[2:],
+        ),
+    )
+
+    scrambled = _scramble_hidden_information(marked, observer=0)
+
+    assert scrambled.players[0].deck[:2] == mine.deck[:2]
+    assert scrambled.players[1].deck[:2] == rival.deck[:2]
+    assert scrambled.players[0].deck != mine.deck
+    assert scrambled.players[1].hand != rival.hand
+    assert observe_state(scrambled, 0) == observe_state(marked, 0)
+    check_observation_privacy(marked)
+
+
+def test_privacy_scramble_reorders_the_expansion_hidden_zones() -> None:
+    # The Conflict deck [Main p. 4], the face-down Skill stack
+    # [Bloodlines p. 3] and the Tleilaxu deck [Immortality p. 4] are observed
+    # as sizes only; the scramble must still move them, or the privacy check
+    # is blind to any later leak out of those zones.
+    state = _expansion_state()
+    assert len(state.conflict_deck) > 1
+    assert len(state.skill_stack) > 1
+    assert len(state.tleilaxu_deck) > 1
+
+    scrambled = _scramble_hidden_information(state, observer=0)
+
+    assert scrambled.conflict_deck != state.conflict_deck
+    assert scrambled.skill_stack != state.skill_stack
+    assert scrambled.tleilaxu_deck != state.tleilaxu_deck
+    # hidden_card_owners maps the undealt Twisted stock to nobody, so it is a
+    # hidden global zone like the decks above.
+    assert len(state.twisted_deck_stock) > 1
+    assert scrambled.twisted_deck_stock != state.twisted_deck_stock
+    # Each zone's public counterpart must stay exactly in place.
+    assert scrambled.current_conflict_ids == state.current_conflict_ids
+    assert scrambled.skill_face_up == state.skill_face_up
+    assert scrambled.tleilaxu_row == state.tleilaxu_row
+
+    # The unused I and II Conflicts went to the box face down [Main p. 4], so
+    # they are hidden too and share each tier's pool with the deck: the boxed
+    # set must move, while the publicly layered tier at every deck depth
+    # ("위에서부터 I 1장, II 5장, III 4장" [Main p. 4]) must not.
+    assert set(scrambled.unused_conflict_ids) != set(state.unused_conflict_ids)
+    tiers = [CONFLICTS_BY_ID[card].tier for card in state.conflict_deck]
+    assert [CONFLICTS_BY_ID[card].tier for card in scrambled.conflict_deck] == tiers
+    assert set(scrambled.conflict_deck) | set(scrambled.unused_conflict_ids) == set(
+        state.conflict_deck
+    ) | set(state.unused_conflict_ids)
+
+    check_observation_privacy(state)
+
+
+def test_event_visibility_rejects_a_public_event_naming_a_hidden_card() -> None:
+    from dune_imperium.core.events import GameEvent
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=67)
+    hidden_card = state.players[1].hand[0]
+    public_card = state.imperium_row[0]
+
+    leak = GameEvent(
+        event_id="test:leak",
+        kind="card_named",
+        payload=(("card_id", hidden_card), ("player", 1)),
+    )
+    with pytest.raises(InvariantViolation, match="names hidden card"):
+        check_event_visibility(state, (leak,))
+
+    # The same identity restricted to its owner, or a public card, is fine.
+    check_event_visibility(state, (replace(leak, visible_to=(1,)),))
+    check_event_visibility(
+        state,
+        (replace(leak, payload=(("card_id", public_card), ("player", 1))),),
+    )
+
+
+def test_step_limit_reports_a_failure_instead_of_raising() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=66,
+        max_steps=5,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+    report = run_sweep(specs)
+
+    assert report.games == ()
+    assert len(report.failures) == 1
+    assert "exceeded the 5-step limit" in report.failures[0].error
+
+
+def test_cli_returns_zero_on_success_and_one_on_failure() -> None:
+    assert (
+        sweep_main(
+            [
+                "--games",
+                "1",
+                "--ruleset",
+                "base",
+                "--start-seed",
+                "67",
+                "--privacy-interval",
+                "0",
+                "--skip-replay",
+            ]
+        )
+        == 0
+    )
+    assert (
+        sweep_main(
+            [
+                "--games",
+                "1",
+                "--ruleset",
+                "base",
+                "--start-seed",
+                "68",
+                "--max-steps",
+                "5",
+                "--privacy-interval",
+                "0",
+                "--skip-replay",
+            ]
+        )
+        == 1
+    )
+
+
+def test_checked_game_state_reaches_finished() -> None:
+    engine = UprisingRulesEngine()
+    from dune_imperium.simulation import run_random_game
+
+    baseline = run_random_game(engine, RulesetConfig(), 69, 700_069)
+    checked = run_checked_game(
+        RulesetConfig(),
+        game_seed=69,
+        policy_seed=700_069,
+        privacy_interval=0,
+        verify_replay=False,
+    )
+
+    # The checked loop replays the exact same seeded trajectory.
+    assert baseline.state.phase is GamePhase.FINISHED
+    assert checked.steps == len(baseline.replay.steps)
+    assert checked.winner == baseline.standings[0].player
+
+
+@pytest.mark.parametrize("choam_module", [False, True])
+def test_soundness_interval_checks_every_advertised_action(
+    choam_module: bool,
+) -> None:
+    # Every legal action offered at a sampled decision must apply cleanly
+    # and round-trip through the ActionCodec: a passing run proves every
+    # advertised action in this game is both executable and
+    # codec-expressible, which the sweep otherwise never exercises.
+    report = run_checked_game(
+        RulesetConfig(choam_module=choam_module),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=0,
+        soundness_interval=5,
+    )
+
+    assert report.rounds >= 1
+
+
+def test_normalize_instance_id_strips_prefix_and_copy_index() -> None:
+    assert (
+        normalize_instance_id("imperium:dune_the_desert_planet:3")
+        == "dune_the_desert_planet"
+    )
+    assert (
+        normalize_instance_id("reserve:smuggler_s_harvester:0")
+        == "smuggler_s_harvester"
+    )
+    assert normalize_instance_id("intrigue:cunning:1") == "cunning"
+    assert normalize_instance_id("tleilaxu:face_dancer:0") == "face_dancer"
+    assert normalize_instance_id("player:2:starter:signet_ring:0") == "signet_ring"
+    assert normalize_instance_id("bare_identity") == "bare_identity"
+
+
+def test_coverage_census_reports_normalized_identities() -> None:
+    report = run_checked_game(
+        RulesetConfig(),
+        game_seed=61,
+        policy_seed=7061,
+        privacy_interval=0,
+        collect_coverage=True,
+    )
+    coverage = report.coverage
+    assert coverage is not None
+
+    assert coverage["action_ids"]
+    assert coverage["agent_placements"]
+    assert coverage["event_kinds"]
+
+    # Per-copy instance IDs normalize down to a shared identity slug: no
+    # trailing copy-index suffix survives.
+    for key in coverage["cards_played"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+    for key in coverage["cards_acquired"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+
+    doubled = merge_coverage(coverage, coverage)
+    for dimension, counts in coverage.items():
+        for key, count in counts.items():
+            assert doubled[dimension][key] == count * 2
+
+    zero = zero_coverage(coverage, choam_module=False)
+    # This Conflict never gets drawn into this seeded ten-card deck.
+    assert "seize_spice_refinery" in zero["conflicts"]
+
+
+def test_coverage_census_records_expansion_components() -> None:
+    # The game must take a Tech tile, a Tleilaxu card and a Skill. Re-derived
+    # 2026-10-01 for OQ-095 (every Agent turn ends only through its owner's
+    # finish_agent_turn; codec v125): seed 61's random game no longer
+    # acquires a Tleilaxu card, and a scratch run of seeds 55-84 (policy seed
+    # 700_000 + seed) gives 62 as the first after 61 that takes all three.
+    # Re-derived 2026-10-06 for the Intrigue effect gate (an option needs an
+    # effect that can change something; codec v138): seed 62's game no
+    # longer acquires a Tleilaxu card, and 63 is the first after it that
+    # takes all three.
+    # Re-derived 2026-10-10 for Urgent Shigawire's draw as its own step
+    # (OQ-106; seed 63's game plays a boosted card): seed 63's game no longer
+    # acquires a Tleilaxu card (it does again with the placement drawing, a
+    # scratch copy of the previous commit), and 66 is the first after it
+    # that takes all three.
+    report = run_checked_game(
+        RulesetConfig(bloodlines=True, tech_module=True, immortality=True),
+        game_seed=66,
+        policy_seed=700066,
+        privacy_interval=0,
+        verify_replay=False,
+        collect_coverage=True,
+    )
+    coverage = report.coverage
+    assert coverage is not None
+
+    # Every expansion component a game takes has its own dimension, so the
+    # census can name the individual tile, card, or Skill instead of only the
+    # acquire action.
+    tech_seen = coverage["tech_acquired"]
+    tleilaxu_seen = coverage["tleilaxu_acquired"]
+    skills_seen = coverage["skills_taken"]
+    assert tech_seen
+    assert tleilaxu_seen
+    assert skills_seen
+
+    assert set(tech_seen) <= {tile.tech_id for tile in tech_tiles_for(True)}
+    assert set(skills_seen) <= {skill.skill_id for skill in SKILLS}
+    # Tleilaxu Row cards are per-copy personal card instances, so this
+    # dimension (and cards_played) counts identities with no copy index.
+    assert set(tleilaxu_seen) <= {
+        entry.card.card_id for entry in tleilaxu_cards_for(True)
+    }
+    for key in coverage["cards_played"]:
+        assert not key.rsplit(":", 1)[-1].isdigit()
+
+    zero = zero_coverage(
+        coverage,
+        choam_module=False,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+    )
+    for dimension, seen in (
+        ("tech_acquired", tech_seen),
+        ("tleilaxu_acquired", tleilaxu_seen),
+        ("skills_taken", skills_seen),
+    ):
+        assert zero[dimension]
+        assert set(zero[dimension]).isdisjoint(seen)
+
+
+def test_zero_coverage_reports_unseen_expansion_components() -> None:
+    census = {
+        "tech_acquired": {"delivery_bay": 3},
+        "tleilaxu_acquired": {"chairdog": 2},
+        "skills_taken": {"hardy": 1},
+    }
+
+    zero = zero_coverage(
+        census,
+        choam_module=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+    )
+
+    assert zero["tech_acquired"] == sorted(
+        {tile.tech_id for tile in tech_tiles_for(True)} - {"delivery_bay"}
+    )
+    assert zero["skills_taken"] == sorted(
+        {skill.skill_id for skill in SKILLS} - {"hardy"}
+    )
+    assert zero["tleilaxu_acquired"] == sorted(
+        {entry.card.card_id for entry in tleilaxu_cards_for(True)} - {"chairdog"}
+    )
+    # The CHOAM Module's tile and the Tleilaxu promo belong to the universe
+    # only when their own option deals them.
+    assert "choam_transports" in zero["tech_acquired"]
+    assert "piter_genius_advisor" in zero["tleilaxu_acquired"]
+
+
+def test_zero_coverage_expansion_universes_follow_the_ruleset_options() -> None:
+    without_modules = zero_coverage({}, choam_module=False)
+
+    assert without_modules["tech_acquired"] == []
+    assert without_modules["tleilaxu_acquired"] == []
+    assert without_modules["skills_taken"] == []
+
+    with_modules = zero_coverage(
+        {}, choam_module=False, bloodlines=True, tech_module=True, immortality=True
+    )
+
+    assert "choam_transports" not in with_modules["tech_acquired"]
+    assert len(with_modules["tech_acquired"]) == len(tech_tiles_for(False))
+    assert "piter_genius_advisor" not in with_modules["tleilaxu_acquired"]
+    assert len(with_modules["tleilaxu_acquired"]) == len(tleilaxu_cards_for(False))
+    assert len(with_modules["skills_taken"]) == len(SKILLS)
+
+
+def test_zero_coverage_action_ids_follow_the_epic_catalog() -> None:
+    # Control the Spice's paid trash adds the optional-trash templates to an
+    # Epic catalog that has none of the options which otherwise hold them.
+    # Since stage B3d-3 its trash and its refusal are rows of ids every
+    # catalog holds (``trash``, ``decline``), so the ids follow the Epic
+    # catalog's ids exactly, and its templates name Control the Spice.
+    from dune_imperium.adapters import ActionCodec
+    from dune_imperium.adapters.action_codec import ActionTemplate
+    from dune_imperium.config import RulesetConfig
+
+    epic = ActionCodec(RulesetConfig(choam_module=False, epic_game=True)).catalog
+    assert zero_coverage({}, choam_module=False, epic_game=True)["action_ids"] == (
+        sorted({template.action_id for template in epic})
+    )
+    refusal = ActionTemplate(
+        "decline",
+        (("of", "trash"), ("printed", "control_the_spice"), ("source", "agent_card")),
+    )
+    assert refusal in epic
+    assert refusal not in ActionCodec(RulesetConfig(choam_module=False)).catalog
+
+
+def test_rotate_leaders_specs_are_deterministic_with_four_distinct_ids() -> None:
+    first = sweep_specs(
+        games=3, rulesets=(False, True), start_seed=61, rotate_leaders=True
+    )
+    second = sweep_specs(
+        games=3, rulesets=(False, True), start_seed=61, rotate_leaders=True
+    )
+
+    assert [spec.leader_ids for spec in first] == [spec.leader_ids for spec in second]
+    for spec in first:
+        assert spec.leader_ids is not None
+        assert len(set(spec.leader_ids)) == 4
+        if not spec.choam_module:
+            assert "shaddam_corrino_iv" not in spec.leader_ids
+
+
+def test_rotate_leaders_choam_roster_can_include_shaddam() -> None:
+    specs = sweep_specs(games=1, rulesets=(True,), start_seed=0, rotate_leaders=True)
+
+    assert specs[0].leader_ids is not None
+    assert "shaddam_corrino_iv" in specs[0].leader_ids
+
+
+def test_rotated_leaders_game_runs_to_finished_under_full_checks() -> None:
+    specs = sweep_specs(
+        games=1,
+        rulesets=(True,),
+        start_seed=500,
+        privacy_interval=5,
+        soundness_interval=5,
+        rotate_leaders=True,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].rounds >= 1
+
+
+def test_rotate_leaders_rejects_leader_draft() -> None:
+    with pytest.raises(ValueError, match="rotate_leaders cannot be combined"):
+        sweep_specs(
+            games=1,
+            rulesets=(False,),
+            start_seed=1,
+            rotate_leaders=True,
+            leader_draft=True,
+        )
+
+
+def test_cli_rejects_rotate_leaders_with_leader_draft() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        sweep_main(["--games", "1", "--rotate-leaders", "--leader-draft"])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_rejects_go_to_11_without_immortality() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        sweep_main(["--games", "1", "--go-to-11"])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_accepts_go_to_11_with_immortality(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "71",
+            "--immortality",
+            "--go-to-11",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    # A --coverage-json key is the RulesetConfig identifier the games actually
+    # ran under, so this catches a --go-to-11 flag the CLI parses but drops
+    # before it reaches sweep_specs (identifier would then lack "+go11").
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base+immortality+go11"}
+
+
+def test_cli_accepts_epic_alone(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "73",
+            "--epic",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    # The key is the identifier the games ran under: a dropped --epic would
+    # lack "+epic". The zero report reads the Epic catalog from that key.
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base+epic"}
+    epic_zero = zero_coverage(
+        payload["uprising-4p-base+epic"]["counts"],
+        choam_module=False,
+        epic_game=True,
+    )
+    assert payload["uprising-4p-base+epic"]["zero"] == epic_zero
+
+
+def test_cli_accepts_soundness_interval() -> None:
+    assert (
+        sweep_main(
+            [
+                "--games",
+                "1",
+                "--ruleset",
+                "base",
+                "--start-seed",
+                "61",
+                "--privacy-interval",
+                "0",
+                "--soundness-interval",
+                "5",
+                "--skip-replay",
+            ]
+        )
+        == 0
+    )
+
+
+def test_cli_writes_coverage_json(tmp_path: Path) -> None:
+    coverage_path = tmp_path / "coverage.json"
+
+    result = sweep_main(
+        [
+            "--games",
+            "1",
+            "--ruleset",
+            "base",
+            "--start-seed",
+            "61",
+            "--privacy-interval",
+            "0",
+            "--skip-replay",
+            "--coverage-json",
+            str(coverage_path),
+        ]
+    )
+
+    assert result == 0
+    payload = json.loads(coverage_path.read_text())
+    assert set(payload) == {"uprising-4p-base"}
+    ruleset_payload = payload["uprising-4p-base"]
+    assert set(ruleset_payload) == {"counts", "zero"}
+    assert ruleset_payload["counts"]["action_ids"]
+    assert "seize_spice_refinery" in ruleset_payload["zero"]["conflicts"]

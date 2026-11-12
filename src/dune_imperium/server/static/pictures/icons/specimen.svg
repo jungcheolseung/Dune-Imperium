@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="106" viewBox="0 0 94 100">
+  <!-- Specimen: a green, mottled cube. Drawn by hand for the public build. -->
+  <polygon points="47,6 88,26 47,46 6,26" fill="#a6e86a" stroke="#1e3a0a" stroke-width="2.4" stroke-linejoin="round"/><polygon points="6,26 47,46 47,94 6,74" fill="#6cb43a" stroke="#1e3a0a" stroke-width="2.4" stroke-linejoin="round"/><polygon points="88,26 47,46 47,94 88,74" fill="#4a8a24" stroke="#1e3a0a" stroke-width="2.4" stroke-linejoin="round"/><circle cx="38" cy="24" r="4" fill="#7ac24a"/><circle cx="58" cy="30" r="3" fill="#7ac24a"/><circle cx="20" cy="54" r="4" fill="#4e9228"/><circle cx="66" cy="62" r="5" fill="#3a6e1a"/><circle cx="32" cy="74" r="3" fill="#4e9228"/>
+</svg>

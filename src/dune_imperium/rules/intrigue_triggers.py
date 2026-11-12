@@ -1,0 +1,590 @@
+"""Face-up Intrigue cards waiting on a printed trigger, and Coercive
+Negotiation's Contract reveal.
+
+A Plot card whose effect does not apply immediately stays face up in front of
+its owner until it does [FAQ p. 2] (Call to Arms). So does a Plot whose
+effect waits for the owner's Reveal turn: "If the card does something that
+won't apply until your next Reveal turn (for example: Charisma, Recruitment
+Mission), keep it face up in front of you until then, then use and discard
+it." [FAQ p. 2] (Tleilaxu Puppet, Manipulate). This module fires those
+triggers and expires face-up cards whose window has closed. It deliberately
+sits below the acquisition and Reveal modules, so it applies its rewards
+directly instead of going through the effect interpreter.
+
+"When you deploy three or more units to the Conflict in a single turn"
+(Distraction, Coercive Negotiation) is a condition for playing the card,
+not a trigger it waits for (user ruling 2026-10-03, OQ-016); the reveal
+frame Coercive Negotiation opens when played lives here.
+"""
+
+from collections.abc import Iterable
+from copy import replace
+from typing import Final
+
+from dune_imperium.content.core.effects import (
+    AcquireToDeckTopThisRound,
+    EffectSection,
+    OnRevealAcquisitionThisRound,
+    RecruitTroops,
+    RevealContractsTakeOne,
+    RevealPersuasionThisRound,
+    SetAsideImperiumRowCard,
+)
+from dune_imperium.content.registry.contracts import contract_for_instance
+from dune_imperium.content.registry.intrigue import INTRIGUE_CARDS_BY_INSTANCE
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.contract_tiles import (
+    contract_intrigue_trash_frame,
+    receive_contract,
+)
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.frames import (
+    FrameKind,
+    frame_context,
+    owned_top_frame,
+    replace_player,
+    reveal_is_open_for,
+    update_turn_recruits,
+    with_context,
+)
+
+# Reveal frame context: this Reveal's acquisitions whose face-up Intrigue
+# triggers wait for the decision frames the acquired card's own effects
+# opened (OQ-012, user ruling 2026-10-04), oldest first and comma-separated.
+# Each entry is ``source|anchor``: the acquisition's event source and the id
+# of the frame those decision frames sit on (``_acquisition_frames``). The
+# key is absent while nothing waits.
+DEFERRED_ACQUISITION_TRIGGERS_KEY = "deferred_acquisition_triggers"
+
+type _WaitingTrigger = tuple[str, str]
+
+
+_REVEAL_TURN_REWARDS: Final = (
+    RevealPersuasionThisRound,
+    AcquireToDeckTopThisRound,
+    SetAsideImperiumRowCard,
+)
+"""Plot rewards that last until the owner's Reveal turn this round ends:
+Tleilaxu Puppet's "Gain [1 Persuasion] during your Reveal turn this round",
+Recruitment Mission's deck-top option for the cards acquired in it
+[FAQ p. 3] and Manipulate's set-aside card, acquirable at a discount until
+the end of that Reveal turn [FAQ p. 3]."""
+
+
+def waits_for_reveal_turn(sections: Iterable[EffectSection]) -> bool:
+    """Whether a played option's effect waits for the owner's Reveal turn.
+
+    "If the card does something that won't apply until your next Reveal turn
+    (for example: Charisma, Recruitment Mission), keep it face up in front of
+    you until then, then use and discard it." [FAQ p. 2]
+    (docs/rules/player-turns.md). Such a card is kept face up instead of
+    discarded, and ``expire_reveal_faceup_intrigue`` discards it when the
+    owner's Reveal turn ends -- also when it was played in that Reveal turn.
+    """
+
+    return any(
+        isinstance(reward, _REVEAL_TURN_REWARDS)
+        for section in sections
+        for reward in section.rewards
+    )
+
+
+def _faceup_entries_until_reveal_end(faceup: tuple[str, ...]) -> tuple[str, ...]:
+    """Face-up cards discarded when their owner's Reveal turn ends, in order:
+    per-acquisition triggers and Plots whose effect waits for that turn."""
+
+    matches: list[str] = []
+    for card_id in faceup:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None:
+            continue
+        if any(
+            isinstance(option.trigger, OnRevealAcquisitionThisRound)
+            or (option.trigger is None and waits_for_reveal_turn(option.sections))
+            for option in entry.options
+        ):
+            matches.append(card_id)
+    return tuple(matches)
+
+
+def _faceup_entries_with_trigger(
+    faceup: tuple[str, ...],
+    trigger_type: type,
+) -> tuple[str, ...]:
+    matches: list[str] = []
+    for card_id in faceup:
+        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+        if entry is None:
+            continue
+        if any(isinstance(option.trigger, trigger_type) for option in entry.options):
+            matches.append(card_id)
+    return tuple(matches)
+
+
+def fire_reveal_acquisition_intrigue(
+    state: GameState,
+    player: int,
+    *,
+    source: str,
+    started: GameState,
+    frames_follow: bool = False,
+) -> RuleResult:
+    """Fire each face-up per-acquisition card once for one Reveal acquisition.
+
+    Only acquisitions made while the owner's own Reveal frame is on the stack
+    count; the trigger window is the owner's Reveal turn this round. Troops
+    a trigger recruits join the Reveal turn's recruit count like any other
+    Reveal-turn recruit: "You may deploy any units you recruit this turn and
+    up to two more from your garrison" [Bloodlines p. 5] governs the
+    Combat-icon deployment allowance regardless of what recruited them.
+
+    The trigger comes after the acquired card's own acquisition effects
+    (OQ-012), also when those open decision frames (user ruling 2026-10-04,
+    "선택 뒤로 맞춤"). ``started`` is the state the acquisition began in and
+    ``state`` the one the card's own effects left. When those effects opened
+    a decision frame (Spiritual Fervor's Research direction, a Spy post, the
+    Contract market, a reshuffle chance), or ``frames_follow`` says the
+    caller opens the Spy post or the Contract market once this returns, the
+    trigger waits on the owner's Reveal frame, and
+    ``fire_deferred_acquisition_trigger`` fires it exactly as here once the
+    decision frames the card's own effects opened are answered. Only those
+    frames hold it: Reveal choices that were already waiting, and those of
+    cards the effects drew or revealed late (Corrinth City), belong to other
+    cards and come after the troop, as they do when no frame opens.
+    Automatic steps the answers queue (an Intrigue draw, the Emperor track's
+    Spy, a Navigation play) still follow the troop, as the ones an
+    acquisition without frames queues do. A trigger that could fire at once
+    queues behind one already waiting, so troops come in acquisition order.
+    """
+
+    owner = state.players[player]
+    if not owner.intrigue_faceup or not reveal_is_open_for(state, player):
+        return RuleResult(state=state)
+    if not _faceup_entries_with_trigger(
+        owner.intrigue_faceup, OnRevealAcquisitionThisRound
+    ):
+        return RuleResult(state=state)
+    anchor, opened = _acquisition_frames(started, state, player)
+    reveal = _owner_reveal_index(state, player)
+    waiting = _waiting_triggers(state.decision_stack[reveal])
+    if (
+        frames_follow
+        or waiting
+        or any(frame.kind != FrameKind.REVEAL_CHOICE for frame in opened)
+    ):
+        queued = (*waiting, (source, anchor))
+        return RuleResult(state=_with_waiting_triggers(state, reveal, queued))
+    return _fire_acquisition_trigger(state, player, source)
+
+
+def _fire_acquisition_trigger(state: GameState, player: int, source: str) -> RuleResult:
+    """Recruit each face-up per-acquisition card's troops now for ``source``."""
+
+    owner = state.players[player]
+    events: list[GameEvent] = []
+    total_recruited = 0
+    for card_id in _faceup_entries_with_trigger(
+        owner.intrigue_faceup, OnRevealAcquisitionThisRound
+    ):
+        entry = INTRIGUE_CARDS_BY_INSTANCE[card_id]
+        option = next(
+            option
+            for option in entry.options
+            if isinstance(option.trigger, OnRevealAcquisitionThisRound)
+        )
+        recruited_total = 0
+        requested_total = 0
+        for section in option.sections:
+            for reward in section.rewards:
+                if not isinstance(reward, RecruitTroops):
+                    raise NotImplementedError(
+                        "reveal-acquisition triggers only support troop recruits"
+                    )
+                owner, recruited = recruit_troops(owner, reward.count)
+                recruited_total += recruited
+                requested_total += reward.count
+        total_recruited += recruited_total
+        trigger_source = f"{source}:reveal_trigger:{card_id}"
+        events.append(
+            GameEvent(
+                event_id=trigger_source,
+                kind="intrigue_triggered",
+                payload=(
+                    ("card_id", card_id),
+                    ("player", player),
+                    ("troops", recruited_total),
+                ),
+            )
+        )
+        events.extend(
+            recruit_shortfall_events(
+                trigger_source, player, requested_total, recruited_total
+            )
+        )
+    if not events:
+        return RuleResult(state=state)
+    next_state = replace(state, players=replace_player(state.players, owner))
+    next_state = update_turn_recruits(next_state, troops_recruited=total_recruited)
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _acquisition_frames(
+    started: GameState, state: GameState, player: int
+) -> tuple[str, tuple[DecisionFrame, ...]]:
+    """Return an acquisition's anchor frame id and the frames above it.
+
+    The anchor is the deepest frame common to the stack the acquisition
+    started from and the one the card's own effects left, never below the
+    owner's Reveal frame; every frame above it is new (OQ-012, user ruling
+    2026-10-04). An Intrigue card resolving the acquisition has its choice
+    frame on top of ``started``: the card closes once its slot is done and
+    its caller restacks the frames the slot pushed (``_lift_pushed_frames``
+    in ``rules.intrigue``), so the anchor is the frame below that choice
+    frame, and the choice frame is not one of the new frames.
+    """
+
+    before = started.decision_stack
+    resolving = ""
+    if before and before[-1].kind == FrameKind.INTRIGUE_CHOICE:
+        resolving = before[-1].frame_id
+        before = before[:-1]
+    after = state.decision_stack
+    depth = 0
+    for earlier, later in zip(before, after, strict=False):
+        if earlier.frame_id != later.frame_id:
+            break
+        depth += 1
+    depth = max(depth, _owner_reveal_index(state, player) + 1)
+    opened = tuple(frame for frame in after[depth:] if frame.frame_id != resolving)
+    return after[depth - 1].frame_id, opened
+
+
+def _owner_reveal_index(state: GameState, player: int) -> int:
+    stack = state.decision_stack
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        if (
+            frame.kind == FrameKind.REVEAL
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    raise RuntimeError("an acquisition trigger can wait only on an open Reveal")
+
+
+def _waiting_triggers(frame: DecisionFrame) -> tuple[_WaitingTrigger, ...]:
+    value = dict(frame.context).get(DEFERRED_ACQUISITION_TRIGGERS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Reveal frame has invalid deferred acquisition triggers")
+    waiting: list[_WaitingTrigger] = []
+    for item in value.split(",") if value else ():
+        source, separator, anchor = item.partition("|")
+        if not separator or not source or not anchor:
+            raise RuntimeError(
+                "Reveal frame has invalid deferred acquisition triggers"
+            )
+        waiting.append((source, anchor))
+    return tuple(waiting)
+
+
+def _with_waiting_triggers(
+    state: GameState, index: int, waiting: tuple[_WaitingTrigger, ...]
+) -> GameState:
+    """Store ``waiting`` on the Reveal frame at ``index``, oldest first."""
+
+    for source, anchor in waiting:
+        if not source or not anchor or any(
+            separator in value for value in (source, anchor) for separator in ",|"
+        ):
+            raise ValueError("a deferred acquisition trigger needs plain IDs")
+    stack = state.decision_stack
+    frame = stack[index]
+    context = frame_context(frame)
+    if waiting:
+        context[DEFERRED_ACQUISITION_TRIGGERS_KEY] = ",".join(
+            f"{source}|{anchor}" for source, anchor in waiting
+        )
+    else:
+        del context[DEFERRED_ACQUISITION_TRIGGERS_KEY]
+    return replace(
+        state,
+        decision_stack=(
+            *stack[:index],
+            with_context(frame, context),
+            *stack[index + 1 :],
+        ),
+    )
+
+
+def _waiting_reveal_index(state: GameState) -> int | None:
+    """The stack index of the Reveal frame with waiting triggers, if any."""
+
+    stack = state.decision_stack
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        if frame.kind == FrameKind.REVEAL and any(
+            key == DEFERRED_ACQUISITION_TRIGGERS_KEY for key, _ in frame.context
+        ):
+            return index
+    return None
+
+
+def deferred_acquisition_trigger_is_due(state: GameState) -> bool:
+    """Whether the oldest waiting acquisition trigger can fire now.
+
+    It can once the decision frames the acquired card's own effects opened
+    are answered: only Reveal choices may remain above its anchor frame,
+    those of cards the effects drew or revealed late, which come after the
+    troop as they do when no frame opens (OQ-012, user ruling 2026-10-04).
+    An anchor gone from the stack closed after everything above it, so the
+    owner's Reveal frame stands in for it. Later triggers wait behind the
+    oldest one.
+    """
+
+    index = _waiting_reveal_index(state)
+    if index is None:
+        return False
+    _, anchor = _waiting_triggers(state.decision_stack[index])[0]
+    stack = state.decision_stack
+    present = any(frame.frame_id == anchor for frame in stack)
+    for frame in reversed(stack):
+        if frame.frame_id == anchor or (
+            not present and frame.kind == FrameKind.REVEAL
+        ):
+            return True
+        if frame.kind != FrameKind.REVEAL_CHOICE:
+            return False
+    return False
+
+
+def fire_deferred_acquisition_trigger(state: GameState) -> RuleResult:
+    """Fire the oldest waiting acquisition's face-up Intrigue triggers.
+
+    The same events, Reveal recruit credit and supply limit as an
+    acquisition whose card opened no frame (``fire_reveal_acquisition_intrigue``);
+    the key leaves the Reveal frame with its last waiting acquisition.
+    """
+
+    index = _waiting_reveal_index(state)
+    if index is None:
+        raise ValueError("no acquisition trigger is waiting on a Reveal")
+    frame = state.decision_stack[index]
+    if not isinstance(frame.decision, PlayerDecision):
+        raise RuntimeError("a Reveal frame must belong to a player")
+    waiting = _waiting_triggers(frame)
+    cleared = _with_waiting_triggers(state, index, waiting[1:])
+    return _fire_acquisition_trigger(cleared, frame.decision.owner, waiting[0][0])
+
+
+def _reveal_count(card_id: str) -> int:
+    """How many bank Contracts ``card_id`` reveals (Coercive Negotiation: 3)."""
+
+    entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
+    for option in entry.options if entry is not None else ():
+        for section in option.sections:
+            for reward in section.rewards:
+                if isinstance(reward, RevealContractsTakeOne):
+                    return reward.count
+    return 0
+
+
+def open_contract_reveal(
+    state: GameState,
+    player: int,
+    card_id: str,
+    *,
+    source: str,
+) -> GameState:
+    """Open Coercive Negotiation's reveal once the played card left the hand.
+
+    "When you deploy three or more units to the Conflict in a single turn:
+    Reveal three contracts from the bank. Take one and trash the other two."
+    [Coercive Negotiation card]. The card is played once that condition
+    holds and resolves at once (user ruling 2026-10-03, OQ-016); its
+    playability already required three Contracts in the bank (OQ-064). The
+    frame kind keeps the revealed Contracts face up to every seat while the
+    owner chooses (``core.observation.revealed_contract_ids``).
+    """
+
+    return state.push_decision(
+        DecisionFrame(
+            kind=FrameKind.INTRIGUE_TRIGGER_CONTRACT,
+            frame_id=f"{source}:contracts",
+            decision=PlayerDecision(
+                owner=player, prompt="Take one of the revealed Contracts"
+            ),
+            context=(("card_id", card_id), ("turn_owner", player)),
+        )
+    )
+
+
+def takeable_trigger_contract_ids(
+    state: GameState,
+    player: int,
+    card_id: str,
+) -> tuple[str, ...]:
+    """Return the bank Contracts ``card_id`` would reveal that ``player`` can take.
+
+    Coercive Negotiation reveals the bank's top three [Coercive Negotiation
+    card]. "You can't take the new Immediate contract unless you have an
+    Intrigue card to trash." [Bloodlines p. 2]; the played card itself has
+    already gone to the discard pile [Main p. 7].
+    """
+
+    count = _reveal_count(card_id)
+    holds_intrigue = bool(state.players[player].intrigue_cards)
+    return tuple(
+        instance_id
+        for instance_id in state.contract_bank[:count]
+        if holds_intrigue
+        or not contract_for_instance(instance_id).requires_intrigue_trash
+    )
+
+
+def legal_trigger_contract_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Coercive Negotiation: take one of the bank's top Contracts.
+
+    The card never says "may" ("When you deploy three or more units to the
+    Conflict in a single turn: Reveal three contracts from the bank. Take one
+    and trash the other two." [Coercive Negotiation card]), and "Most effects
+    from a board space or card you play are mandatory, unless: a card says
+    'you may' do something" [FAQ p. 3]. So the frame offers no decline. The
+    card is playable only with three Contracts in the bank (OQ-064), and
+    with three revealed one is always takeable: only the single Immediate
+    token needs an Intrigue card to trash [Bloodlines p. 2].
+    """
+
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_TRIGGER_CONTRACT, player)
+    if frame is None:
+        return ()
+    card_id = dict(frame.context).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Intrigue trigger frame has invalid card ID")
+    takes = takeable_trigger_contract_ids(state, player, card_id)
+    if not takes:
+        raise RuntimeError("Coercive Negotiation opened with no Contract to take")
+    return tuple(
+        DomainAction(
+            action_id="take_trigger_contract",
+            actor=player,
+            arguments=(("instance_id", instance_id),),
+        )
+        for instance_id in takes
+    )
+
+
+def apply_trigger_contract_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Reveal the bank's top Contracts, keep the chosen one, trash the rest."""
+
+    if action not in legal_trigger_contract_actions(state, action.actor):
+        raise ValueError("action is not a legal Intrigue Contract trigger choice")
+    frame = state.decision_stack[-1]
+    card_id = dict(frame.context).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Intrigue trigger frame has invalid card ID")
+    player = action.actor
+    source = frame.frame_id
+    count = _reveal_count(card_id)
+    revealed = state.contract_bank[:count]
+    instance_id = str(dict(action.arguments)["instance_id"])
+    definition = contract_for_instance(instance_id)
+    owner = receive_contract(state, state.players[player], instance_id)
+    popped = state.pop_decision()
+    if definition.requires_intrigue_trash:
+        popped = popped.push_decision(
+            contract_intrigue_trash_frame(
+                player, instance_id, source=f"{source}:contract:{instance_id}"
+            )
+        )
+    next_state = replace(
+        popped,
+        players=replace_player(state.players, owner),
+        contract_bank=state.contract_bank[count:],
+        contract_trash=(
+            *state.contract_trash,
+            *(trashed_id for trashed_id in revealed if trashed_id != instance_id),
+        ),
+    )
+    completion: tuple[GameEvent, ...] = ()
+    if definition.completes_immediately and not definition.requires_intrigue_trash:
+        # Imported here: ``contracts`` reaches this module through card draws.
+        from dune_imperium.rules.contracts import complete_immediate_contract
+
+        # An Immediate tile completes the moment it is taken [Main p. 16];
+        # its reward waits in its window (OQ-112).
+        completed = complete_immediate_contract(
+            next_state, player, instance_id, source=f"{source}:contract:{instance_id}"
+        )
+        next_state = completed.state
+        completion = completed.events
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:contracts_revealed",
+                kind="contracts_revealed",
+                payload=(("contract_ids", tuple(revealed)), ("player", player)),
+            ),
+            GameEvent(
+                event_id=f"{source}:contract_taken",
+                kind="contract_taken",
+                payload=(("contract_id", instance_id), ("player", player)),
+            ),
+            *(
+                GameEvent(
+                    event_id=f"{source}:contract_trashed:{trashed_id}",
+                    kind="contract_trashed",
+                    payload=(("contract_id", trashed_id),),
+                )
+                for trashed_id in revealed
+                if trashed_id != instance_id
+            ),
+            *completion,
+        ),
+    )
+
+
+def expire_reveal_faceup_intrigue(state: GameState, player: int) -> RuleResult:
+    """Discard face-up cards whose window was the owner's Reveal turn.
+
+    Called when the owner's Reveal turn ends: a per-acquisition card's
+    "this round" window has closed, whether or not it ever fired, and a
+    Plot whose effect waited for this Reveal turn has been used [FAQ p. 2].
+    """
+
+    owner = state.players[player]
+    expired = _faceup_entries_until_reveal_end(owner.intrigue_faceup)
+    if not expired:
+        return RuleResult(state=state)
+    next_owner = replace(
+        owner,
+        intrigue_faceup=tuple(
+            card_id for card_id in owner.intrigue_faceup if card_id not in expired
+        ),
+    )
+    next_state = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        intrigue_discard=(*state.intrigue_discard, *expired),
+    )
+    events = tuple(
+        GameEvent(
+            event_id=(
+                f"round:{state.round_number}:player:{player}:intrigue_expired:{card_id}"
+            ),
+            kind="intrigue_expired",
+            payload=(("card_id", card_id), ("player", player)),
+        )
+        for card_id in expired
+    )
+    return RuleResult(state=next_state, events=events)

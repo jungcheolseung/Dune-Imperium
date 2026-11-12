@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="123" height="155" viewBox="0 0 79 100">
+  <!-- Recall a Spy: the Spy cylinder with a white arrow up. Drawn by hand for the public build. -->
+  <defs><linearGradient id="cyl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9a9a9a"/><stop offset="1" stop-color="#d8d8d8"/></linearGradient><linearGradient id="cyltop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2f2f2"/><stop offset="1" stop-color="#bdbdbd"/></linearGradient></defs>
+  <path d="M6,26 V84 A24,11 0 0 0 54,84 V26" fill="url(#cyl)" stroke="#222" stroke-width="2.6"/><ellipse cx="30" cy="26" rx="24" ry="11" fill="url(#cyltop)" stroke="#222" stroke-width="2.6"/><polygon points="56,6 72,22 62.7,22 62.7,74 49.3,74 49.3,22 40,22" fill="#fff" stroke="#2a2a2a" stroke-width="2.6" stroke-linejoin="round"/>
+</svg>

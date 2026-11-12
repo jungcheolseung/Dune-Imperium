@@ -1,0 +1,1114 @@
+"""HTTP-level tests for the FastAPI play server (needs the ``ui`` extra)."""
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from dune_imperium.server.app import (  # noqa: E402
+    OWN_PICTURES_DIR,
+    create_app,
+    default_board_image_path,
+    korean_board_image_path,
+)
+from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
+
+
+def _unversioned(url: str) -> str:
+    """Return an asset URL without its ``?v=`` and insist that it had one.
+
+    ``create_app`` hands every asset URL out with a version of the file
+    behind it, so that a picture replaced in place is fetched again.
+    """
+
+    path, marker, version = url.partition("?v=")
+    assert marker and version, url
+    return path
+
+
+# The project's own board drawings (static/pictures/board), which stand in
+# for a missing scan.
+OWN_BOARD = "/static/pictures/board/uprising.svg"
+OWN_BOARD_KO = "/static/pictures/board/uprising_ko.svg"
+OWN_IMPERIUM_BOARD = "/static/pictures/board/imperium.svg"
+OWN_TOKENS = "/static/pictures/tokens/"
+
+
+def _own_icon_urls() -> dict[str, str]:
+    """The catalog's icons when only the project's own drawings exist."""
+
+    return {
+        path.stem: f"/static/pictures/icons/{path.name}"
+        for path in sorted((OWN_PICTURES_DIR / "icons").glob("*.svg"))
+    }
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> TestClient:
+    # The image locations are pinned to nonexistent paths so the tests
+    # behave identically with or without the machine-local caches.
+    return TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+            bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
+        )
+    )
+
+
+def _create(client: TestClient, **overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "seats": ["human", "heuristic", "heuristic", "heuristic"],
+        "game_seed": 21,
+    }
+    payload.update(overrides)
+    response = client.post("/games", json=payload)
+    assert response.status_code == 200, response.text
+    summary: dict[str, object] = response.json()
+    return summary
+
+
+def test_root_serves_the_ui_and_static_assets(client: TestClient) -> None:
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "text/html" in index.headers["content-type"]
+    assert ">듄: 임페리움</title>" in index.text
+
+    script = client.get("/static/app.js")
+    assert script.status_code == 200
+    style = client.get("/static/style.css")
+    assert style.status_code == 200
+    # Browsers must revalidate the UI files so an edited app.js is picked
+    # up on a plain reload instead of served from the heuristic cache.
+    for response in (index, script, style):
+        assert response.headers["cache-control"] == "no-cache"
+    assert "cache-control" not in client.get("/catalog").headers
+
+
+@pytest.mark.parametrize("seating", ["random", "fixed"])
+def test_whoami_tells_the_setup_screen_whether_to_shuffle_the_seats(
+    seating: str, tmp_path: Path
+) -> None:
+    # docs/rules does not seat players: the First Player comes from the
+    # Objective deal [Main p. 5] (docs/rules/setup-and-game-flow.md). The
+    # browser shuffles the configured seats before POST /games when the
+    # server's --seating says "random" (project convention, user requests
+    # 2026-10-10 and 2026-11-01); game creation is unchanged.
+    app = create_app(
+        saves_dir=tmp_path / "saves",
+        card_images_dir=tmp_path / "no-images",
+        icons_dir=tmp_path / "no-icons",
+        tokens_dir=tmp_path / "no-tokens",
+        board_image=tmp_path / "no-map.jpg",
+        bene_tleilax_image=tmp_path / "no-bene-tleilax.jpg",
+        default_seating=seating,
+    )
+    client = TestClient(app)
+    assert client.get("/whoami").json()["seating"] == seating
+    # The seats reach the game exactly as posted, whatever the seating.
+    seats = ["heuristic", "human", "heuristic", "heuristic"]
+    assert _create(client, seats=seats)["seats"] == seats
+
+
+def test_the_play_server_defaults_to_shuffled_seats_and_knows_no_other(
+    client: TestClient, tmp_path: Path
+) -> None:
+    assert client.get("/whoami").json()["seating"] == "random"
+    with pytest.raises(ValueError, match="seating"):
+        create_app(saves_dir=tmp_path / "saves", default_seating="rotate")
+
+
+def test_catalog_endpoint_serves_display_names(client: TestClient) -> None:
+    response = client.get("/catalog")
+    assert response.status_code == 200
+    catalog = response.json()
+    assert catalog["cards"]["sardaukar_soldier"]["name"] == "Sardaukar Soldier"
+    assert catalog["leaders"]["lady_jessica"]["name"].startswith("Lady Jessica")
+
+
+def test_promo_cards_option_reaches_the_ruleset(client: TestClient) -> None:
+    summary = _create(client, promo_cards=True, game_seed=5)
+    assert summary["promo_cards"] is True
+    assert _create(client, game_seed=5)["promo_cards"] is False
+
+
+def test_go_to_11_option_starts_every_score_at_zero(client: TestClient) -> None:
+    # The Immortality variant starts every Score marker at 0 instead of 1
+    # [Immortality p. 12] [Main p. 5]. Four human seats keep the view at the
+    # first decision, before any seat could score.
+    humans = ["human", "human", "human", "human"]
+
+    def scores(summary: dict[str, object]) -> list[object]:
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        view = client.get(
+            f"/games/{summary['game_id']}/seats/{decision['owner']}/view"
+        )
+        assert view.status_code == 200, view.text
+        return [player["victory_points"] for player in view.json()["players"]]
+
+    go_to_11 = _create(client, seats=humans, immortality=True, go_to_11=True)
+    assert go_to_11["go_to_11"] is True
+    assert scores(go_to_11) == [0, 0, 0, 0]
+    # An omitted key is off: raw POSTs from scripts keep the printed start.
+    plain = _create(client, seats=humans, immortality=True)
+    assert plain["go_to_11"] is False
+    assert scores(plain) == [1, 1, 1, 1]
+
+
+def test_base_game_option_starts_the_original_game(client: TestClient) -> None:
+    # The original Dune: Imperium (docs/base-game-and-ix-plan.md 18, P5a):
+    # the summary and every view name the base game, and its own board is
+    # played (Carthag is a space of the original board only [DI p. 18]).
+    humans = ["human", "human", "human", "human"]
+    original = _create(client, seats=humans, base_game="imperium")
+    assert original["base_game"] == "imperium"
+    decision = original["decision"]
+    assert isinstance(decision, dict)
+    view = client.get(f"/games/{original['game_id']}/seats/{decision['owner']}/view")
+    assert view.status_code == 200, view.text
+    assert view.json()["base_game"] == "imperium"
+    # Omitted is Uprising, as for every save without the key.
+    assert _create(client, seats=humans)["base_game"] == "uprising"
+
+
+def test_base_game_option_refuses_what_the_original_cannot_take_yet(
+    client: TestClient,
+) -> None:
+    # Setup refuses the original game with an option of a later stage (CHOAM
+    # in P7); the server answers that as a bad request, not a fault.
+    response = client.post(
+        "/games",
+        json={"seats": ["human"] * 4, "base_game": "imperium", "choam_module": True},
+    )
+    assert response.status_code == 400, response.text
+    assert "choam_module" in response.text
+    unknown = client.post("/games", json={"seats": ["human"] * 4, "base_game": "dune"})
+    assert unknown.status_code == 422, unknown.text
+
+
+def test_epic_game_option_reaches_the_setup(client: TestClient) -> None:
+    # Epic Game Mode puts five troops in each garrison and deals each player
+    # one Intrigue card at setup [Rise of Ix p. 10]; the Score marker keeps
+    # its printed start of 1 [Main p. 5], or 0 with Go to 11 (OQ-093). Four
+    # human seats keep the view at the first decision.
+    humans = ["human", "human", "human", "human"]
+
+    def players(summary: dict[str, object]) -> list[tuple[object, ...]]:
+        decision = summary["decision"]
+        assert isinstance(decision, dict)
+        view = client.get(
+            f"/games/{summary['game_id']}/seats/{decision['owner']}/view"
+        )
+        assert view.status_code == 200, view.text
+        return [
+            (
+                player["troops_garrison"],
+                player["intrigue_card_count"],
+                player["victory_points"],
+            )
+            for player in view.json()["players"]
+        ]
+
+    # An independent option (OQ-092): nothing else needs to be on.
+    epic = _create(client, seats=humans, epic_game=True)
+    assert epic["epic_game"] is True
+    assert players(epic) == [(5, 1, 1)] * 4
+    both = _create(
+        client, seats=humans, epic_game=True, immortality=True, go_to_11=True
+    )
+    assert both["epic_game"] is True
+    assert players(both) == [(5, 1, 0)] * 4
+    # An omitted key is off: raw POSTs from scripts keep the retail setup.
+    plain = _create(client, seats=humans)
+    assert plain["epic_game"] is False
+    assert players(plain) == [(3, 0, 1)] * 4
+
+
+def test_created_games_are_listed_and_summarized(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+
+    assert client.get("/games").json() == [summary]
+    assert client.get(f"/games/{game_id}").json() == summary
+    assert summary["finished"] is False
+    decision = summary["decision"]
+    assert isinstance(decision, dict)
+    assert decision["owner"] == 0
+
+
+def test_an_all_ai_game_returns_finished_standings(client: TestClient) -> None:
+    summary = _create(client, seats=["random", "random", "random", "random"])
+
+    assert summary["finished"] is True
+    standings = summary["standings"]
+    assert isinstance(standings, list)
+    assert sorted(entry["rank"] for entry in standings) == [1, 2, 3, 4]
+
+
+def test_views_and_actions_respect_the_seat_boundary(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+
+    view = client.get(f"/games/{game_id}/seats/0/view")
+    assert view.status_code == 200
+    assert view.json()["player"] == 0
+
+    actions = client.get(f"/games/{game_id}/seats/0/actions")
+    assert actions.status_code == 200
+    assert actions.json()["actions"]
+
+    assert client.get(f"/games/{game_id}/seats/1/view").status_code == 403
+    assert client.get(f"/games/{game_id}/seats/1/actions").status_code == 403
+
+
+def test_apply_action_advances_and_guards_revisions(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+    revision = summary["revision"]
+
+    stale = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": int(str(revision)) + 1, "index": 0},
+    )
+    assert stale.status_code == 409
+
+    applied = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": revision, "index": 0},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["revision"] != revision
+
+
+def test_unknown_games_and_bad_requests_map_to_http_errors(
+    client: TestClient,
+) -> None:
+    assert client.get("/games/absent").status_code == 404
+    assert client.get("/games/absent/seats/0/view").status_code == 404
+    assert client.delete("/games/absent").status_code == 404
+
+    bad_seats = client.post("/games", json={"seats": ["human"]})
+    assert bad_seats.status_code == 422
+    unknown_kind = client.post(
+        "/games", json={"seats": ["human", "alien", "random", "random"]}
+    )
+    assert unknown_kind.status_code == 400
+
+    # An unsupported ruleset combination is a bad request, not a server
+    # fault: the Tech Module requires Bloodlines [Bloodlines pp. 6-7], and
+    # RulesetConfig raises a plain ValueError for it. Before this was mapped
+    # the host saw a bare 500 "Internal Server Error" with no detail.
+    tech_without_bloodlines = client.post(
+        "/games",
+        json={
+            "seats": ["human", "random", "random", "random"],
+            "tech_module": True,
+        },
+    )
+    assert tech_without_bloodlines.status_code == 400, tech_without_bloodlines.text
+    assert "Bloodlines" in tech_without_bloodlines.json()["detail"]
+    # Go to 11 is offered only with Immortality (OQ-091), the same way.
+    go_to_11_without_immortality = client.post(
+        "/games",
+        json={
+            "seats": ["human", "random", "random", "random"],
+            "go_to_11": True,
+        },
+    )
+    assert go_to_11_without_immortality.status_code == 400, (
+        go_to_11_without_immortality.text
+    )
+    assert "Immortality" in go_to_11_without_immortality.json()["detail"]
+
+
+def test_deleting_a_game_removes_it(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+
+    assert client.delete(f"/games/{game_id}").json() == {"deleted": game_id}
+    assert client.get(f"/games/{game_id}").status_code == 404
+
+
+def test_saves_roundtrip_over_http(client: TestClient) -> None:
+    summary = _create(client)
+    game_id = summary["game_id"]
+    applied = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": summary["revision"], "index": 0},
+    )
+    assert applied.status_code == 200, applied.text
+    summary = applied.json()
+
+    saved = client.post(f"/games/{game_id}/save", json={"name": "테스트"})
+    assert saved.status_code == 200, saved.text
+    metadata = saved.json()
+    save_id = metadata["save_id"]
+    assert metadata["name"] == "테스트"
+    assert "steps" not in metadata
+    assert metadata["step_count"] > 0
+
+    listing = client.get("/saves")
+    assert listing.status_code == 200
+    assert [entry["save_id"] for entry in listing.json()] == [save_id]
+
+    loaded = client.post(f"/saves/{save_id}/load")
+    assert loaded.status_code == 200, loaded.text
+    restored = loaded.json()
+    assert restored["game_id"] != game_id
+    assert restored["revision"] == summary["revision"]
+    assert restored["decision"] == summary["decision"]
+
+    assert client.delete(f"/saves/{save_id}").json() == {"deleted": save_id}
+    assert client.delete(f"/saves/{save_id}").status_code == 404
+    assert client.post(f"/saves/{save_id}/load").status_code == 404
+    assert client.post("/games/absent/save", json={}).status_code == 404
+
+
+def test_review_over_http(tmp_path: Path) -> None:
+    manager = GameSessionManager()
+    client = TestClient(create_app(manager, saves_dir=tmp_path / "saves"))
+    summary = manager.create_game(
+        ("human", "heuristic", "heuristic", "heuristic"), game_seed=14
+    )
+    game_id = str(summary["game_id"])
+    for _ in range(2_000):
+        if summary["finished"]:
+            break
+        if summary["confirmation"] == 0:
+            summary = manager.confirm_turn(
+                game_id, seat=0, revision=int(str(summary["revision"]))
+            )
+            continue
+        summary = manager.apply_action(
+            game_id, seat=0, revision=int(str(summary["revision"])), index=0
+        )
+    assert summary["finished"] is True
+
+    review = client.get(f"/games/{game_id}/review", params={"seat": 0})
+    assert review.status_code == 200, review.text
+    step_count = review.json()["step_count"]
+    assert step_count == len(review.json()["steps"])
+
+    final = client.get(f"/games/{game_id}/review/{step_count}", params={"seat": 0})
+    assert final.status_code == 200, final.text
+    assert final.json()["phase"] == "finished"
+    assert final.json()["view"]["player"] == 0
+
+    # Post-game disclosure (OQ-010): AI seats can be reviewed too.
+    assert (
+        client.get(f"/games/{game_id}/review", params={"seat": 1}).status_code
+        == 200
+    )
+    assert (
+        client.get(f"/games/{game_id}/review", params={"seat": 4}).status_code
+        == 403
+    )
+    assert "disclosure" in final.json()["view"]
+    assert (
+        client.get(
+            f"/games/{game_id}/review/{step_count + 1}", params={"seat": 0}
+        ).status_code
+        == 400
+    )
+
+    unfinished = _create(client)
+    assert (
+        client.get(
+            f"/games/{unfinished['game_id']}/review", params={"seat": 0}
+        ).status_code
+        == 400
+    )
+
+
+def test_a_leader_draft_game_over_http_reaches_round_one(
+    client: TestClient,
+) -> None:
+    summary = _create(
+        client,
+        seats=["human", "human", "human", "human"],
+        leader_draft=True,
+        game_seed=22,
+    )
+    game_id = summary["game_id"]
+
+    picks = 0
+    finishes = 0
+    decision = summary["decision"]
+    while isinstance(decision, dict) and decision["kind"] == "leader_draft":
+        owner = decision["owner"]
+        actions = client.get(f"/games/{game_id}/seats/{owner}/actions").json()
+        action_id = actions["actions"][0]["action_id"]
+        applied = client.post(
+            f"/games/{game_id}/actions",
+            json={"seat": owner, "revision": summary["revision"], "index": 0},
+        )
+        assert applied.status_code == 200, applied.text
+        summary = applied.json()
+        decision = summary["decision"]
+        picks += action_id == "pick_leader"
+        finishes += action_id == "finish_leader_draft"
+    assert picks == 4
+    assert finishes == 1
+    assert summary["round_number"] == 1
+
+
+def test_card_images_are_served_from_a_manifest_checkout(tmp_path: Path) -> None:
+    cards = tmp_path / "cards"
+    relative = "uprising/imperium/Sardaukar Soldier.webp"
+    (cards / "en" / "uprising" / "imperium").mkdir(parents=True)
+    (cards / "en" / relative).write_bytes(b"not-really-webp")
+    (cards / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "path": relative,
+                        "set": "uprising",
+                        "kind": "imperium",
+                        "name": "Sardaukar Soldier",
+                        "name_source": "engine",
+                        "content_id": "sardaukar_soldier",
+                        "source": {
+                            "site": "dunecardshub",
+                            "file": "x",
+                            "url": "u",
+                            "sha256": "0",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves", card_images_dir=cards, pictures="assets"
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        soldier = catalog["cards"]["sardaukar_soldier"]
+        assert _unversioned(soldier["image"]) == (
+            "/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp"
+        )
+        assert catalog["cards"]["dagger"]["image"] is None
+
+        served = image_client.get(soldier["image"])
+        assert served.status_code == 200
+        assert served.content == b"not-really-webp"
+
+
+def test_the_korean_board_is_served_beside_the_scan(tmp_path: Path) -> None:
+    """The Uprising board with Korean space names (user 2026-11-06) is
+    uprising_ko.jpg beside the scan; the page shows it in Korean."""
+
+    def catalog_and_client(board: Path) -> tuple[dict[str, Any], TestClient]:
+        client = TestClient(
+            create_app(
+                saves_dir=tmp_path / "saves",
+                card_images_dir=tmp_path / "no-images",
+                icons_dir=tmp_path / "no-icons",
+                tokens_dir=tmp_path / "no-tokens",
+                board_image=board,
+                pictures="assets",
+            )
+        )
+        return client.get("/catalog").json(), client
+
+    board = tmp_path / "uprising.jpg"
+    board.write_bytes(b"jpeg-board")
+    catalog, client = catalog_and_client(board)
+    assert catalog["board_image_ko"] is None
+    assert client.get("/board-image/ko").status_code == 404
+
+    (tmp_path / "uprising_ko.jpg").write_bytes(b"jpeg-board-ko")
+    catalog, client = catalog_and_client(board)
+    assert _unversioned(catalog["board_image_ko"]) == "/board-image/ko"
+    assert client.get(catalog["board_image_ko"]).content == b"jpeg-board-ko"
+    assert client.get(catalog["board_image"]).content == b"jpeg-board"
+
+    # Without the English scan the Korean scan is not used either (it is
+    # the same board's other edition, never a board of its own): the
+    # project's own drawings of both stand in (docs/own-pictures-plan.md).
+    catalog, client = catalog_and_client(tmp_path / "missing.jpg")
+    assert catalog["board_image"] == OWN_BOARD
+    assert catalog["board_image_ko"] == OWN_BOARD_KO
+
+
+def test_the_board_pictures_default_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scan is uprising.jpg (map.jpg until 2026-11-06), its Korean
+    edition uprising_ko.jpg beside it, wherever the scan is pointed."""
+
+    monkeypatch.delenv("DUNE_IMPERIUM_BOARD_IMAGE", raising=False)
+    monkeypatch.delenv("DUNE_IMPERIUM_BOARD_IMAGE_KO", raising=False)
+    assert default_board_image_path().name == "uprising.jpg"
+    folder = tmp_path / "board"
+    monkeypatch.setenv("DUNE_IMPERIUM_BOARD_IMAGE", str(folder / "scan.jpg"))
+    assert default_board_image_path() == folder / "scan.jpg"
+    assert korean_board_image_path(folder / "scan.jpg") == folder / "uprising_ko.jpg"
+    monkeypatch.setenv("DUNE_IMPERIUM_BOARD_IMAGE_KO", str(tmp_path / "ko.jpg"))
+    assert korean_board_image_path(folder / "scan.jpg") == tmp_path / "ko.jpg"
+
+
+def test_board_pieces_are_laid_from_the_scans_beside_the_app_tiles(
+    tmp_path: Path,
+) -> None:
+    """Tuek's Sietch is laid on the board scan in a box of the printed
+    tile's shape: the catalog gives it the scan as ``tile_image`` (and the
+    Korean scan as ``tile_image_ko``), versioned and served, while its
+    popover picture ``image`` is the app's render."""
+
+    cards = tmp_path / "cards"
+    relative = "bloodlines/location/Tuek's Sietch.png"
+    rendered = "bloodlines/location/Tuek's Sietch.webp"
+    files = {
+        f"en/{relative}": b"en-scan",
+        f"ko/{relative}": b"ko-scan",
+        f"app/en/{rendered}": b"en-render",
+        f"app/ko/{rendered}": b"ko-render",
+    }
+    for path, content in files.items():
+        (cards / path).parent.mkdir(parents=True, exist_ok=True)
+        (cards / path).write_bytes(content)
+    (cards / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "path": relative,
+                        "set": "bloodlines",
+                        "kind": "location",
+                        "name": "Tuek's Sietch",
+                        "name_source": "engine",
+                        "content_id": "tuek_sietch",
+                        "source": {
+                            "site": "dunecardshub",
+                            "file": "x",
+                            "url": "u",
+                            "sha256": "0",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves", card_images_dir=cards, pictures="assets"
+        )
+    ) as image_client:
+        tuek = image_client.get("/catalog").json()["spaces"]["tuek_sietch"]
+        assert _unversioned(tuek["image"]) == (
+            "/card-images/app/en/bloodlines/location/Tuek%27s%20Sietch.webp"
+        )
+        assert _unversioned(tuek["image_ko"]) == (
+            "/card-images/app/ko/bloodlines/location/Tuek%27s%20Sietch.webp"
+        )
+        assert _unversioned(tuek["tile_image"]) == (
+            "/card-images/en/bloodlines/location/Tuek%27s%20Sietch.png"
+        )
+        assert _unversioned(tuek["tile_image_ko"]) == (
+            "/card-images/ko/bloodlines/location/Tuek%27s%20Sietch.png"
+        )
+        for field, content in (
+            ("image", b"en-render"),
+            ("tile_image", b"en-scan"),
+            ("tile_image_ko", b"ko-scan"),
+        ):
+            served = image_client.get(tuek[field])
+            assert served.status_code == 200, field
+            assert served.content == content, field
+
+
+def test_card_images_degrade_to_text_without_the_cache(
+    client: TestClient,
+) -> None:
+    catalog = client.get("/catalog").json()
+    for section in ("cards", "intrigue", "contracts", "conflicts", "spaces"):
+        assert all(
+            entry["image"] is None for entry in catalog[section].values()
+        ), section
+    missing = client.get("/card-images/en/uprising/imperium/Sardaukar%20Soldier.webp")
+    assert missing.status_code == 404
+    # Without the private icons only the project's own drawings remain.
+    assert catalog["icons"] == _own_icon_urls()
+    assert catalog["board_image"] == OWN_BOARD
+    assert client.get("/board-image").status_code == 404
+    assert client.get("/icons/troop.png").status_code == 404
+    # Without the private tokens the project's own drawings stand in.
+    assert all(
+        str(faces["front"]).startswith(OWN_TOKENS)
+        for faces in catalog["strength_tokens"]
+    )
+    assert client.get("/tokens/strength_blue.png").status_code == 404
+
+
+def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "troop.png").write_bytes(b"png-troop")
+    (icons / "stray.txt").write_bytes(b"ignored")
+    board = tmp_path / "board.jpg"
+    board.write_bytes(b"jpeg-board")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=board,
+            pictures="assets",
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        # The private icon, plus the project's own drawings (``_own_icon_urls``).
+        assert set(catalog["icons"]) == {"troop"} | set(_own_icon_urls())
+        assert _unversioned(catalog["icons"]["troop"]) == "/icons/troop.png"
+        assert _unversioned(catalog["board_image"]) == "/board-image"
+        assert image_client.get(catalog["icons"]["troop"]).content == b"png-troop"
+        served = image_client.get(catalog["board_image"])
+        assert served.status_code == 200
+        assert served.content == b"jpeg-board"
+        # The original game's board is looked for beside the Uprising scan
+        # (imperium.jpg); absent, its picture is our own drawing and its
+        # route a 404.
+        assert catalog["boards"]["imperium"]["image"] == OWN_IMPERIUM_BOARD
+        assert image_client.get("/board-image/imperium").status_code == 404
+
+    (tmp_path / "imperium.jpg").write_bytes(b"jpeg-imperium")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=board,
+            pictures="assets",
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        original = catalog["boards"]["imperium"]
+        assert _unversioned(original["image"]) == "/board-image/imperium"
+        assert image_client.get(original["image"]).content == b"jpeg-imperium"
+        # Its layout comes in the shapes of Uprising's top-level tables.
+        assert set(original) >= {"space_boxes", "space_frame", "tracks", "mentat"}
+
+    bene_tleilax = tmp_path / "bene_tleilax.jpg"
+    bene_tleilax.write_bytes(b"jpeg-bene-tleilax")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=board,
+            bene_tleilax_image=bene_tleilax,
+            pictures="assets",
+        )
+    ) as scan_client:
+        catalog = scan_client.get("/catalog").json()
+        scan_url = catalog["bene_tleilax"]["image"]
+        assert _unversioned(scan_url) == "/bene-tleilax-image"
+        served = scan_client.get(scan_url)
+        assert served.status_code == 200
+        assert served.content == b"jpeg-bene-tleilax"
+
+
+def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None:
+    tokens = tmp_path / "tokens"
+    tokens.mkdir()
+    (tokens / "strength_green.png").write_bytes(b"png-green-sword")
+    (tokens / "strength_green_plus20.png").write_bytes(b"png-green-plus20")
+    # Yellow has only its sword face, so its seat keeps the drawn token.
+    (tokens / "strength_yellow.png").write_bytes(b"png-yellow-sword")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as token_client:
+        catalog = token_client.get("/catalog").json()
+        # Green is seat 0 (display.token_images.STRENGTH_TOKEN_COLORS).
+        green = catalog["strength_tokens"][0]
+        # Yellow has one private face only: its seat takes both of our own
+        # faces, as do the seats without private pictures.
+        for faces in catalog["strength_tokens"][1:]:
+            assert str(faces["front"]).startswith(OWN_TOKENS)
+            assert str(faces["plus20"]).startswith(OWN_TOKENS)
+        assert _unversioned(green["front"]) == "/tokens/strength_green.png"
+        assert _unversioned(green["plus20"]) == "/tokens/strength_green_plus20.png"
+        assert token_client.get(green["front"]).content == b"png-green-sword"
+        assert token_client.get(green["plus20"]).content == b"png-green-plus20"
+        # No Shield Wall, Maker Hooks or Alliance picture in that directory:
+        # the project's own drawings of them.
+        assert str(catalog["shield_wall"]["image"]).startswith(OWN_TOKENS)
+        assert str(catalog["maker_hooks_token"]).startswith(OWN_TOKENS)
+        assert all(
+            str(url).startswith(OWN_TOKENS)
+            for url in catalog["alliance_tokens"].values()
+        )
+
+    (tokens / "shield_wall.png").write_bytes(b"png-shield-wall")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as wall_client:
+        wall = wall_client.get("/catalog").json()["shield_wall"]
+        assert _unversioned(wall["image"]) == "/tokens/shield_wall.png"
+        assert wall_client.get(wall["image"]).content == b"png-shield-wall"
+
+    # The Maker Hooks token and the Alliance tokens present: one picture for
+    # the hooks, one per Faction that has its file.
+    (tokens / "maker_hooks.png").write_bytes(b"png-maker-hooks")
+    (tokens / "alliance_fremen.jpg").write_bytes(b"jpg-alliance-fremen")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tokens,
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as piece_client:
+        catalog = piece_client.get("/catalog").json()
+        assert _unversioned(catalog["maker_hooks_token"]) == "/tokens/maker_hooks.png"
+        assert (
+            piece_client.get(catalog["maker_hooks_token"]).content == b"png-maker-hooks"
+        )
+        # Fremen's private picture; the other three are our own drawings.
+        assert set(catalog["alliance_tokens"]) == {
+            "emperor",
+            "spacing_guild",
+            "bene_gesserit",
+            "fremen",
+        }
+        fremen = catalog["alliance_tokens"]["fremen"]
+        assert _unversioned(fremen) == "/tokens/alliance_fremen.jpg"
+        assert piece_client.get(fremen).content == b"jpg-alliance-fremen"
+        # Where they lie comes with the marker tables either way.
+        tracks = catalog["tracks"]
+        assert set(tracks["control_flags"]["boxes"]) == {
+            "arrakeen",
+            "spice_refinery",
+            "imperial_basin",
+        }
+        assert set(tracks["maker_spice"]["points"]) == {
+            "deep_desert",
+            "hagga_basin",
+            "imperial_basin",
+            "tuek_sietch",
+        }
+        assert len(tracks["maker_hooks"]["points"]) == 4
+
+
+def test_scouts_card_pictures_are_served_when_present(tmp_path: Path) -> None:
+    cards = tmp_path / "cards"
+    art = cards / "app" / "scouts"
+    art.mkdir(parents=True)
+    (art / "event.webp").write_bytes(b"webp-event-painting")
+    (art / "back.webp").write_bytes(b"webp-parchment")
+    (art / "scouts_sources.json").write_text("{}")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=cards,
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as art_client:
+        scouts_art = art_client.get("/catalog").json()["scouts_art"]
+        assert list(scouts_art) == ["event", "back"]
+        event = scouts_art["event"]
+        # Versioned like every asset URL: a replaced painting gets a new URL.
+        assert event != _unversioned(event)
+        assert _unversioned(event) == "/card-images/app/scouts/event.webp"
+        assert art_client.get(event).content == b"webp-event-painting"
+        assert art_client.get(scouts_art["back"]).content == b"webp-parchment"
+
+    # A checkout without the folder serves no pictures: the card is CSS.
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as bare_client:
+        assert bare_client.get("/catalog").json()["scouts_art"] == {}
+
+
+def test_a_picture_replaced_in_place_gets_a_new_url(tmp_path: Path) -> None:
+    """The owner swaps pictures under the same name (Tuek's Sietch,
+    2026-09-18). The mounts send no Cache-Control, so a browser keeps showing
+    what it cached under an unchanged URL; the version makes the URL change.
+    """
+
+    tokens = tmp_path / "tokens"
+    tokens.mkdir()
+    wall_file = tokens / "shield_wall.png"
+    board = tmp_path / "board.jpg"
+
+    def asset_urls() -> tuple[str, str]:
+        with TestClient(
+            create_app(
+                saves_dir=tmp_path / "saves",
+                card_images_dir=tmp_path / "no-images",
+                icons_dir=tmp_path / "no-icons",
+                tokens_dir=tokens,
+                board_image=board,
+                pictures="assets",
+            )
+        ) as asset_client:
+            catalog = asset_client.get("/catalog").json()
+            return catalog["shield_wall"]["image"], catalog["board_image"]
+
+    wall_file.write_bytes(b"old-wall")
+    board.write_bytes(b"old-board")
+    old_wall, old_board = asset_urls()
+    assert asset_urls() == (old_wall, old_board)  # unchanged files, same URLs
+
+    wall_file.write_bytes(b"a-new-wall-picture")
+    board.write_bytes(b"a-new-board-scan")
+    new_wall, new_board = asset_urls()
+    assert _unversioned(new_wall) == _unversioned(old_wall) == "/tokens/shield_wall.png"
+    assert new_wall != old_wall
+    assert _unversioned(new_board) == "/board-image"
+    assert new_board != old_board
+
+
+def test_undo_and_log_over_http(client: TestClient) -> None:
+    # The scripted revisions follow the AI seats' moves, so they play the
+    # registry's pinned 2026-09-10 table rather than the retunable
+    # ``heuristic`` (see tests/server/test_undo.py). Seed 14's revisions
+    # moved one step earlier with v146: optional Agent-turn effects offer no
+    # refusal (OQ-095 (2), 2026-10-14), so seat 3 no longer declines its
+    # optional Signet Ring step (tests/server/test_undo.py, HUMAN_FIRST).
+    # They moved two steps later with v150: an Agent turn is a card pick and
+    # a space pick (stage B1, OQ-111): seats 2 and 3 play before seat 0 and
+    # each spend one more revision on it, so the game waits on seat 0 at
+    # revision 12, and its first two steps (a card pick, then the space
+    # pick) are revisions 13 and 14.
+    summary = _create(
+        client,
+        game_seed=14,
+        seats=["human"] + ["heuristic_uprising_table"] * 3,
+    )
+    game_id = str(summary["game_id"])
+    while int(str(summary["revision"])) < 14:
+        response = client.post(
+            f"/games/{game_id}/actions",
+            json={"seat": 0, "revision": summary["revision"], "index": 0},
+        )
+        assert response.status_code == 200, response.text
+        summary = response.json()
+    assert summary["revision"] == 14
+    assert summary["undo"] == [{"seat": 0, "steps": 2}]
+
+    stale = client.post(
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 13, "steps": 1}
+    )
+    assert stale.status_code == 409, stale.text
+    too_many = client.post(
+        f"/games/{game_id}/undo", json={"seat": 0, "revision": 14, "steps": 3}
+    )
+    assert too_many.status_code == 400, too_many.text
+
+    undone = client.post(
+        f"/games/{game_id}/undo",
+        json={"seat": 0, "revision": 14, "steps": 1, "undo_count": 0},
+    )
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["revision"] == 13
+    assert undone.json()["undo"] == [{"seat": 0, "steps": 1}]
+    assert undone.json()["undo_count"] == 1
+    # A stale client still sending undo generation 0 is refused.
+    stale_generation = client.post(
+        f"/games/{game_id}/actions",
+        json={"seat": 0, "revision": 13, "index": 0, "undo_count": 0},
+    )
+    assert stale_generation.status_code == 409, stale_generation.text
+
+    log = client.get(f"/games/{game_id}/log", params={"seat": 0})
+    assert log.status_code == 200, log.text
+    entries = log.json()["entries"]
+    assert log.json()["count"] == len(entries) == undone.json()["log_count"]
+    assert entries[-1]["type"] == "undo"
+    assert entries[-2]["undone"] is True
+    tail = client.get(
+        f"/games/{game_id}/log", params={"seat": 0, "after": len(entries) - 1}
+    )
+    assert [entry["index"] for entry in tail.json()["entries"]] == [len(entries) - 1]
+    assert client.get(f"/games/{game_id}/log", params={"seat": 1}).status_code == 403
+
+
+def test_the_api_accepts_registry_agent_seats() -> None:
+    client = TestClient(create_app(GameSessionManager()))
+    summary = _create(client, seats=["human", "rollout", "heuristic", "random"])
+    assert summary["seats"] == ["human", "rollout", "heuristic", "random"]
+    rejected = client.post(
+        "/games",
+        json={"seats": ["human", "checkpoint:/nonexistent.pt", "random", "random"]},
+    )
+    assert rejected.status_code == 400
+    assert "cannot build seat 1" in rejected.json()["detail"]
+
+
+def test_the_api_accepts_and_echoes_the_app_ai_seats() -> None:
+    client = TestClient(create_app(GameSessionManager()))
+    seats = ["human", "app_ai", "app_ai_medium", "app_ai_easy"]
+
+    summary = _create(client, seats=seats)
+
+    assert summary["seats"] == seats
+    players = summary["players"]
+    assert isinstance(players, list)
+    assert [player["kind"] for player in players] == seats
+    game_id = summary["game_id"]
+    assert client.get(f"/games/{game_id}").json()["seats"] == seats
+    # The level is part of the registry name: there is no other spelling.
+    rejected = client.post(
+        "/games", json={"seats": ["human", "app_ai_hard", "random", "random"]}
+    )
+    assert rejected.status_code == 400
+    assert "unknown seat assignment" in rejected.json()["detail"]
+
+
+def test_the_api_default_seats_stay_heuristic() -> None:
+    # The browser's open-server setup seats app_ai by default; a bare API
+    # call keeps its documented default (user decision 2026-10-05).
+    client = TestClient(create_app(GameSessionManager()))
+    response = client.post("/games", json={"game_seed": 21})
+    assert response.status_code == 200, response.text
+    assert response.json()["seats"] == ["human", "heuristic", "heuristic", "heuristic"]
+
+
+def test_own_icons_fill_in_where_the_private_assets_have_none(tmp_path: Path) -> None:
+    """docs/own-pictures-plan.md stage 0: a private-assets icon first, else
+    the project's own drawing, served from the package with the UI files."""
+
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "troop.png").write_bytes(b"png-troop")
+    (icons / "solari.png").write_bytes(b"png-solari")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as assets_client:
+        catalog = assets_client.get("/catalog").json()
+        assert _unversioned(catalog["icons"]["solari"]) == "/icons/solari.png"
+        assert _unversioned(catalog["icons"]["troop"]) == "/icons/troop.png"
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=tmp_path / "no-icons",
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=tmp_path / "no-map.jpg",
+            pictures="assets",
+        )
+    ) as bare_client:
+        catalog = bare_client.get("/catalog").json()
+        assert catalog["icons"]["solari"] == "/static/pictures/icons/solari.svg"
+        served = bare_client.get(catalog["icons"]["solari"])
+        assert served.status_code == 200
+        assert served.headers["content-type"].startswith("image/svg+xml")
+
+
+def test_own_picture_mode_leaves_every_private_picture_out(tmp_path: Path) -> None:
+    """``pictures="own"`` shows on the owner's machine what the public build
+    shows: the private pictures present here are neither listed nor served."""
+
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "solari.png").write_bytes(b"png-solari")
+    tokens = tmp_path / "tokens"
+    tokens.mkdir()
+    (tokens / "first_player.png").write_bytes(b"png-first")
+    board = tmp_path / "board.jpg"
+    board.write_bytes(b"jpeg-board")
+    (tmp_path / "imperium.jpg").write_bytes(b"jpeg-imperium")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tokens,
+            board_image=board,
+            pictures="own",
+        )
+    ) as own_client:
+        catalog = own_client.get("/catalog").json()
+        assert catalog["icons"] == _own_icon_urls()
+        assert catalog["board_image"] == OWN_BOARD
+        imperium = str(catalog["boards"]["imperium"]["image"])
+        assert not imperium.startswith("/board-image")
+        assert str(catalog["first_player_token"]).startswith(OWN_TOKENS)
+        assert own_client.get("/icons/solari.png").status_code == 404
+        assert own_client.get("/tokens/first_player.png").status_code == 404
+        assert own_client.get("/board-image").status_code == 404
+        assert own_client.get("/board-image/imperium").status_code == 404
+
+
+def test_picture_mode_comes_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The own pictures by default (user 2026-11-11: they cover every picture
+    the page needs); a picture folder of one's own only when asked for."""
+
+    board = tmp_path / "board.jpg"
+    board.write_bytes(b"jpeg-board")
+    monkeypatch.delenv("DUNE_IMPERIUM_PICTURES", raising=False)
+    with TestClient(
+        create_app(saves_dir=tmp_path / "saves", board_image=board)
+    ) as default_client:
+        assert default_client.get("/catalog").json()["board_image"] == OWN_BOARD
+        assert default_client.get("/board-image").status_code == 404
+    monkeypatch.setenv("DUNE_IMPERIUM_PICTURES", "assets")
+    with TestClient(
+        create_app(saves_dir=tmp_path / "saves", board_image=board)
+    ) as assets_client:
+        scan = str(assets_client.get("/catalog").json()["board_image"])
+        assert scan.startswith("/board-image")
+    monkeypatch.setenv("DUNE_IMPERIUM_PICTURES", "own")
+    with TestClient(
+        create_app(saves_dir=tmp_path / "saves", board_image=board)
+    ) as own_client:
+        assert own_client.get("/catalog").json()["board_image"] == OWN_BOARD
+    monkeypatch.setenv("DUNE_IMPERIUM_PICTURES", "photos")
+    with pytest.raises(ValueError, match="DUNE_IMPERIUM_PICTURES"):
+        create_app(saves_dir=tmp_path / "saves")
+    with pytest.raises(ValueError, match="unknown picture mode"):
+        create_app(saves_dir=tmp_path / "saves", pictures="photos")
+

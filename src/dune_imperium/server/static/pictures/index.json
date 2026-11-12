@@ -1,0 +1,682 @@
+{
+  "board/bene_tleilax.svg": {
+    "drawn": "2026-11-10",
+    "note": "Immortality's Bene Tleilax board, drawn from the project's tables by scripts/own_pictures/board.py: the Tleilaxu track, the research hexes with their bonuses, the Axolotl tanks and the genetic markers."
+  },
+  "board/imperium.svg": {
+    "drawn": "2026-11-10",
+    "note": "The original Dune: Imperium board, drawn from the project's layout tables by scripts/own_pictures/board.py: Influence strips, spaces with their printed icons, the Mentat's place, Control flags, Maker hexagons, the Conflict field, tracks and the phase legend."
+  },
+  "board/imperium_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "The original board with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/ix_board.svg": {
+    "drawn": "2026-11-10",
+    "note": "Rise of Ix's board (Tech Negotiation, Dreadnought, the three Tech stacks and the Negotiators' place), at the original board's scale."
+  },
+  "board/ix_board_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "Rise of Ix's board with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/ix_choam.svg": {
+    "drawn": "2026-11-10",
+    "note": "Rise of Ix's CHOAM piece (Interstellar Shipping, Smuggling and the Shipping track with its rewards), drawn the same way."
+  },
+  "board/ix_choam_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "Rise of Ix's CHOAM piece with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/ix_landsraad.svg": {
+    "drawn": "2026-11-10",
+    "note": "Rise of Ix's Landsraad piece (High Council, Mentat, Swordmaster), a crop of the original board's drawing space by scripts/own_pictures/board.py."
+  },
+  "board/ix_landsraad_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "Rise of Ix's Landsraad piece with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/research_station_overlay.svg": {
+    "drawn": "2026-11-10",
+    "note": "Immortality's Research Station overlay, drawn the same way."
+  },
+  "board/research_station_overlay_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "The Research Station overlay with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/tuek_sietch.svg": {
+    "drawn": "2026-11-10",
+    "note": "Esmar Tuek's Tuek's Sietch board space (Bloodlines), a crop of the Uprising board's drawing space by scripts/own_pictures/board.py."
+  },
+  "board/tuek_sietch_ko.svg": {
+    "drawn": "2026-11-11",
+    "note": "Tuek's Sietch with the Korean edition's space names (its other words stay English, as uprising_ko)."
+  },
+  "board/uprising.svg": {
+    "drawn": "2026-11-10",
+    "note": "The Uprising board, drawn from the project's layout tables by scripts/own_pictures/board.py: regions, Influence strips, space frames with their printed icons, posts, tracks and slots; English space names."
+  },
+  "board/uprising_ko.svg": {
+    "drawn": "2026-11-10",
+    "note": "The same board with the Korean edition's space names (its other words stay English, as the Korean board prints them)."
+  },
+  "faces/agent_mark_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "The bene gesserit Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_city.svg": {
+    "drawn": "2026-11-10",
+    "note": "The city Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "The emperor Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "The fremen Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_landsraad.svg": {
+    "drawn": "2026-11-10",
+    "note": "The landsraad Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spacing guild Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_spice_trade.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spice trade Agent mark alone (no plate), for the card faces."
+  },
+  "faces/agent_mark_spy.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spy Agent mark alone (no plate), for the card faces."
+  },
+  "faces/battle_mark_crysknife.svg": {
+    "drawn": "2026-11-10",
+    "note": "The crysknife battle mark alone, for a Conflict card's corner."
+  },
+  "faces/battle_mark_desert_mouse.svg": {
+    "drawn": "2026-11-10",
+    "note": "The desert mouse battle mark alone, for a Conflict card's corner."
+  },
+  "faces/battle_mark_ornithopter.svg": {
+    "drawn": "2026-11-10",
+    "note": "The ornithopter battle mark alone, for a Conflict card's corner."
+  },
+  "faces/battle_mark_wild.svg": {
+    "drawn": "2026-11-10",
+    "note": "The wild battle mark alone, for a Conflict card's corner."
+  },
+  "faces/combat.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat: two white swords crossed (card text, the board's combat spaces)."
+  },
+  "faces/faction_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "The bene gesserit mark on the dark badge card text prints it on."
+  },
+  "faces/faction_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "The emperor mark on the dark badge card text prints it on."
+  },
+  "faces/faction_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "The fremen mark on the dark badge card text prints it on."
+  },
+  "faces/faction_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spacing guild mark on the dark badge card text prints it on."
+  },
+  "faces/flip.svg": {
+    "drawn": "2026-11-10",
+    "note": "Flip a Tech tile: a gold-rimmed tile tipping over, a white arrow round it."
+  },
+  "faces/genetic_marker.svg": {
+    "drawn": "2026-11-10",
+    "note": "A genetic marker: a red diamond with a white twist, for the card faces."
+  },
+  "faces/mentat.svg": {
+    "drawn": "2026-11-10",
+    "note": "The Mentat: the Agent's hooded figure as a dark silhouette (a Conflict reward)."
+  },
+  "faces/specimen_cube.svg": {
+    "drawn": "2026-11-10",
+    "note": "Tleilaxu specimen cost: a green isometric cube in a silver hexagon, drawn by hand in SVG."
+  },
+  "faces/unload_cards.svg": {
+    "drawn": "2026-11-10",
+    "note": "Unload's two cards (draw, trash), for the red tag down a Reveal box's left edge."
+  },
+  "icons/acquire_tech.svg": {
+    "drawn": "2026-11-10",
+    "note": "Acquire a Tech tile: a gear on an olive tile."
+  },
+  "icons/acquire_tech_minus1.svg": {
+    "drawn": "2026-11-10",
+    "note": "Acquire a Tech tile for 1 spice less: the Tech tile under an orange -1 hexagon."
+  },
+  "icons/acquire_tech_minus2.svg": {
+    "drawn": "2026-11-10",
+    "note": "Acquire a Tech tile for 2 spice less: the Tech tile under an orange -2 hexagon."
+  },
+  "icons/agent.svg": {
+    "drawn": "2026-11-10",
+    "note": "Agent: a hooded grey figure with a white cross."
+  },
+  "icons/agent_icon_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "The bene gesserit Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_city.svg": {
+    "drawn": "2026-11-10",
+    "note": "The city Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "The emperor Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "The fremen Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_landsraad.svg": {
+    "drawn": "2026-11-10",
+    "note": "The landsraad Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spacing guild Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_spice_trade.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spice trade Agent icon: its mark alone, no stone plate."
+  },
+  "icons/agent_icon_spy.svg": {
+    "drawn": "2026-11-10",
+    "note": "The spy Agent icon: its mark alone, no stone plate."
+  },
+  "icons/arrow_down.svg": {
+    "drawn": "2026-11-10",
+    "note": "Arrow down: a white block arrow."
+  },
+  "icons/arrow_right.svg": {
+    "drawn": "2026-11-10",
+    "note": "Arrow right: a white block arrow."
+  },
+  "icons/battle_crysknife.svg": {
+    "drawn": "2026-11-10",
+    "note": "Crysknife battle icon: a pale curved blade on a green slanted tile."
+  },
+  "icons/battle_desert_mouse.svg": {
+    "drawn": "2026-11-10",
+    "note": "Desert Mouse battle icon: a jerboa on an orange slanted tile."
+  },
+  "icons/battle_ornithopter.svg": {
+    "drawn": "2026-11-10",
+    "note": "Ornithopter battle icon: a winged craft on a blue slanted tile."
+  },
+  "icons/battle_wild.svg": {
+    "drawn": "2026-11-10",
+    "note": "Wild battle icon: a question mark on a yellow slanted tile."
+  },
+  "icons/contract.svg": {
+    "drawn": "2026-11-10",
+    "note": "Contract: a black ring-sealed hole on a brown tile."
+  },
+  "icons/control.svg": {
+    "drawn": "2026-11-10",
+    "note": "Control: a grey banner with two broad arches over a disc."
+  },
+  "icons/discard.svg": {
+    "drawn": "2026-11-10",
+    "note": "Discard a card: a brown card with a white arrow down."
+  },
+  "icons/draw.svg": {
+    "drawn": "2026-11-10",
+    "note": "Draw a card: a green card with a sheen."
+  },
+  "icons/dreadnought.svg": {
+    "drawn": "2026-11-10",
+    "note": "Dreadnought: a heavy grey hull."
+  },
+  "icons/freighter.svg": {
+    "drawn": "2026-11-10",
+    "note": "Freighter: a ribbed slate shield with chevrons and a heavy pylon."
+  },
+  "icons/influence_any.svg": {
+    "drawn": "2026-11-10",
+    "note": "Influence with any Faction: a gold step over a black diamond with a question mark."
+  },
+  "icons/influence_any_two.svg": {
+    "drawn": "2026-11-10",
+    "note": "Influence with any two Factions: two gold steps over the question diamond."
+  },
+  "icons/influence_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "Bene Gesserit Influence: a gold step over the Bene Gesserit mark."
+  },
+  "icons/influence_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "Emperor Influence: a gold step over the Emperor's mark in a black diamond."
+  },
+  "icons/influence_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "Fremen Influence: a gold step over the Fremen disc."
+  },
+  "icons/influence_lose.svg": {
+    "drawn": "2026-11-10",
+    "note": "Lose Influence: the question diamond over a red step down."
+  },
+  "icons/influence_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spacing Guild Influence: a gold step over the infinity in a black diamond."
+  },
+  "icons/intrigue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Intrigue card: a dark olive card in a silver rim with the Intrigue mark."
+  },
+  "icons/maker.svg": {
+    "drawn": "2026-11-10",
+    "note": "Maker: a white sandworm coiled in a grey hexagon."
+  },
+  "icons/maker_hooks.svg": {
+    "drawn": "2026-11-10",
+    "note": "Maker Hooks: a steel hook across a blue badge."
+  },
+  "icons/persuasion.svg": {
+    "drawn": "2026-11-10",
+    "note": "Persuasion: a blue diamond with a white rim."
+  },
+  "icons/recall_agent.svg": {
+    "drawn": "2026-11-10",
+    "note": "Recall an Agent: the Agent figure with a white arrow up."
+  },
+  "icons/recall_spy.svg": {
+    "drawn": "2026-11-10",
+    "note": "Recall a Spy: the Spy cylinder with a white arrow up."
+  },
+  "icons/sandworm.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sandworm: a grey worm rising out of the sand and curling over."
+  },
+  "icons/shield_wall.svg": {
+    "drawn": "2026-11-10",
+    "note": "Shield Wall: a stone wall split by a jagged crack over a red step down."
+  },
+  "icons/signet_ring.svg": {
+    "drawn": "2026-11-10",
+    "note": "Signet Ring: a gold ring at a slant, its broad dark seal face toward us."
+  },
+  "icons/solari.svg": {
+    "drawn": "2026-11-10",
+    "note": "Solari: a silver coin with a raised rim, drawn by hand in SVG."
+  },
+  "icons/specimen.svg": {
+    "drawn": "2026-11-10",
+    "note": "Specimen: a green, mottled cube."
+  },
+  "icons/spice.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spice: an orange hexagon."
+  },
+  "icons/spy.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spy: a grey cylinder."
+  },
+  "icons/steal_intrigue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Steal an Intrigue card: an Intrigue card drawn out of a dark hand of cards."
+  },
+  "icons/sword.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sword (strength): a broad red blade over a dark square stood on its corner."
+  },
+  "icons/tech_negotiation.svg": {
+    "drawn": "2026-11-10",
+    "note": "Tech Negotiation: a gold gear in a gold-rimmed hexagon."
+  },
+  "icons/trash.svg": {
+    "drawn": "2026-11-10",
+    "note": "Trash a card: a dark card with a white cross."
+  },
+  "icons/trash_intrigue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Trash an Intrigue card: the Intrigue card with a white cross."
+  },
+  "icons/troop.svg": {
+    "drawn": "2026-11-10",
+    "note": "Troop: a grey cube."
+  },
+  "icons/unload.svg": {
+    "drawn": "2026-11-10",
+    "note": "Unload: a discard card and a trash card on a red tag."
+  },
+  "icons/victory_point.svg": {
+    "drawn": "2026-11-10",
+    "note": "Victory point: a golden world with its two moons under a white starburst."
+  },
+  "icons/water.svg": {
+    "drawn": "2026-11-10",
+    "note": "Water: a blue drop."
+  },
+  "log/card_trashed.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: a card trashed, a red cross."
+  },
+  "log/conflict.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: the Conflict, two crossed red swords."
+  },
+  "log/family_atomics.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Family Atomics, an atom on a brown shield."
+  },
+  "log/influence_down_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Bene Gesserit Influence lost, its mark over a red step down."
+  },
+  "log/influence_down_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Emperor Influence lost, its mark over a red step down."
+  },
+  "log/influence_down_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Fremen Influence lost, its mark over a red step down."
+  },
+  "log/influence_down_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Spacing Guild Influence lost, its mark over a red step down."
+  },
+  "log/intrigue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: the Intrigue mark."
+  },
+  "log/intrigue_played.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: an Intrigue card played, a tilted Intrigue card."
+  },
+  "log/research.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: research, a chunky pale microscope on a dark slab."
+  },
+  "log/reshuffle.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: the deck reshuffled, three green cards."
+  },
+  "log/round_1.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 1, the numeral."
+  },
+  "log/round_10.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 10, the numeral."
+  },
+  "log/round_2.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 2, the numeral."
+  },
+  "log/round_3.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 3, the numeral."
+  },
+  "log/round_4.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 4, the numeral."
+  },
+  "log/round_5.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 5, the numeral."
+  },
+  "log/round_6.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 6, the numeral."
+  },
+  "log/round_7.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 7, the numeral."
+  },
+  "log/round_8.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 8, the numeral."
+  },
+  "log/round_9.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Round 9, the numeral."
+  },
+  "log/tech.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Tech, a plain gear on an olive tile."
+  },
+  "log/tleilaxu.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: Tleilaxu, a gold beetle on a black diamond."
+  },
+  "log/troop_deploy.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: troops deployed, a white arrow up on a grey hexagon."
+  },
+  "log/troop_retreat.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: troops retreated, a white arrow down on a grey hexagon."
+  },
+  "log/vp_winner.svg": {
+    "drawn": "2026-11-10",
+    "note": "Log: the winner, the golden world in a gold laurel."
+  },
+  "tokens/agent_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Agent (blue): a hooded figure in the seat's colour."
+  },
+  "tokens/agent_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Agent (green): a hooded figure in the seat's colour."
+  },
+  "tokens/agent_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Agent (red): a hooded figure in the seat's colour."
+  },
+  "tokens/agent_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Agent (yellow): a hooded figure in the seat's colour."
+  },
+  "tokens/alliance_bene_gesserit.svg": {
+    "drawn": "2026-11-10",
+    "note": "Alliance token (bene gesserit): the Faction's mark and a victory point."
+  },
+  "tokens/alliance_emperor.svg": {
+    "drawn": "2026-11-10",
+    "note": "Alliance token (emperor): the Faction's mark and a victory point."
+  },
+  "tokens/alliance_fremen.svg": {
+    "drawn": "2026-11-10",
+    "note": "Alliance token (fremen): the Faction's mark and a victory point."
+  },
+  "tokens/alliance_spacing_guild.svg": {
+    "drawn": "2026-11-10",
+    "note": "Alliance token (spacing guild): the Faction's mark and a victory point."
+  },
+  "tokens/back_conflict_1.svg": {
+    "drawn": "2026-11-10",
+    "note": "Conflict I card back: crossed red blades and the tier numeral."
+  },
+  "tokens/back_conflict_2.svg": {
+    "drawn": "2026-11-10",
+    "note": "Conflict II card back: crossed red blades and the tier numeral."
+  },
+  "tokens/back_conflict_3.svg": {
+    "drawn": "2026-11-10",
+    "note": "Conflict III card back: crossed red blades and the tier numeral."
+  },
+  "tokens/back_imperium.svg": {
+    "drawn": "2026-11-10",
+    "note": "Imperium card back: Arrakis and its two moons against the stars."
+  },
+  "tokens/back_intrigue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Intrigue card back: the gold Intrigue mark on dark gold."
+  },
+  "tokens/back_tech.svg": {
+    "drawn": "2026-11-10",
+    "note": "Tech tile back: a ring of gold beads round a gear on olive."
+  },
+  "tokens/control_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Control marker (blue): a banner with two broad arches over a disc."
+  },
+  "tokens/control_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Control marker (green): a banner with two broad arches over a disc."
+  },
+  "tokens/control_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Control marker (red): a banner with two broad arches over a disc."
+  },
+  "tokens/control_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Control marker (yellow): a banner with two broad arches over a disc."
+  },
+  "tokens/council_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Councilor token (blue): the disc with a seat."
+  },
+  "tokens/council_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Councilor token (green): the disc with a seat."
+  },
+  "tokens/council_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Councilor token (red): the disc with a seat."
+  },
+  "tokens/council_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Councilor token (yellow): the disc with a seat."
+  },
+  "tokens/disc_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Player disc (blue)."
+  },
+  "tokens/disc_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Player disc (green)."
+  },
+  "tokens/disc_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Player disc (red)."
+  },
+  "tokens/disc_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Player disc (yellow)."
+  },
+  "tokens/dreadnought_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Dreadnought (blue): a heavy hull in the seat's colour."
+  },
+  "tokens/dreadnought_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Dreadnought (green): a heavy hull in the seat's colour."
+  },
+  "tokens/dreadnought_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Dreadnought (red): a heavy hull in the seat's colour."
+  },
+  "tokens/dreadnought_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Dreadnought (yellow): a heavy hull in the seat's colour."
+  },
+  "tokens/first_player.svg": {
+    "drawn": "2026-11-10",
+    "note": "First player marker: a sandworm coiled on itself, its maw turned to us."
+  },
+  "tokens/maker_hooks.svg": {
+    "drawn": "2026-11-10",
+    "note": "Maker Hooks: a steel hook on a slate plate."
+  },
+  "tokens/sandworm_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sandworm (blue): a worm rising out of the sand and curling over."
+  },
+  "tokens/sandworm_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sandworm (green): a worm rising out of the sand and curling over."
+  },
+  "tokens/sandworm_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sandworm (red): a worm rising out of the sand and curling over."
+  },
+  "tokens/sandworm_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sandworm (yellow): a worm rising out of the sand and curling over."
+  },
+  "tokens/sardaukar_commander.svg": {
+    "drawn": "2026-11-10",
+    "note": "Sardaukar Commander: a soldier figure in a lunge with his blade raised."
+  },
+  "tokens/shield_wall.svg": {
+    "drawn": "2026-11-10",
+    "note": "Shield Wall token: a strip of sand with a rocky ridge along it."
+  },
+  "tokens/spy_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spy (blue): a cylinder in the seat's colour."
+  },
+  "tokens/spy_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spy (green): a cylinder in the seat's colour."
+  },
+  "tokens/spy_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spy (red): a cylinder in the seat's colour."
+  },
+  "tokens/spy_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Spy (yellow): a cylinder in the seat's colour."
+  },
+  "tokens/strength_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (blue): its sword face."
+  },
+  "tokens/strength_blue_plus20.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (blue): its +20 face."
+  },
+  "tokens/strength_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (green): its sword face."
+  },
+  "tokens/strength_green_plus20.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (green): its +20 face."
+  },
+  "tokens/strength_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (red): its sword face."
+  },
+  "tokens/strength_red_plus20.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (red): its +20 face."
+  },
+  "tokens/strength_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (yellow): its sword face."
+  },
+  "tokens/strength_yellow_plus20.svg": {
+    "drawn": "2026-11-10",
+    "note": "Combat marker (yellow): its +20 face."
+  },
+  "tokens/troop_blue.svg": {
+    "drawn": "2026-11-10",
+    "note": "Troop (blue): a cube in the seat's colour."
+  },
+  "tokens/troop_green.svg": {
+    "drawn": "2026-11-10",
+    "note": "Troop (green): a cube in the seat's colour."
+  },
+  "tokens/troop_red.svg": {
+    "drawn": "2026-11-10",
+    "note": "Troop (red): a cube in the seat's colour."
+  },
+  "tokens/troop_yellow.svg": {
+    "drawn": "2026-11-10",
+    "note": "Troop (yellow): a cube in the seat's colour."
+  }
+}

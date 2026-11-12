@@ -1,0 +1,1932 @@
+"""Troop deployment during a Combat-space Agent turn (OQ-029).
+
+The basic deployment of an Agent turn is adjustable until the turn ends
+(project convention OQ-029, ``docs/rules/player-turns.md``): ``deploy_troops``
+adds troops to this turn's deployment, ``withdraw_troops`` returns troops
+deployed this turn to the garrison, and ``finish_agent_turn`` closes the turn
+once every other pending effect has been resolved. The net deployment of the
+turn never exceeds "every troop recruited this turn plus two garrison troops"
+[Main p. 10] [FAQ p. 4], and a withdrawal may not drop the turn's deployed
+unit count below a condition a played card already used (Distraction,
+Coercive Negotiation), nor the units in the Conflict below what a resolved
+condition or Calculating's count read of them (Seize Production, Ruthless
+Leadership, Chani, Clever Tactician; ``commit_conflict_condition``). A
+withdrawal undoes the
+deployment, so it also lowers the turn's deployment peak those cards read
+(``record_deployment_peak``).
+A card or Leader effect that retreats or loses units from the Conflict does
+not undo anything: the units it moves have used their deployment, so only a
+withdrawal gives room back (OQ-029, user ruling 2026-10-04,
+``reconcile_deployment_after_retreat``).
+
+Bloodlines Sardaukar Commanders are "troops" for this purpose [Bloodlines
+p. 4] (``deploy_commanders`` / ``withdraw_commanders``; the frame tracks the
+Commander share separately so a withdrawal returns the right kind of unit).
+Each unit recruited this turn reserves a deploy slot for its own kind: a
+recruited Commander's slot is filled only by a Commander and a recruited
+troop's only by a troop, and the garrison extra (normally two) is shared by
+both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
+
+Rise of Ix dreadnoughts are a third kind (``deploy_dreadnoughts`` /
+``withdraw_dreadnoughts``): "You may deploy any or all units recruited during
+your current turn ... plus up to two more units from your garrison" and "If
+you commissioned the dreadnought while sending an Agent to a Combat space, you
+may deploy it to the Conflict" [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6,
+docs/base-game-and-ix-plan.md 17.6 item 2). Each dreadnought commissioned this
+turn (``frames.DREADNOUGHTS_COMMISSIONED_KEY``) reserves a slot for a
+dreadnought outside the garrison share, and the garrison share of two is
+shared by the troops, the Commanders and the dreadnoughts together
+(``unit_deployment_rooms``). A dreadnought is a unit but no troop
+(docs/rules/rise-of-ix.md 6, the table): the turn's unit count
+(``PlayerState.units_deployed_turn`` and its peak and committed floor, which
+Distraction, Coercive Negotiation and the Baron's Masterstroke read) never
+holds one, and the frame keeps its own deployed and withdrawable counts
+(``DEPLOYED_DREADNOUGHTS_KEY``, ``WITHDRAWABLE_DREADNOUGHTS_KEY``) and the
+dreadnoughts an effect put straight into the Conflict this turn
+(``EFFECT_DREADNOUGHTS_KEY``, Arrakeen Scouts' Armed Escort).
+"""
+
+from collections.abc import Mapping
+from copy import replace
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Final, cast
+
+from dune_imperium.config import RulesetConfig
+from dune_imperium.content.core.effects import (
+    AllConditions,
+    CommandersInConflictAtLeast,
+    Condition,
+    UnitsDeployedThisTurnAtLeast,
+    UnitsInConflictAtLeast,
+)
+from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.memo import answers_of
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.effects import (
+    agent_turn_has_other_pending_effects,
+    close_agent_turn,
+    current_agent_effect_context,
+)
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    SHIPPING_TROOPS_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
+    FrameKind,
+    commissioned_dreadnought_count,
+    owes_held_draw,
+    owes_track_spy,
+    own_turn_frame_index,
+    recruited_commander_count,
+    replace_player,
+    shipping_troop_count,
+    ungained_shipping_troop_count,
+    with_context,
+)
+
+# Agent-turn effect frame keys while the turn end runs its Usurp trash
+# (OQ-095 (4)-(5)): the press happened, the window the turn had for Combat
+# deployment, and the units recruited by then.
+FINISHING_KEY: Final = "finishing"
+FINISH_DEPLOYMENT_KEY: Final = "finish_deployment_window"
+FINISH_RECRUITS_KEY: Final = "finish_recruited_units"
+
+# Agent-turn effect frame keys for the Combat deployment (absent means none).
+# ``combat_troops_deployed`` counts every unit the turn's basic deployment
+# moved (its allowance used) and ``combat_commanders_deployed`` the
+# Commander share of it; only a withdrawal lowers them. The withdrawable
+# pair counts the same units still eligible for a withdrawal, in the same
+# shape, and a card retreat or loss lowers it too (OQ-029, user ruling
+# 2026-10-04).
+DEPLOYED_UNITS_KEY: Final = "combat_troops_deployed"
+DEPLOYED_COMMANDERS_KEY: Final = "combat_commanders_deployed"
+WITHDRAWABLE_UNITS_KEY: Final = "combat_troops_withdrawable"
+WITHDRAWABLE_COMMANDERS_KEY: Final = "combat_commanders_withdrawable"
+# Rise of Ix dreadnoughts, counted on their own (absent means none): the
+# dreadnoughts the turn's basic deployment moved and the ones still eligible
+# for a withdrawal. Neither is part of the troop or Commander counts above.
+DEPLOYED_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_deployed"
+WITHDRAWABLE_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_withdrawable"
+# The dreadnoughts an effect deployed straight to the Conflict this turn
+# (absent means none): Arrakeen Scouts' Armed Escort, whose "Dreadnought is
+# immediately deployed to the conflict" [Scouts mission: Armed Escort]. They
+# are units deployed this turn, as OQ-077 (c) reads the missions' "곧바로
+# Conflict에" (2026-11-02 note, the designer's "3 units in the conflict that
+# were deployed to the conflict this turn"), but no part of the basic
+# deployment's allowance and never withdrawn (OQ-029 1: an effect's units are
+# not), so neither count above holds them.
+EFFECT_DREADNOUGHTS_KEY: Final = "effect_dreadnoughts_deployed"
+# The unit count a played Rise of Ix Diversion used as its condition, troops,
+# Commanders, sandworms and dreadnoughts together (absent means none): a
+# withdrawal of either kind may not take the turn's total below it, as the
+# troops' own floor (``PlayerState.units_deployed_committed``) keeps Distraction
+# and Coercive Negotiation's count (OQ-029 (3)).
+UNITS_COMMITTED_KEY: Final = "combat_units_committed_with_dreadnoughts"
+# What a resolved effect read of the owner's units in the Conflict this turn
+# (absent means none): the units of an "N or more units in the Conflict"
+# condition (Chani, Clever Tactician), the Sardaukar Commanders of a
+# "Commander in the Conflict" one (Seize Production, Ruthless Leadership), and
+# one unit of each kind Calculating paid for. No withdrawal takes the Conflict
+# below any of them (OQ-029 (3), user ruling 2026-11-01,
+# ``commit_conflict_condition``, ``commit_unit_kinds``).
+CONFLICT_UNITS_COMMITTED_KEY: Final = "conflict_units_committed"
+CONFLICT_TROOPS_COMMITTED_KEY: Final = "conflict_troops_committed"
+CONFLICT_COMMANDERS_COMMITTED_KEY: Final = "conflict_commanders_committed"
+CONFLICT_DREADNOUGHTS_COMMITTED_KEY: Final = "conflict_dreadnoughts_committed"
+# A withdrawal bound no withdrawal reaches: more units than a seat owns.
+_UNBOUNDED: Final = 1 << 16
+
+
+# Harkonnen Advisor troops the supply could not give yet: the part of the
+# seat's recruit shortfall (``PlayerState.ungained_troops``, OQ-030) that
+# stays undeployable once the supply refills it (OQ-038, 2026-10-26).
+# Kept beside ``undeployable_troops`` in the owner's turn frame; absent
+# means none.
+UNGAINED_UNDEPLOYABLE_KEY: Final = "undeployable_troops_ungained"
+
+
+def undeployable_troops(context: Mapping[str, ActionValue]) -> int:
+    """Return the garrison troops the turn's effects forbid deploying."""
+
+    value = context.get("undeployable_troops", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("Agent-turn effect frame has invalid undeployable count")
+    return value
+
+
+def ungained_undeployable_troops(context: dict[str, ActionValue]) -> int:
+    """Return the undeployable troops still waiting in the shortfall."""
+
+    value = context.get(UNGAINED_UNDEPLOYABLE_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("turn frame has an invalid ungained undeployable count")
+    return value
+
+
+def refill_undeployable_troops(
+    state: GameState,
+    player: int,
+    troops: int,
+    *,
+    ungained: int,
+) -> tuple[GameState, int]:
+    """Keep a refilled Harkonnen Advisor troop undeployable (OQ-038).
+
+    "1 troop. You can't deploy this troop to the Conflict this turn."
+    [Piter De Vries card]: the troop the supply could not give at once is
+    still that troop when a later supply refill gives it (user ruling
+    2026-10-26, "카드 문구대로", amending OQ-030's refill). Troops are
+    indistinguishable, so a partial refill gives the deployable recruits
+    first, as a garrison loss gives up the undeployable troop first.
+    ``ungained`` is the seat's shortfall before this refill; returns the
+    state and how many of the ``troops`` stay undeployable.
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state, 0
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    waiting = min(ungained_undeployable_troops(context), ungained)
+    deployable_waiting = ungained - waiting
+    kept = min(waiting, max(0, troops - deployable_waiting))
+    if not kept:
+        return state, 0
+    if waiting - kept:
+        context[UNGAINED_UNDEPLOYABLE_KEY] = waiting - kept
+    else:
+        context.pop(UNGAINED_UNDEPLOYABLE_KEY, None)
+    context["undeployable_troops"] = undeployable_troops(context) + kept
+    return (
+        replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:index],
+                replace(frame, context=tuple(sorted(context.items()))),
+                *state.decision_stack[index + 1 :],
+            ),
+        ),
+        kept,
+    )
+
+
+def undeployable_troops_this_turn(state: GameState, player: int) -> int:
+    """Troops the player's open turn forbids deploying (OQ-038).
+
+    The count lives in the owner's turn frame: the Agent-turn effect frame,
+    the turn frame before the Agent is placed, or the Reveal frame (a
+    Harkonnen Advisor troop from Servo-Receivers, OQ-062). Zero outside the
+    owner's turn; every deployment that reads the garrison (basic
+    deployment, Reveal Combat-icon deployment, Intrigue and Navigation
+    "deploy from garrison" effects) must subtract this before judging what
+    is possible.
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return 0
+    return undeployable_troops(dict(state.decision_stack[index].context))
+
+
+def release_undeployable_troops(
+    state: GameState,
+    player: int,
+    count: int,
+) -> GameState:
+    """A garrison troop lost this turn counts as the undeployable one.
+
+    Troops are indistinguishable, so a player who must lose a garrison
+    troop while Harkonnen Advisor's troop sits there gives up that troop
+    first and the deployable count returns to normal (OQ-038).
+    """
+
+    if count < 1:
+        return state
+    index = own_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    undeployable = undeployable_troops(context)
+    if not undeployable:
+        return state
+    context["undeployable_troops"] = max(0, undeployable - count)
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def deployment_rooms(
+    *,
+    troops_recruited: int,
+    commanders_recruited: int,
+    existing_limit: int,
+    troops_deployed: int,
+    commanders_deployed: int,
+) -> tuple[int, int]:
+    """Return how many more troops and Commanders the turn may still deploy.
+
+    "Combat space에 들어간 turn에는 그 turn에 recruit한 troop을 원하는
+    수만큼 deploy하고, 그와 별도로 garrison의 troop을 최대 두 개 더
+    deploy할 수 있다" [Main p. 10] (docs/rules/player-turns.md:136); a
+    Commander is a "troop" worth 2 strength [Bloodlines p. 4]. User ruling
+    2026-09-26 (OQ-070): "commander 소집했으면 커맨더를 배치해야지, troop이
+    그 배치 몫을 차지하면 안 되지". So each unit recruited this turn
+    reserves a slot for its own kind, and ``existing_limit`` more units of
+    either kind may come from the garrison: a deployment is legal iff
+    ``max(0, t - R_t) + max(0, c - R_c) <= existing_limit``. Each room is
+    the kind's own unfilled recruit slots plus the unused garrison extra;
+    availability (garrison contents, undeployable troops) is the caller's.
+    """
+
+    troop_room, commander_room, _ = unit_deployment_rooms(
+        recruited=(troops_recruited, commanders_recruited, 0),
+        deployed=(troops_deployed, commanders_deployed, 0),
+        existing_limit=existing_limit,
+    )
+    return troop_room, commander_room
+
+
+def unit_deployment_rooms(
+    *,
+    recruited: tuple[int, int, int],
+    deployed: tuple[int, int, int],
+    existing_limit: int,
+) -> tuple[int, int, int]:
+    """Return how many more troops, Commanders and dreadnoughts may deploy.
+
+    ``deployment_rooms``' rule for the three kinds of unit, each triple in
+    that order. "You may deploy any or all units recruited during your
+    current turn ..., plus up to two more units from your garrison."
+    [Rise of Ix p. 6]: a dreadnought commissioned this turn reserves a slot
+    for a dreadnought, as a recruited Commander does for a Commander
+    (docs/base-game-and-ix-plan.md 17.6 item 2), and the garrison extra is
+    shared by all three kinds on top of those -- a deployment is legal iff
+    ``sum(max(0, d - r)) <= existing_limit``. Each room is the kind's own
+    unfilled recruit slots plus the unused garrison extra; availability is
+    the caller's.
+    """
+
+    pairs = tuple(zip(recruited, deployed, strict=True))
+    excess = sum(max(0, done - slots) for slots, done in pairs)
+    shared = max(0, existing_limit - excess)
+    troops, commanders, dreadnoughts = (
+        max(0, slots - done) + shared for slots, done in pairs
+    )
+    return troops, commanders, dreadnoughts
+
+
+@dataclass(frozen=True, slots=True)
+class _Deployment:
+    """The open Agent-turn deployment window's counters."""
+
+    # The frame's context, read only (``_deployment_context`` keeps it).
+    context: Mapping[str, ActionValue]
+    troop_room: int
+    commander_room: int
+    dreadnought_room: int
+    withdrawable_troops: int
+    withdrawable_commanders: int
+    withdrawable_dreadnoughts: int
+
+
+def _unit_count(context: Mapping[str, ActionValue], key: str) -> int:
+    """Read one of the deployment counters (absent means none)."""
+
+    value = context.get(key, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Agent-turn effect frame has invalid {key}")
+    return value
+
+
+def _shares(
+    context: dict[str, ActionValue], units_key: str, commanders_key: str
+) -> tuple[int, int]:
+    """Split a (units, Commander share) counter pair into troops and Commanders."""
+
+    commanders = _unit_count(context, commanders_key)
+    return max(0, _unit_count(context, units_key) - commanders), commanders
+
+
+def _owner_turn_frame_index(state: GameState, player: int) -> int | None:
+    """The index of the owner's Agent-turn effect frame, the latest one."""
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if (
+            frame.kind == FrameKind.AGENT_EFFECTS
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    return None
+
+
+def dreadnoughts_deployed_this_turn(state: GameState, player: int) -> int:
+    """The dreadnoughts the owner's turn frame says were deployed to the
+    Conflict this turn -- by its deployment (a withdrawal lowers it) or
+    straight by an effect (``EFFECT_DREADNOUGHTS_KEY``) -- 0 outside an Agent
+    turn.
+
+    The turn's unit count (``PlayerState.units_deployed_turn``) holds no
+    dreadnought (``_move_dreadnoughts``), so Diversion's "four or more units"
+    adds this to it (``UnitsDeployedThisTurnAtLeast(dreadnoughts=True)``).
+    Like the troops' peak a card's retreat leaves it standing, for only a
+    withdrawal changes the frame's count (``reconcile_deployment_after_retreat``).
+    """
+
+    index = _owner_turn_frame_index(state, player)
+    if index is None:
+        return 0
+    return _turn_dreadnoughts(dict(state.decision_stack[index].context))
+
+
+def count_effect_dreadnoughts(context: dict[str, ActionValue], count: int) -> None:
+    """Record in the owner's Agent-turn frame ``context`` that an effect put
+    ``count`` dreadnoughts straight into the Conflict this turn
+    (``EFFECT_DREADNOUGHTS_KEY``)."""
+
+    context[EFFECT_DREADNOUGHTS_KEY] = (
+        _unit_count(context, EFFECT_DREADNOUGHTS_KEY) + count
+    )
+
+
+def _turn_dreadnoughts(context: Mapping[str, ActionValue]) -> int:
+    """The dreadnoughts an Agent-turn frame's ``context`` counts as deployed
+    this turn: its deployment's and an effect's."""
+
+    return _unit_count(context, DEPLOYED_DREADNOUGHTS_KEY) + _unit_count(
+        context, EFFECT_DREADNOUGHTS_KEY
+    )
+
+
+def units_condition_counts_dreadnoughts(
+    condition: UnitsDeployedThisTurnAtLeast, config: RulesetConfig
+) -> bool:
+    """Whether a card's "deploy N or more units" counts the turn's
+    dreadnoughts: Rise of Ix's Diversion always (``dreadnoughts``), and
+    Uprising's Distraction and Coercive Negotiation whenever the game has the
+    expansion, for "There are two types of units: troops and sandworms. The
+    RISE OF IX expansion includes another type of unit, called dreadnoughts."
+    [Main p. 10] ("'unit'은 troop 또는 dreadnought다" [Rise of Ix p. 6],
+    docs/rules/rise-of-ix.md 6; plan 17.9, stage P7f). Without the expansion
+    no seat has a dreadnought, so the two readings agree."""
+
+    return condition.dreadnoughts or config.rise_of_ix
+
+
+def units_deployed_with_dreadnoughts(state: GameState, player: int) -> int:
+    """The units of ``player``'s turn, dreadnoughts among them, that stood in
+    the Conflict at one moment at most: Rise of Ix's Diversion's "four or
+    more units", and Distraction's and Coercive Negotiation's "three or more
+    units" with the expansion (``units_condition_counts_dreadnoughts``).
+
+    "이번 turn에 배치한 unit 3개가 동시에 Conflict에 있던 순간이 있으면 그
+    turn이 끝날 때까지 낼 수 있고, 뒤의 retreat·손실은 그것을 지우지 않는다"
+    (OQ-029 (3) 재판정, the designer's ruling): the turn's peak of troops,
+    Commanders, sandworms and dreadnoughts together
+    (``PlayerState.units_peak_with_dreadnoughts``, kept by
+    ``record_deployment_peak``), the units there now, and the troops' own
+    peak (a moment without dreadnoughts)."""
+
+    owner = state.players[player]
+    now = units_present_this_turn(owner) + dreadnoughts_deployed_this_turn(
+        state, player
+    )
+    return max(now, owner.units_peak_with_dreadnoughts, owner.units_deployed_peak)
+
+
+def units_present_this_turn(owner: PlayerState) -> int:
+    """The units deployed this turn still in the Conflict (troops,
+    Commanders, sandworms): the turn's count less what a played card's
+    floor kept it above them after a retreat or loss (OQ-029,
+    ``reconcile_deployment_after_retreat``)."""
+
+    return owner.units_deployed_turn - owner.units_deployed_overstated
+
+
+def commit_units_with_dreadnoughts(
+    state: GameState, player: int, count: int
+) -> GameState:
+    """Record that a played card used ``count`` units of the owner's turn,
+    dreadnoughts among them, as its condition (Diversion): no withdrawal may
+    take the turn's total below it (OQ-029 (3), ``_commitment_slack``). Outside
+    an Agent turn no withdrawal exists, so nothing is recorded."""
+
+    index = _owner_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[UNITS_COMMITTED_KEY] = max(_unit_count(context, UNITS_COMMITTED_KEY), count)
+    stack = list(state.decision_stack)
+    stack[index] = with_context(frame, context)
+    return replace(state, decision_stack=tuple(stack))
+
+
+def _raise_floor(context: dict[str, ActionValue], key: str, count: int) -> None:
+    context[key] = max(_unit_count(context, key), count)
+
+
+def commit_conflict_condition(
+    context: dict[str, ActionValue], condition: Condition | None
+) -> None:
+    """Record in the owner's Agent-turn frame ``context`` what a resolved
+    ``condition`` read of the owner's units in the Conflict: no withdrawal
+    may then make it false (OQ-029 (3)). User ruling 2026-11-01: "교전칸에서
+    사다우카 커맨더 배치 후 그 책략으로 스파이스2를 받았으면 사다우카 커맨더 배치
+    취소를 못 하게 해야 맞는 것 같은데", extended by the user the same day to
+    Ruthless Leadership and Chani, Clever Tactician. Only the conditions an
+    Agent turn resolves are kept: a sandworm is never withdrawn, and a
+    strength condition (Gurney Halleck's Always Smiling) and the Reveal lines
+    (Quash Rebellion) resolve in a Reveal turn, which offers no withdrawal
+    (OQ-034). Other conditions leave ``context`` as it is."""
+
+    match condition:
+        case CommandersInConflictAtLeast(count=count):
+            _raise_floor(context, CONFLICT_COMMANDERS_COMMITTED_KEY, count)
+        case UnitsInConflictAtLeast(count=count):
+            _raise_floor(context, CONFLICT_UNITS_COMMITTED_KEY, count)
+        case AllConditions(conditions=conditions):
+            for item in conditions:
+                commit_conflict_condition(context, item)
+
+
+def commit_unit_kinds(context: dict[str, ActionValue], owner: PlayerState) -> None:
+    """Record that Calculating paid one Solari for each kind of unit the owner
+    has in the Conflict: one unit of each withdrawable kind -- troops,
+    Commanders, dreadnoughts -- stays (OQ-029 (3), user ruling 2026-11-01,
+    "종류마다 1개씩 막기"). Sandworms and an Agent are never withdrawn."""
+
+    for key, units in (
+        (CONFLICT_TROOPS_COMMITTED_KEY, owner.troops_conflict),
+        (CONFLICT_COMMANDERS_COMMITTED_KEY, owner.commanders_conflict),
+        (CONFLICT_DREADNOUGHTS_COMMITTED_KEY, owner.dreadnoughts_conflict),
+    ):
+        if units > 0:
+            _raise_floor(context, key, 1)
+
+
+def commit_conflict_reading_in_turn(
+    state: GameState,
+    player: int,
+    conditions: tuple[Condition | None, ...],
+    *,
+    unit_kinds: bool = False,
+) -> GameState:
+    """``commit_conflict_condition`` for each of ``conditions`` and, with
+    ``unit_kinds``, ``commit_unit_kinds`` in the owner's Agent-turn frame,
+    for an effect that resolves above it (a Plot Intrigue). Outside an
+    Agent turn no withdrawal exists, so nothing is recorded."""
+
+    index = _owner_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    for condition in conditions:
+        commit_conflict_condition(context, condition)
+    if unit_kinds:
+        commit_unit_kinds(context, state.players[player])
+    if context == dict(frame.context):
+        return state
+    stack = list(state.decision_stack)
+    stack[index] = with_context(frame, context)
+    return replace(state, decision_stack=tuple(stack))
+
+
+_KIND_FLOOR_KEYS: Final = {
+    "troops": CONFLICT_TROOPS_COMMITTED_KEY,
+    "commanders": CONFLICT_COMMANDERS_COMMITTED_KEY,
+    "dreadnoughts": CONFLICT_DREADNOUGHTS_COMMITTED_KEY,
+}
+
+
+def _conflict_slack(
+    owner: PlayerState, context: Mapping[str, ActionValue], kind: str
+) -> int:
+    """How many units of ``kind`` the owner may still withdraw above what a
+    resolved effect read of its units in the Conflict (``commit_conflict_condition``,
+    ``commit_unit_kinds``): every kind counts toward the units, and each kind
+    toward its own floor. Unbounded without one. A card's retreat or loss
+    may already have taken the Conflict below a floor, and then nothing more
+    is withdrawn, as with the turn's deployed-unit floor
+    (``reconcile_deployment_after_retreat``)."""
+
+    slack = _UNBOUNDED
+    units = _unit_count(context, CONFLICT_UNITS_COMMITTED_KEY)
+    if units:
+        slack = owner.units_in_conflict - units
+    held = _unit_count(context, _KIND_FLOOR_KEYS[kind])
+    if held:
+        present = {
+            "troops": owner.troops_conflict,
+            "commanders": owner.commanders_conflict,
+            "dreadnoughts": owner.dreadnoughts_conflict,
+        }[kind]
+        slack = min(slack, present - held)
+    return slack
+
+
+def _commitment_slack(owner: PlayerState, context: Mapping[str, ActionValue]) -> int:
+    """How many units of the turn's total the owner may still withdraw above
+    the count a Diversion used (``UNITS_COMMITTED_KEY``); unbounded without
+    one."""
+
+    floor = _unit_count(context, UNITS_COMMITTED_KEY)
+    if not floor:
+        return _UNBOUNDED
+    return owner.units_deployed_turn + _turn_dreadnoughts(context) - floor
+
+
+# What ``_deployment_context`` keeps for a state it has not answered yet.
+_UNASKED: Final = object()
+
+
+def _deployment_context(
+    state: GameState,
+    player: int,
+) -> _Deployment | None:
+    """Return the open deployment window's counters, or None.
+
+    Up to six legal providers of one Agent-effect frame ask this of the same
+    state (the deployments and withdrawals of troops, Commanders and
+    dreadnoughts), so the answer is kept with the state
+    (``core.memo.answers_of``; 2026-11 engine speed, round 3). It is a pure
+    function of the state, and its ``context`` is a read-only view: every
+    asker only reads it, and the handlers that change a context build their
+    own (``current_agent_effect_context``).
+    """
+
+    answers = answers_of(state)
+    key = ("deployment", player)
+    kept = answers.get(key, _UNASKED)
+    if kept is not _UNASKED:
+        return cast(_Deployment | None, kept)
+    found = _find_deployment(state, player)
+    answers[key] = found
+    return found
+
+
+def _find_deployment(state: GameState, player: int) -> _Deployment | None:
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    if context["pending_combat_deployment"] is not True:
+        return _shipping_deployment(context)
+    recruited = context["troops_recruited"]
+    if isinstance(recruited, bool) or not isinstance(recruited, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    # And the troops an Influence track bonus recruited this turn.
+    recruited += state.players[player].track_troops_recruited_turn
+    existing_limit = context.get("existing_troop_deployment_limit")
+    if isinstance(existing_limit, bool) or not isinstance(existing_limit, int):
+        raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
+    # The room reads the allowance used, which a card retreat or loss leaves
+    # alone (OQ-029, ``reconcile_deployment_after_retreat``).
+    troops, commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
+    troop_room, commander_room, dreadnought_room = unit_deployment_rooms(
+        recruited=(
+            recruited,
+            recruited_commander_count(context, COMMANDERS_RECRUITED_KEY),
+            commissioned_dreadnought_count(context),
+        ),
+        deployed=(
+            troops,
+            commanders,
+            _unit_count(context, DEPLOYED_DREADNOUGHTS_KEY),
+        ),
+        existing_limit=existing_limit,
+    )
+    withdrawable_troops, withdrawable_commanders = _shares(
+        context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+    )
+    return _Deployment(
+        MappingProxyType(context),
+        troop_room,
+        commander_room,
+        dreadnought_room,
+        withdrawable_troops,
+        withdrawable_commanders,
+        _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
+    )
+
+
+def _shipping_deployment(context: dict[str, ActionValue]) -> _Deployment | None:
+    """The deployment window of an Agent turn with no Combat space, which
+    only the troops a Shipping recruit brought in with Troop Transports open:
+    "You may deploy any of them to the Conflict" -- the card's sentence allows
+    the deployment, and "카드는 일반 규칙을 바꾼다 [DI p. 6]"
+    (docs/rules/rise-of-ix.md 15). Those troops have a room of their own, with
+    no garrison share of two and no Commander or dreadnought slot, and the
+    window closes with the turn's press. None without such troops, or while
+    the turn's deployment is blocked [Main p. 17]."""
+
+    shipping = shipping_troop_count(context)
+    if (
+        shipping < 1
+        or context.get("units_deploy_blocked") is True
+        or agent_turn_is_finishing(context)
+    ):
+        return None
+    troops, _commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
+    withdrawable_troops, withdrawable_commanders = _shares(
+        context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+    )
+    return _Deployment(
+        MappingProxyType(context),
+        max(0, shipping - troops),
+        0,
+        0,
+        withdrawable_troops,
+        withdrawable_commanders,
+        _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
+    )
+
+
+def legal_combat_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate the troop counts that may still be added to this deployment.
+
+    A Commander recruited this turn keeps its slot for a Commander; the
+    troops take their own recruit slots and the shared garrison extra
+    (OQ-070, ``deployment_rooms``).
+    """
+
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    # Harkonnen Advisor's troop "can't be deployed to the Conflict this
+    # turn": it sits in the garrison but is not available [Piter De Vries
+    # card] (OQ-038).
+    garrison = max(
+        0, state.players[player].troops_garrison - undeployable_troops(found.context)
+    )
+    maximum = min(garrison, found.troop_room)
+    return tuple(
+        DomainAction(
+            action_id="deploy_troops",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_commander_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate the Sardaukar Commander counts that may still deploy.
+
+    A Commander is a "troop" [Bloodlines p. 4]: every Commander recruited
+    this turn may deploy, and a garrison Commander may be one of the "up to
+    two" garrison units [Bloodlines p. 4] [Main p. 10]. The recruit slots
+    are kept per kind -- a Commander recruited this turn reserves its slot
+    for a Commander and a recruited troop's slot is never a Commander's --
+    while the garrison extra is shared with the troops (user ruling OQ-070,
+    ``deployment_rooms``).
+    """
+
+    if not state.config.bloodlines:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    garrison = state.players[player].commanders_garrison
+    maximum = min(garrison, found.commander_room)
+    return tuple(
+        DomainAction(
+            action_id="deploy_commanders",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_dreadnought_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate the garrison dreadnought counts that may still deploy.
+
+    "If you commissioned the dreadnought while sending an Agent to a Combat
+    space, you may deploy it to the Conflict" [Rise of Ix p. 6], and a
+    dreadnought already in the garrison may be one of the "up to two more
+    units from your garrison" [Rise of Ix p. 6]. The window is the troops'
+    own (an Agent turn at a Combat space, or a Combat icon): each
+    dreadnought commissioned this turn keeps a slot for a dreadnought outside
+    the garrison share, which all three kinds of unit share
+    (``unit_deployment_rooms``).
+    """
+
+    if not state.config.rise_of_ix:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    maximum = min(state.players[player].dreadnoughts_garrison, found.dreadnought_room)
+    return tuple(
+        DomainAction(
+            action_id="deploy_dreadnoughts",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_troop_withdrawals(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate how many of this turn's deployed troops may return (OQ-029).
+
+    Only troops of the turn's basic deployment that no card retreat or loss
+    has taken since (``reconcile_deployment_after_retreat``) are offered.
+    """
+
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    owner = state.players[player]
+    # A deployment condition a played card used (Distraction, Coercive
+    # Negotiation) keeps its minimum deployed.
+    # The units actually in the Conflict bound this too: a troop deployed this
+    # turn can leave it again before the turn closes, and "when you lose a
+    # troop, return it to your supply (not your garrison)"
+    # [Dune: Imperium Rules 2020-10-26 p. 16], so the frame's deployment count
+    # outruns the Conflict. A withdrawal acts on what is there when it
+    # resolves, the way a recruit does (OQ-030); offering more advertised a
+    # move that drove the seat's troops negative (2026-09-10 soak, seed 34).
+    maximum = min(
+        found.withdrawable_troops,
+        owner.units_deployed_turn - owner.units_deployed_committed,
+        owner.troops_conflict,
+        _commitment_slack(owner, found.context),
+        _conflict_slack(owner, found.context, "troops"),
+    )
+    return tuple(
+        DomainAction(
+            action_id="withdraw_troops",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_commander_withdrawals(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate how many of this turn's deployed Commanders may return."""
+
+    if not state.config.bloodlines:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    owner = state.players[player]
+    # Bounded by the Commanders actually in the Conflict, for the same reason
+    # the troop withdrawal is: Bloodlines loses a Commander from the garrison
+    # or the Conflict [Bloodlines Rules p. 8].
+    maximum = min(
+        found.withdrawable_commanders,
+        owner.units_deployed_turn - owner.units_deployed_committed,
+        owner.commanders_conflict,
+        _commitment_slack(owner, found.context),
+        _conflict_slack(owner, found.context, "commanders"),
+    )
+    return tuple(
+        DomainAction(
+            action_id="withdraw_commanders",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_dreadnought_withdrawals(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate how many of this turn's deployed dreadnoughts may return.
+
+    The troops' withdrawal for the third kind (OQ-029): only dreadnoughts of
+    this turn's basic deployment that no retreat has taken since, and no more
+    than the Conflict holds. The turn's unit count a played Distraction or
+    Coercive Negotiation used (``PlayerState.units_deployed_committed``) never
+    holds a dreadnought, so it bounds nothing here; a played Diversion counts
+    them and bounds the withdrawal (``UNITS_COMMITTED_KEY``).
+    """
+
+    if not state.config.rise_of_ix:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    owner = state.players[player]
+    maximum = min(
+        found.withdrawable_dreadnoughts,
+        owner.dreadnoughts_conflict,
+        _commitment_slack(owner, found.context),
+        _conflict_slack(owner, found.context, "dreadnoughts"),
+    )
+    return tuple(
+        DomainAction(
+            action_id="withdraw_dreadnoughts",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def agent_turn_is_finishing(context: dict[str, ActionValue]) -> bool:
+    """Whether the owner already pressed the end and its own steps still run.
+
+    Every ``finish_agent_turn`` press puts its turn in this state
+    (``FINISHING_KEY``): what the press leaves behind (a Usurp trash's
+    follow-ups, a Skill or Navigation choice, a reshuffle, an owed Emperor
+    track Spy) resolves on top of the frame, and
+    ``settle_finishing_agent_turn`` then closes or reopens it. A press that
+    leaves nothing is settled in the same transition.
+    """
+
+    return context.get(FINISHING_KEY) is True
+
+
+def legal_agent_turn_finish_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the explicit turn end once no mandatory group is pending.
+
+    Every Agent turn ends only here, whether or not anything optional is
+    left (user ruling OQ-095); the Combat deployment window stays open until
+    the press (OQ-029). An optional effect left unused does not hold the end
+    back -- "'턴 종료'는 의무 효과가 모두 끝났을 때만 제시된다" (OQ-095 (2)), and
+    "may", an arrow cost or a black trash icon is optional [FAQ p. 3] --
+    and the press lapses it (user ruling 2026-10-14). The end is also offered
+    when the only other pending group is a mandatory Agent box that can only
+    fizzle (its condition is false and nothing else of the turn remains to
+    meet it): the box waits for the turn's end rather than fizzling on
+    demand (designer ruling, OQ-057). An Emperor track Spy the owner still
+    owes holds the end back: it is placed in any order but before the turn
+    ends (user ruling
+    2026-10-04, "엄연히 agent턴 내에 순서를 정해서 할 수 있는 의무 행동").
+    """
+
+    from dune_imperium.rules.agent_effects import pending_boxes_hold_the_end
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if agent_turn_is_finishing(context):
+        return ()
+    if owes_track_spy(state, player) or turn_rows.tech_acquire_effects_hold_the_end(
+        context, state.players[player]
+    ):
+        # An owed Tech acquire icon holds the end (OQ-098), but not an
+        # Influence with every Faction at the top: the press lapses it
+        # (cleanup-2b, ``turn_rows.lapse``).
+        return ()
+    if turn_rows.holds_the_end(state, player):
+        # c6r6's Influence waiting on the turn, with a Faction it can raise
+        # (cleanup-2b): taking it is mandatory.
+        return ()
+    if owes_held_draw(state, player):
+        # A triggered draw waits as its own step and is taken before the
+        # turn ends (user ruling 2026-10-10, OQ-106).
+        return ()
+    # Every Agent box still pending -- both of a graft, each judged with
+    # itself active -- is optional now (the press lapses it, user ruling
+    # 2026-10-14) or can only fizzle (OQ-057 (1)).
+    if agent_turn_has_other_pending_effects(
+        context,
+        state.players,
+        ignore_agent_effect=not pending_boxes_hold_the_end(state),
+    ):
+        return ()
+    return (DomainAction(action_id="finish_agent_turn", actor=player),)
+
+
+def _count_argument(action: DomainAction) -> int:
+    count = dict(action.arguments)["count"]
+    if isinstance(count, bool) or not isinstance(count, int):
+        raise ValueError("deployment count must be an integer")
+    return count
+
+
+def _move_troops(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    delta: int,
+    *,
+    commanders: bool = False,
+) -> GameState:
+    """Move ``delta`` units garrison→Conflict (negative: back) and keep the frame.
+
+    A deployment adds to both the allowance used and the withdrawable count;
+    a withdrawal undoes the deployment, so it lowers both and gives its room
+    back (OQ-029; the keys are described at ``DEPLOYED_UNITS_KEY``).
+    """
+
+    owner = state.players[player]
+    # A withdrawal undoes the deployment (OQ-029), so the turn's deployment
+    # peak drops with it; a deployment raises the peak through
+    # ``record_deployment_peak`` once the transition settles. Lowering it by
+    # the withdrawn count never overstates the peak; after a retreat it can
+    # understate it (withdrawing a unit deployed after the retreat), a
+    # recorded project convention (OQ-016).
+    present = units_present_this_turn(owner) + delta
+    peak = (
+        max(present, owner.units_deployed_peak + delta)
+        if delta < 0
+        else owner.units_deployed_peak
+    )
+    # The peak with dreadnoughts drops the same way (stage P7).
+    with_dreadnoughts = (
+        max(
+            present + _turn_dreadnoughts(context),
+            owner.units_peak_with_dreadnoughts + delta,
+        )
+        if delta < 0 and owner.units_peak_with_dreadnoughts
+        else owner.units_peak_with_dreadnoughts
+    )
+    if commanders:
+        next_owner = replace(
+            owner,
+            commanders_garrison=owner.commanders_garrison - delta,
+            commanders_conflict=owner.commanders_conflict + delta,
+            units_deployed_turn=owner.units_deployed_turn + delta,
+            units_deployed_peak=peak,
+            units_peak_with_dreadnoughts=with_dreadnoughts,
+        )
+        for key in (DEPLOYED_COMMANDERS_KEY, WITHDRAWABLE_COMMANDERS_KEY):
+            context[key] = _unit_count(context, key) + delta
+    else:
+        next_owner = replace(
+            owner,
+            troops_garrison=owner.troops_garrison - delta,
+            troops_conflict=owner.troops_conflict + delta,
+            units_deployed_turn=owner.units_deployed_turn + delta,
+            units_deployed_peak=peak,
+            units_peak_with_dreadnoughts=with_dreadnoughts,
+        )
+    players = tuple(
+        next_owner if seat.player_id == player else seat for seat in state.players
+    )
+    for key in (DEPLOYED_UNITS_KEY, WITHDRAWABLE_UNITS_KEY):
+        context[key] = _unit_count(context, key) + delta
+    frame = state.decision_stack[-1]
+    next_frame = replace(frame, context=tuple(sorted(context.items())))
+    return replace(
+        state,
+        players=players,
+        decision_stack=(*state.decision_stack[:-1], next_frame),
+    )
+
+
+def apply_combat_deployment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Add the selected troop count to this turn's Conflict deployment."""
+
+    if action not in legal_combat_deployments(state, action.actor):
+        raise ValueError("action is not a legal Combat deployment")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:deploy_troops:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="troops_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def _move_dreadnoughts(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    delta: int,
+) -> GameState:
+    """Move ``delta`` dreadnoughts garrison→Conflict (negative: back).
+
+    A deployment adds to the dreadnoughts' allowance used and withdrawable
+    count, a withdrawal lowers both and gives its room back, as for the
+    troops (OQ-029). The turn's unit count, its peak and its committed
+    floor are left alone: a dreadnought is no troop (docs/rules/rise-of-ix.md
+    6, the table), so the Baron's Masterstroke, Distraction and Coercive
+    Negotiation never see it here.
+    """
+
+    owner = state.players[player]
+    for key in (DEPLOYED_DREADNOUGHTS_KEY, WITHDRAWABLE_DREADNOUGHTS_KEY):
+        context[key] = _unit_count(context, key) + delta
+    # A withdrawal undoes the deployment (OQ-029): the turn's peak with
+    # dreadnoughts drops by it, never below the units left (stage P7).
+    with_dreadnoughts = (
+        max(
+            owner.units_peak_with_dreadnoughts + delta,
+            units_present_this_turn(owner) + _turn_dreadnoughts(context),
+        )
+        if delta < 0 and owner.units_peak_with_dreadnoughts
+        else owner.units_peak_with_dreadnoughts
+    )
+    next_owner = replace(
+        owner,
+        dreadnoughts_garrison=owner.dreadnoughts_garrison - delta,
+        dreadnoughts_conflict=owner.dreadnoughts_conflict + delta,
+        units_peak_with_dreadnoughts=with_dreadnoughts,
+    )
+    frame = state.decision_stack[-1]
+    return replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def apply_dreadnought_deployment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Deploy the selected count of garrison dreadnoughts to the Conflict."""
+
+    if action not in legal_dreadnought_deployments(state, action.actor):
+        raise ValueError("action is not a legal dreadnought deployment")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_dreadnoughts(state, context, action.actor, count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:deploy_dreadnoughts:"
+            f"{next_state.players[action.actor].dreadnoughts_conflict}"
+        ),
+        kind="dreadnoughts_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_dreadnought_withdrawal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Return dreadnoughts deployed this turn from the Conflict to the garrison."""
+
+    if action not in legal_dreadnought_withdrawals(state, action.actor):
+        raise ValueError("action is not a legal dreadnought withdrawal")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_dreadnoughts(state, context, action.actor, -count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:withdraw_dreadnoughts:"
+            f"{next_state.players[action.actor].dreadnoughts_conflict}"
+        ),
+        kind="dreadnoughts_withdrawn",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def reconcile_deployment_after_retreat(
+    state: GameState,
+    player: int,
+    *,
+    troops: int,
+    commanders: int = 0,
+    dreadnoughts: int = 0,
+) -> GameState:
+    """Follow a card retreat or loss from the Conflict in the turn's counters.
+
+    A Signet Ring, a Plot Intrigue or an Agent box may retreat or lose units
+    the turn's basic deployment just moved (Fedaykin Maneuver, a Twisted
+    Intrigue cost, Piter, Genius Advisor). The withdrawal window offers only
+    units still there, so its counters follow the retreat down. The basic
+    deployment allowance does not come back: "You may deploy any or all
+    units recruited during your current turn ..., plus up to two more units
+    from your garrison." [Main p. 10]; "you can't 're-recruit' troops in
+    your garrison to get around the limit of deploying up to two troops from
+    your garrison" [FAQ p. 4] (OQ-029, user ruling 2026-10-04, "되돌리지
+    않음"). Only a withdrawal (``_move_troops``) undoes a deployment and
+    frees its room. A Reveal turn's Combat-icon deployment
+    (``reveal_units_deployed``) never shrinks either.
+
+    The per-turn deployment count also drops, never below the count a
+    played card already used (OQ-029); the turn's peak stays, as the
+    deployment it records did happen (``record_deployment_peak``, OQ-016).
+
+    Each kind's withdrawable share shrinks only by its own retreated units:
+    a retreated troop (perhaps one deployed in an earlier turn) never takes
+    a Commander out of the window (user ruling OQ-070). A retreated
+    dreadnought lowers only the dreadnoughts' share and no unit count: the
+    turn's unit count holds no dreadnought (``_move_dreadnoughts``).
+    """
+
+    total = troops + commanders
+    if total < 1 and dreadnoughts < 1:
+        return state
+    owner = state.players[player]
+    unfloored = max(owner.units_deployed_turn - total, 0)
+    floored = max(
+        min(owner.units_deployed_committed, owner.units_deployed_turn), unfloored
+    )
+    players = (
+        replace_player(
+            state.players,
+            replace(
+                owner,
+                # Floored at the count a played card used, but a retreat never
+                # raises it: a card may have been played off the turn's peak
+                # with fewer units left in the Conflict (OQ-016). What the
+                # floor keeps above the units there is recorded, so the peaks
+                # read the units truly there (OQ-029 (3) 재판정, stage P7).
+                units_deployed_turn=floored,
+                # Never more than the count itself: the units truly there
+                # stop at none (a loss of an earlier turn's unit takes
+                # nothing more from this turn's, Codex re-review).
+                units_deployed_overstated=min(
+                    owner.units_deployed_overstated + floored - unfloored, floored
+                ),
+            ),
+        )
+        if total
+        else state.players
+    )
+    frames = list(state.decision_stack)
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
+        if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+            frame.decision, PlayerDecision
+        ):
+            continue
+        if frame.decision.owner != player:
+            continue
+        context = dict(frame.context)
+        troop_share, commander_share = _shares(
+            context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+        )
+        dreadnought_share = _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY)
+        if not troop_share and not commander_share and not dreadnought_share:
+            break
+        next_commanders = max(0, commander_share - commanders)
+        context[WITHDRAWABLE_UNITS_KEY] = (
+            max(0, troop_share - troops) + next_commanders
+        )
+        context[WITHDRAWABLE_COMMANDERS_KEY] = next_commanders
+        if dreadnought_share:
+            context[WITHDRAWABLE_DREADNOUGHTS_KEY] = max(
+                0, dreadnought_share - dreadnoughts
+            )
+        frames[index] = replace(frame, context=tuple(sorted(context.items())))
+        break
+    return replace(state, players=players, decision_stack=tuple(frames))
+
+
+def apply_troop_withdrawal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Return troops deployed this turn from the Conflict to the garrison."""
+
+    if action not in legal_troop_withdrawals(state, action.actor):
+        raise ValueError("action is not a legal troop withdrawal")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, -count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:withdraw_troops:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="troops_withdrawn",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_commander_deployment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Add the selected Sardaukar Commander count to this turn's deployment."""
+
+    if action not in legal_commander_deployments(state, action.actor):
+        raise ValueError("action is not a legal Commander deployment")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, count, commanders=True)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:deploy_commanders:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="commanders_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_commander_withdrawal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Return Commanders deployed this turn from the Conflict to the garrison."""
+
+    if action not in legal_commander_withdrawals(state, action.actor):
+        raise ValueError("action is not a legal Commander withdrawal")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_troops(state, context, action.actor, -count, commanders=True)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:withdraw_commanders:"
+            f"{next_state.players[action.actor].units_deployed_turn}"
+        ),
+        kind="commanders_withdrawn",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def open_combat_deployment(context: dict[str, ActionValue]) -> None:
+    """Open an Agent turn's basic deployment as though at a Combat space,
+    the garrison share capped at two whatever the number of icons
+    [Bloodlines p. 5], in the owner's Agent-turn effect frame ``context``;
+    nothing while Emperor of the Known Universe blocks the turn's
+    deployment [Main p. 17]."""
+
+    if context.get("units_deploy_blocked") is True:
+        return
+    context["pending_combat_deployment"] = True
+    limit = context.get("existing_troop_deployment_limit", 0)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
+    context["existing_troop_deployment_limit"] = max(limit, 2)
+
+
+RECRUITS_DEPLOYABLE_KEY = "reveal_recruits_deployable"
+"""Troops the ``DeployTheseTroops`` lines recruited in the owner's Reveal
+turn (the original game's Reinforcements, Gurney Halleck's Reveal): those
+may be deployed, any of them (OQ-140; absent means none). A troop the line
+owed and the turn recruited later counts once it comes
+(``RECRUITS_OWED_KEY``)."""
+
+RECRUITS_OWED_KEY = "reveal_recruits_owed"
+"""Troops the ``DeployTheseTroops`` lines could not recruit for an empty
+supply (OQ-030): a troop refilled later in the turn joins
+``RECRUITS_DEPLOYABLE_KEY`` while some are owed (``credit_owed_recruits``)."""
+
+
+def own_reveal_frame_index(state: GameState, player: int) -> int | None:
+    """The index of ``player``'s own open Reveal frame, None in their Agent
+    turn or outside their turn."""
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.REVEAL:
+            return index
+        if frame.kind in (FrameKind.TURN, FrameKind.AGENT_EFFECTS):
+            return None
+    return None
+
+
+def _with_reveal_counts(
+    state: GameState, index: int, *, recruited: int, owed: int
+) -> GameState:
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[RECRUITS_DEPLOYABLE_KEY] = recruits_deployable(context) + recruited
+    context[RECRUITS_OWED_KEY] = recruits_owed(context) + owed
+    if not context[RECRUITS_OWED_KEY]:
+        del context[RECRUITS_OWED_KEY]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def grant_recruit_deployment(
+    state: GameState, player: int, recruited: int, owed: int = 0
+) -> GameState:
+    """Let ``player`` deploy the ``recruited`` troops a line just recruited,
+    "You may deploy these troops to the Conflict", when it is their Reveal
+    turn, and the ``owed`` ones the supply could not cover once they come
+    (OQ-140); in their Agent turn the troops deploy by the Combat space rule
+    [DI p. 10] [FAQ p. 4] and nothing opens here."""
+
+    index = own_reveal_frame_index(state, player)
+    if index is None:
+        return state
+    return _with_reveal_counts(state, index, recruited=recruited, owed=owed)
+
+
+def grant_shipping_troop_deployment(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Let ``player`` deploy the ``troops`` a Shipping recruit just brought in
+    with Troop Transports, in its own turn, wherever the Agent went
+    (``frames.SHIPPING_TROOPS_KEY``): in a Reveal turn they are "these
+    troops" (``RECRUITS_DEPLOYABLE_KEY``, any of them, no Combat icon
+    needed); in an Agent turn, or on the turn frame before the placement
+    carries them over, a count of their own."""
+
+    if troops < 1:
+        return state
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.REVEAL:
+            return _with_reveal_counts(state, index, recruited=troops, owed=0)
+        if frame.kind in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
+            context = dict(frame.context)
+            context[SHIPPING_TROOPS_KEY] = shipping_troop_count(context) + troops
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+    return state
+
+
+def note_ungained_shipping_troops(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Record the ``troops`` a Shipping recruit with Troop Transports could
+    not get from the supply, on ``player``'s own turn frame.
+
+    They stay in the seat's shortfall (``PlayerState.ungained_troops``,
+    OQ-030); the frame remembers which part of it is theirs so a later refill
+    can give them Troop Transports' allowance (``refill_shipping_troops``),
+    as ``UNGAINED_UNDEPLOYABLE_KEY`` does for a Harkonnen Advisor troop
+    (OQ-038). Outside the owner's turn nothing is kept: the shortfall is
+    dropped there and nothing refills it."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[UNGAINED_SHIPPING_TROOPS_KEY] = (
+        ungained_shipping_troop_count(context) + troops
+    )
+    return _with_frame_context(state, index, context)
+
+
+def refill_shipping_troops(
+    state: GameState, player: int, troops: int, *, ungained: int
+) -> GameState:
+    """Give a refilled Shipping recruit's troops Troop Transports' allowance.
+
+    "Refilled troops are this turn's recruits" (OQ-030, re-ruling 2026-10-04:
+    "이 troop은 이번 turn의 recruit이므로 turn 주인의 좌석이면 Combat 배치
+    몫에 들어간다"), so the part of the shortfall that came from a Shipping
+    recruit with Troop Transports joins the allowance its troops would have
+    had (``grant_shipping_troop_deployment``: "You may deploy any of them to
+    the Conflict", docs/rules/rise-of-ix.md 15). ``troops`` are the refilled
+    troops that are deployable at all (a Harkonnen Advisor troop is not);
+    ``ungained`` is the seat's shortfall before this refill. Troops are
+    indistinguishable, so a partial refill gives the Troop Transports troops
+    before the plain recruits, as it gives the deployable recruits before the
+    undeployable one (``refill_undeployable_troops``; the documents are
+    silent, a project convention in the owner's favour); in a Reveal turn the
+    ``DeployTheseTroops`` lines' owed troops come before both (OQ-140,
+    ``credit_owed_recruits``), so the caller passes what those left."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    context = dict(state.decision_stack[index].context)
+    waiting = min(ungained_shipping_troop_count(context), ungained)
+    paid = min(waiting, troops)
+    if not paid:
+        return state
+    if waiting - paid:
+        context[UNGAINED_SHIPPING_TROOPS_KEY] = waiting - paid
+    else:
+        context.pop(UNGAINED_SHIPPING_TROOPS_KEY, None)
+    return grant_shipping_troop_deployment(
+        _with_frame_context(state, index, context), player, paid
+    )
+
+
+def _with_frame_context(
+    state: GameState, index: int, context: dict[str, ActionValue]
+) -> GameState:
+    frame = state.decision_stack[index]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def credit_owed_recruits(
+    state: GameState, player: int, troops: int
+) -> tuple[GameState, int]:
+    """Count ``troops`` refilled into ``player``'s garrison in their Reveal
+    turn as the ``DeployTheseTroops`` lines' troops first, as many as those
+    lines still owe (OQ-140, user ruling 2026-10-28: "이 카드들 몫 먼저" --
+    a refill goes to these cards' owed troops before another effect's).
+    Returns the state and how many of the ``troops`` it credited."""
+
+    index = own_reveal_frame_index(state, player)
+    if index is None or troops < 1:
+        return state, 0
+    owed = recruits_owed(dict(state.decision_stack[index].context))
+    credited = min(troops, owed)
+    if not credited:
+        return state, 0
+    return (
+        _with_reveal_counts(state, index, recruited=credited, owed=-credited),
+        credited,
+    )
+
+
+def recruits_deployable(context: Mapping[str, object]) -> int:
+    """The troops ``DeployTheseTroops`` lines recruited in a Reveal frame."""
+
+    value = context.get(RECRUITS_DEPLOYABLE_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Reveal frame has invalid {RECRUITS_DEPLOYABLE_KEY}")
+    return value
+
+
+def recruits_owed(context: Mapping[str, object]) -> int:
+    """The troops ``DeployTheseTroops`` lines still owe in a Reveal frame."""
+
+    value = context.get(RECRUITS_OWED_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Reveal frame has invalid {RECRUITS_OWED_KEY}")
+    return value
+
+
+def recruit_room(context: Mapping[str, object]) -> int:
+    """The troops "you may deploy these troops" lets the owner deploy now:
+    those the lines recruited, owed ones refilled since included, less those
+    already deployed through it (OQ-140, user rulings 2026-10-28: "각각 최대
+    3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금 부족하다면 지금
+    가능한 개수만 보여주고, 공급처에 가능한 병력이 생기면 그때 또 추가 배치가
+    가능하게"; "Reinforcements·Gurney 가 아닌 다른 효과로 얻은 병력은 배치
+    가능한 병력이 아니잖아"). Sardaukar Commanders keep their own slot
+    (OQ-070)."""
+
+    deployed = context.get("reveal_units_deployed", 0)
+    if isinstance(deployed, bool) or not isinstance(deployed, int):
+        raise RuntimeError("Reveal frame has an invalid deploy count")
+    return max(0, recruits_deployable(context) - deployed)
+
+
+def grant_combat_icon(state: GameState, player: int) -> GameState:
+    """Let ``player`` deploy this turn as if at a Combat space [Bloodlines p. 5].
+
+    Inside the owner's Agent-turn effect frame the basic deployment window
+    opens (or stays open) with the garrison share capped at two whatever
+    the number of icons; inside the owner's Reveal frame the Reveal-turn
+    deployment opens (``reveal_turn``); before the placement the flag waits
+    on the seat for the placement to read. Emperor of the Known Universe
+    still blocks deployment for the turn [Main p. 17].
+    """
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.AGENT_EFFECTS:
+            context = dict(frame.context)
+            if context.get("units_deploy_blocked") is True:
+                return state
+            open_combat_deployment(context)
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind == FrameKind.REVEAL:
+            context = dict(frame.context)
+            context["combat_deployment"] = True
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind == FrameKind.TURN:
+            break
+    owner = state.players[player]
+    return (
+        replace(
+            state,
+            players=tuple(
+                replace(seat, combat_icon_turn=True)
+                if seat.player_id == player
+                else seat
+                for seat in state.players
+            ),
+        )
+        if not owner.combat_icon_turn
+        else state
+    )
+
+
+def apply_agent_turn_finish(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """End the Agent turn: the owner's one press (user ruling OQ-095).
+
+    In order: optional effects left unused lapse (user ruling 2026-10-14),
+    a mandatory Agent box that could only fizzle fizzles (OQ-057),
+    a held Contract icon fizzles (OQ-059), the turn's end is announced, the
+    Combat deployment window closes, and a Usurped Row card is trashed
+    ("trash that card at the end of your turn.", OQ-054). The frame then waits
+    as ``FINISHING_KEY``: ``settle_finishing_agent_turn`` closes the turn, or
+    reopens it, once whatever the press left behind has resolved -- in the
+    same transition when it left nothing.
+    """
+
+    from dune_imperium.rules.agent_effects import (
+        agent_card_effect_is_unavailable,
+        fizzle_pending_agent_icons,
+        lapse_optional_boxes,
+        resolve_agent_card_effect,
+    )
+    from dune_imperium.rules.board_effects import lapse_optional_board_effects
+    from dune_imperium.rules.contracts import fizzle_held_contract_icons
+    from dune_imperium.rules.effects import pending_agent_icons
+    from dune_imperium.rules.graft import trash_usurped_card
+    from dune_imperium.rules.graft_boxes import swap_boxes
+
+    if action not in legal_agent_turn_finish_actions(state, action.actor):
+        raise ValueError("the Agent turn cannot be finished yet")
+    player = action.actor
+    # Optional effects the owner left unused lapse with the press (user
+    # ruling 2026-10-14, OQ-095 (2)): the turn's Agent boxes, then the
+    # visited space's optional icons and the Leader's optional repeat.
+    lapsed = lapse_optional_boxes(state)
+    lapsed_board = lapse_optional_board_effects(lapsed.state, player)
+    # So do the research bonuses waiting on the turn (cleanup-2b).
+    lapsed_rows = turn_rows.lapse(lapsed_board.state, player)
+    working = lapsed_rows.state
+    events: list[GameEvent] = [
+        *lapsed.events,
+        *lapsed_board.events,
+        *lapsed_rows.events,
+    ]
+    for _ in range(4):
+        # Mandatory boxes that could not be met by the turn's end fizzle now
+        # (OQ-057), the grafted partner's with its box made active.
+        frame, context = current_agent_effect_context(working)
+        if context["pending_agent_effect"] is True and (
+            agent_card_effect_is_unavailable(working)
+        ):
+            # A box that resolves icon by icon retires every icon at once;
+            # ``resolve_agent_card_effect`` only handles single-effect boxes.
+            fizzled = (
+                fizzle_pending_agent_icons(working)
+                if pending_agent_icons(context)
+                else resolve_agent_card_effect(working)
+            )
+            working = fizzled.state
+            events.extend(fizzled.events)
+            continue
+        if context["pending_agent_effect"] is not True and (
+            context.get("graft_pending_effect") is True
+        ):
+            swap_boxes(context)
+            working = replace(
+                working,
+                decision_stack=(
+                    *working.decision_stack[:-1],
+                    with_context(frame, context),
+                ),
+            )
+            continue
+        break
+    # A box left pending here was revived by the press itself: the first
+    # grafted box's payment met the partner's condition. It is a mandatory
+    # effect of this turn again (OQ-057 (1): "뒤에 뽑은 카드로 조건이 성립하면
+    # box가 다시 의무가 된다"), so the settle below reopens the turn for it.
+    source = f"round:{state.round_number}:player:{player}:finish_agent_turn"
+    # A Contract icon that never found a token it could take fizzles with the
+    # turn, without the two-Solari conversion (OQ-059).
+    fizzled_contracts = fizzle_held_contract_icons(working, player, source=source)
+    working = fizzled_contracts.state
+    events.extend(fizzled_contracts.events)
+    events.append(
+        GameEvent(
+            event_id=source,
+            kind="agent_turn_finished",
+            payload=(("player", player),),
+        )
+    )
+    # The turn does not close here. It waits as finishing, and whatever the
+    # press's own steps leave behind -- a Usurp trash's results (user ruling
+    # 2026-10-01, OQ-095 (5)), the follow-ups of a box the press resolved
+    # (Long Reach paying a Faction to a track bonus: an owed Emperor Spy, a
+    # Skill or Navigation choice, a Friends Everywhere pick, a reshuffled
+    # Intrigue draw) -- resolves on top of it, inside this turn (OQ-095 (3):
+    # "마지막 효과가 남긴 Skill·Navigation 선택 ... Emperor track Influence 4의
+    # Spy ... 등은 소유자의 열린 turn 위에서 풀리고"). Once the frame is back
+    # on top, ``settle_finishing_agent_turn`` closes the turn or reopens it
+    # (OQ-057 (15) re-ruling: "turn 종료를 누른 뒤 그 결과로 빚이 생기면
+    # OQ-095 (5)처럼 turn이 다시 열린다"). A press that leaves nothing closes in
+    # the same transition. Every press takes this one path, so no list of
+    # follow-up kinds can fall behind the rules again (2026-10-08: the list
+    # this replaced first missed the reshuffled draw).
+    frame, context = current_agent_effect_context(working)
+    deployment_window = context["pending_combat_deployment"] is True
+    context["pending_combat_deployment"] = False
+    context[FINISHING_KEY] = True
+    context[FINISH_DEPLOYMENT_KEY] = deployment_window
+    context[FINISH_RECRUITS_KEY] = _recruited_units(
+        context, working.players[player]
+    )
+    working = replace(
+        working,
+        decision_stack=(*working.decision_stack[:-1], with_context(frame, context)),
+    )
+    if not working.players[player].usurped_row_card_id:
+        return RuleResult(state=working, events=tuple(events))
+    # Usurp: the borrowed card goes at the end of the turn, as an ordinary
+    # trash whose results are still this turn's.
+    trashed = trash_usurped_card(working, player)
+    return RuleResult(state=trashed.state, events=(*events, *trashed.events))
+
+
+
+def _press_rows_offer_a_choice(state: GameState, owner: int) -> bool:
+    """Whether the rows a turn-end press's own steps queued on the reopened
+    turn ``state`` offer its owner something to take (OQ-160): the turn's
+    actions beyond those it would offer with them lapsed. A row that offers
+    nothing -- an Influence with every Faction at the top, a Negotiator with
+    no troop in the supply -- lapses with the press instead, as it would at
+    a press of the reopened turn (OQ-095 (2), OQ-060)."""
+
+    from dune_imperium.rules.agent_effect_frame import (
+        legal_agent_effect_frame_actions,
+    )
+
+    frame = turn_rows.rows_frame(state, owner)
+    if frame is None or not turn_rows.pending(frame):
+        return False
+    lapsed = turn_rows.lapse(state, owner).state
+    return bool(
+        set(legal_agent_effect_frame_actions(state, owner))
+        - set(legal_agent_effect_frame_actions(lapsed, owner))
+    )
+
+
+def _recruited_units(context: dict[str, ActionValue], owner: PlayerState) -> int:
+    troops = context["troops_recruited"]
+    if isinstance(troops, bool) or not isinstance(troops, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    return (
+        troops
+        + owner.track_troops_recruited_turn
+        + recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+        + commissioned_dreadnought_count(context)
+    )
+
+
+def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
+    """Close a finishing Agent turn, or reopen it for what its end produced.
+
+    Runs after every transition, once the press's own steps (a Usurp trash, a
+    box the press resolved) and their follow-ups have resolved and the
+    owner's frame is back on top -- in the press's own transition when they
+    left nothing. Their results are the turn's own (user ruling 2026-10-01,
+    OQ-095 (5)): when they make a
+    snapshot Contract's condition true -- a Contract is always completed
+    [FAQ p. 1] -- recruit units on a turn that could deploy -- "그 turn에
+    recruit한 troop을 원하는 수만큼 deploy" [Main p. 10] -- or reach the
+    Emperor track's Influence 4, whose Spy is a mandatory action of the turn
+    (user ruling 2026-10-04), the turn reopens and the owner presses the end
+    again. So it does when they queue an optional effect that offers its
+    owner something to take -- a Usurped Unload card's "may" Freighter or
+    Negotiator: the owner never saw it before the press (OQ-160, user ruling
+    2026-10-31). An optional effect the turn held before the press lapsed
+    with it (OQ-095 (2)). Otherwise the next seat's turn opens.
+    """
+
+    state = result.state
+    if not state.decision_stack:
+        return result
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return result
+    context = dict(frame.context)
+    if not agent_turn_is_finishing(context):
+        return result
+    owner = frame.decision.owner
+    deployment_window = context.pop(FINISH_DEPLOYMENT_KEY) is True
+    recruited_at_press = context.pop(FINISH_RECRUITS_KEY)
+    del context[FINISHING_KEY]
+    if isinstance(recruited_at_press, bool) or not isinstance(recruited_at_press, int):
+        raise RuntimeError("finishing Agent-turn frame has invalid recruit count")
+    # A reopened turn goes on as the same turn, so it has the deployment
+    # window it had before the press (OQ-029): a unit recruited after the
+    # reopen may still deploy.
+    reopened = {**context, "pending_combat_deployment": deployment_window}
+    reopened_state = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, reopened)),
+    )
+    recruited_more = (
+        _recruited_units(context, state.players[owner]) > recruited_at_press
+    )
+    if (
+        agent_turn_has_other_pending_effects(reopened, state.players)
+        # An effect the press's own steps queued on the turn (a Contract an
+        # Influence it gained completed, OQ-112 (4)) is the turn's own too
+        # (OQ-095 (5)): a mandatory one reopens the turn, and so does an
+        # optional one with something to take -- a Usurped Unload card's
+        # "may" Freighter: "다시 열어 제시" (OQ-160, user ruling 2026-10-31).
+        # Every row the turn held before the press lapsed with it (OQ-095
+        # (2)), so the rows waiting now are the press's own.
+        or turn_rows.holds_the_end(reopened_state, owner)
+        or turn_rows.tech_acquire_effects_hold_the_end(
+            dict(frame.context), state.players[owner]
+        )
+        or _press_rows_offer_a_choice(reopened_state, owner)
+        or owes_track_spy(state, owner)
+        or owes_held_draw(state, owner)
+        or (
+            recruited_more
+            and (
+                legal_combat_deployments(reopened_state, owner)
+                or legal_commander_deployments(reopened_state, owner)
+                or legal_dreadnought_deployments(reopened_state, owner)
+            )
+        )
+    ):
+        return replace(
+            result,
+            state=reopened_state,
+            events=(
+                *result.events,
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:player:{owner}:agent_turn_reopened"
+                    ),
+                    kind="agent_turn_reopened",
+                    payload=(("player", owner),),
+                ),
+            ),
+        )
+    closing = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+    )
+    lapsed = turn_rows.lapse(closing, owner)
+    return replace(
+        result,
+        state=close_agent_turn(lapsed.state, owner),
+        events=(*result.events, *lapsed.events),
+    )
+
+
+def record_deployment_peak(result: RuleResult) -> RuleResult:
+    """Raise each seat's turn deployment peak to its current count.
+
+    "When you deploy three or more units to the Conflict in a single turn"
+    [Distraction card; Coercive Negotiation card] is met at "a moment in
+    time when there are 3 units in the conflict that were deployed to the
+    conflict this turn, then that requirement becomes true" (Message from
+    designer, adopted per OQ-057's rule; OQ-016). Runs after every applied
+    transition, so a later retreat leaves the peak standing; the count and
+    the peak both reset when the seat's next turn opens.
+    """
+
+    state = result.state
+    seats = state.players
+    # The same ``_raise_peaks`` of every seat in order; the seats' tuple is
+    # rebuilt only when one of them rose (2026-11-11 engine speed, stage C).
+    raised: list[PlayerState] | None = None
+    for index, seat in enumerate(seats):
+        new = _raise_peaks(state, seat)
+        if new is not seat:
+            if raised is None:
+                raised = list(seats)
+            raised[index] = new
+    if raised is None:
+        return result
+    return RuleResult(state=replace(state, players=tuple(raised)), events=result.events)
+
+
+def _raise_peaks(state: GameState, seat: PlayerState) -> PlayerState:
+    """``seat`` with its turn peaks raised to its units in the Conflict now:
+    the troops' own (units truly there, ``units_present_this_turn``) and,
+    once a Rise of Ix dreadnought is deployed this turn, the peak with
+    dreadnoughts (stage P7; never set in a game without them)."""
+
+    present = units_present_this_turn(seat)
+    changes: dict[str, int] = {}
+    if present > seat.units_deployed_peak:
+        changes["units_deployed_peak"] = present
+    if state.config.rise_of_ix:
+        dreadnoughts = dreadnoughts_deployed_this_turn(state, seat.player_id)
+        if dreadnoughts and present + dreadnoughts > seat.units_peak_with_dreadnoughts:
+            changes["units_peak_with_dreadnoughts"] = present + dreadnoughts
+    return replace(seat, **changes) if changes else seat

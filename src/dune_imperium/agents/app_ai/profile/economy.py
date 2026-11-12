@@ -1,0 +1,2059 @@
+"""Economy — spec/profile-economy.md.
+
+The port of the ``AIProfile`` economy methods: game arc and climax,
+resource values, card draws, the Buy Gains knapsack, ``AcquireValue`` and its
+modifiers (icons, consolidation, synergy, friendship, acquire effects),
+trashing, discarding and the turn-order helpers.
+
+Faithfulness notes that apply to the whole module:
+
+- ``AIProfileAbsUtils.Multiply`` appends ``m*Sum - Sum`` to the summer
+  (spec §0.2, "NOT m*Sum"); ``_mul`` replays that exactly, like
+  ``Summer.multiply``.
+- .NET ``Enumerable.Sum`` over doubles adds left to right from 0.0; Python's
+  ``sum`` compensates float error, so ``_dsum`` loops instead.
+- Every number the app takes from an attribute is read from the app
+  archetype (``Entity.attr``), never from our card data: Desert Power's
+  ``Persuasion`` is 0 there, ours 2.
+- The Uprising set (4) is always on (``SetOn(4)``). The Immortality (3)
+  branches are ported and gated on ``AppContext.immortality`` where the app tests
+  ``IsSetEnabled(Immortality)``; the others read Immortality state that stays at its
+  start without the expansion (spec/immortality.md §2). Rise of Ix tile terms read
+  public holdings (spec/rix-tech.md §5); they remain inert without the corresponding
+  tile. The original game's leaders and intrigues are compared by archetype name.
+- Honesty: the own deck is read only as a multiset (iterated in sorted
+  instance-id order), opponents only through public fields.
+"""
+
+from collections.abc import Callable, Mapping, Sequence
+from decimal import Decimal
+from typing import TYPE_CHECKING, cast
+
+from dune_imperium.agents.app_ai.abilities.generic import (
+    ConflictAbility,
+    GenericConflictAbility,
+)
+from dune_imperium.agents.app_ai.catalog import (
+    CONTRACT_ARCHETYPES,
+    INTRIGUE_ARCHETYPES,
+    LEADER_ARCHETYPES,
+    card_entity,
+    conflict_entity,
+    conflict_reward_entities,
+    contract_entity,
+    intrigue_entity,
+)
+from dune_imperium.agents.app_ai.choice import first_strictly_best
+from dune_imperium.agents.app_ai.context import card_id
+from dune_imperium.agents.app_ai.entities import Attr, Entity
+from dune_imperium.agents.app_ai.profile.core import ProfileCore
+from dune_imperium.agents.app_ai.summer import Summer, app_round
+from dune_imperium.content.registry.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
+from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.player import PlayerState
+from dune_imperium.rules.ornithopter import face_up_battle_card_ids
+
+if TYPE_CHECKING:
+    from dune_imperium.agents.app_ai.abilities.base import Ability
+    from dune_imperium.agents.app_ai.profile import Profile
+
+# -- app archetype names the economy methods compare against ----------------------
+
+_TSMF = frozenset(
+    {
+        "imperium.original.the_spice_must_flow",
+        "imperium.uprising.the_spice_must_flow_up",
+    }
+)  # IsTheSpiceMustFlowImperium
+_CONVINCING_ARGUMENT = "imperium.original.convincing_argument"
+_GUILD_SPY = "imperium.uprising.guild_spy"
+_CONTRACT_BASE_20 = "contract.uprising.contract_base_20"
+_SELL_MELANGE = "space.original.sell_melange"
+
+# Intrigue archetypes (HasIntrigueCard).
+_CHOAM_SHARES = "intrigue.original.choam_shares"
+_SLEEPER_MUST_AWAKEN = "intrigue.original.the_sleeper_must_awaken"
+_PRIVATE_ARMY = "intrigue.original.private_army"
+_RAPID_MOBILIZATION = "intrigue.original.rapid_mobilization"
+_STAGED_INCIDENT = "intrigue.original.staged_incident"
+_CORNER_THE_MARKET = "intrigue.original.corner_the_market"
+_CALCULATED_HIRE = "intrigue.original.calculated_hire"
+_URGENT_MISSION = "intrigue.original.urgent_mission"
+_PLANS_WITHIN_PLANS = "intrigue.original.plans_within_plans"
+_BUY_ACCESS = "intrigue.uprising.buy_access"
+_MARKET_OPPORTUNITY = "intrigue.uprising.market_opportunity"
+_MERCENARIES = "intrigue.uprising.mercenaries"
+_STRATEGIC_STOCKPILING = "intrigue.uprising.strategic_stockpiling"
+_UNEXPECTED_ALLIES = "intrigue.uprising.unexpected_allies"
+_DETONATION = "intrigue.uprising.detonation"
+_DEVOUR = "intrigue.uprising.devour"
+_INSPIRE_AWE = "intrigue.uprising.inspire_awe"
+_SPECIAL_MISSION = "intrigue.uprising.special_mission"
+_SECURE_SPICE_TRADE = "intrigue.uprising.secure_spice_trade"
+_ECONOMIC_POSITIONING = "intrigue.immortality.economic_positioning"
+
+# Immortality cards compared by archetype.
+_REPLACEMENT_EYES = "imperium.immortality.replacement_eyes"
+
+# ``ConflictPlayable.AbilityForPlacement(1)`` of Epic's Economic
+# Supremacy (Rise of Ix card): ``ConflictAbility`` with ConflictPlace 1
+# (``constructor``), whose ``GetPossibleRewardVP`` overrides
+# the generic reward read.
+_ES_FIRST = (
+    "ability.conflict.ix.economic_supremacy_first"
+)
+
+# Leader archetypes (P.Leader == X).
+_PAUL_ATREIDES = "leader.original.paul_atreides"
+_GLOSSU_RABBAN = "leader.original.glossu_the_beast_rabban"
+_DUKE_LETO = "leader.original.duke_leto_atreides"
+_EARL_MEMNON = "leader.original.earl_memnon_thorvald"
+_COUNTESS_ARIANA = "leader.original.countess_ariana_thorvald"
+_MUAD_DIB = "leader.uprising.muad_dib"
+_STABAN_TUEK = "leader.uprising.staban_tuek"
+_WANT_SPY_LEADERS = frozenset(
+    {
+        "leader.uprising.feyd_rautha_harkonnen",
+        "leader.uprising.lady_margot_fenring",
+    }
+)
+
+# Ability classes (full app names) whose class derives from
+# ``PlayAbilities.RevealAbility`` / ``PlayAbilities.AgentAbility``, for every personal
+# card we deal: Uprising, its promos, Control the Spice, the Immortality Imperium cards,
+# Experimentation and the Tleilaxu cards (worked out from the type listing). Each such
+# card has exactly one RevealAbility; Beguiling Pheromones and Chairdog have two
+# AgentAbility boxes (``OfType<AgentAbility>().FirstOrDefault()`` takes the first),
+# Reclaimed Forces none.
+_PLAY = "ability.play."
+_REVEAL_BASE = _PLAY + "reveal"
+_DESERT_POWER_REVEAL = _PLAY + "uprising.desert_power_reveal"
+_BG_OPERATIVE_REVEAL = _PLAY + "uprising.bene_gesserit_operative_reveal"
+_CALCULUS_REVEAL = _PLAY + "uprising.calculus_of_power_reveal"
+_INTERSTELLAR_REVEAL = _PLAY + "uprising.interstellar_trade_reveal"
+_PARACOMPASS_REVEAL = _PLAY + "uprising.paracompass_reveal"
+_SARDAUKAR_COORD_REVEAL = _PLAY + "uprising.sardaukar_coordination_reveal"
+_SOUTHERN_ELDERS_REVEAL = _PLAY + "uprising.southern_elders_reveal"
+_LIET_KYNES_REVEAL = _PLAY + "original.liet_kynes_reveal"
+_THUFIR_REVEAL = _PLAY + "original.thufir_hawat_reveal"
+_IN_HIGH_PLACES_REVEAL = _PLAY + "original.in_high_places_reveal"
+_UNDERCOVER_REVEAL = _PLAY + "original.undercover_asset_reveal"
+# The original game's Reveal boxes (``abilities/original_imperium``). Guild
+# Bankers' ``GuildBankersAbility`` is its only Reveal box and keeps the base
+# preview.
+_BG_SISTER_REVEAL = _PLAY + "original.bene_gesserit_sister_reveal"
+_FEDAYKIN_REVEAL = _PLAY + "original.fedaykin_death_commando_reveal"
+_FIRM_GRIP_REVEAL = _PLAY + "original.firm_grip_reveal"
+_GUILD_BANKERS_REVEAL = _PLAY + "original.guild_bankers"
+_SIETCH_RM_REVEAL = _PLAY + "original.sietch_reverend_mother_reveal"
+_WORM_RIDERS_REVEAL = _PLAY + "original.worm_riders_reveal"
+# Immortality RevealAbility subclasses overriding GetRevealPreviewValue.
+_BT_RESEARCHER_REVEAL = _PLAY + "immortality.bene_tleilax_researcher_reveal"
+_LISAN_AL_GAIB_PREVIEW = _PLAY + "immortality.lisan_al_gaib_reveal_preview"
+_THRONE_ROOM_REVEAL = _PLAY + "immortality.throne_room_politics_reveal"
+# App-style Bloodlines RevealAbility subclasses overriding GetRevealPreviewValue
+# (docs/app-ai/bloodlines-cards.md §2.3, §2.6, OPEN-6; plan §11.7). Only the
+# Bloodlines synthetic archetypes list them; the bodies live in
+# ``abilities/bloodlines_cards.reveal_preview_persuasion``.
+_APPSTYLE_PREVIEW_REVEALS = frozenset(
+    {
+        "ability.app_style.bloodlines.imperial_throneship_reveal",
+        "ability.app_style.bloodlines.quash_rebellion_reveal",
+        "ability.app_style.bloodlines.sandwalk_reveal",
+    }
+)
+_REVEAL_CLASSES = _APPSTYLE_PREVIEW_REVEALS | frozenset(
+    {
+        _REVEAL_BASE,
+        _DESERT_POWER_REVEAL,
+        _BG_OPERATIVE_REVEAL,
+        _CALCULUS_REVEAL,
+        _INTERSTELLAR_REVEAL,
+        _PARACOMPASS_REVEAL,
+        _SARDAUKAR_COORD_REVEAL,
+        _SOUTHERN_ELDERS_REVEAL,
+        _LIET_KYNES_REVEAL,
+        _THUFIR_REVEAL,
+        _IN_HIGH_PLACES_REVEAL,
+        _UNDERCOVER_REVEAL,
+        _BG_SISTER_REVEAL,
+        _FEDAYKIN_REVEAL,
+        _FIRM_GRIP_REVEAL,
+        _GUILD_BANKERS_REVEAL,
+        _SIETCH_RM_REVEAL,
+        _WORM_RIDERS_REVEAL,
+        _BT_RESEARCHER_REVEAL,
+        _LISAN_AL_GAIB_PREVIEW,
+        _THRONE_ROOM_REVEAL,
+    }
+)
+_AGENT_CLASSES = frozenset(
+    {
+        _PLAY + "agent",
+        _PLAY + "original.power_play_agent",
+        _PLAY + "original.seek_allies_agent",
+        # The original game's Agent boxes of cards without a generic one.
+        _PLAY + "original.carry_all_agent",
+        _PLAY + "original.gene_manipulation",
+        _PLAY + "original.gun_thopter_agent",
+        _PLAY + "original.kwisatz_haderach",
+        _PLAY + "original.reverend_mother_mohiam",
+        _PLAY + "original.test_of_humanity",
+        _PLAY + "uprising.weirding_woman_agent",
+        # Immortality: GraftAgentAbility and its subclasses, the specimen boxes.
+        _PLAY + "immortality.graft_agent",
+        _PLAY + "immortality.chairdog_agent",
+        _PLAY + "immortality.ghola_agent",
+        _PLAY + "immortality.usurp_agent",
+        _PLAY + "immortality.specimen_agent",
+        _PLAY + "immortality.specimen_grafted_agent",
+    }
+)
+
+# Conflict-card ``DeferredAbility`` classes overriding ``GetPossibleConflictVP``
+# (board.md §2.4.2 / §2.4.6): (SpiceCost, SolariCost) of a Pay-X-to-gain-1-VP
+# ability, or None for Recall2SpiesVPAbility.
+_CONFLICT_VP_ABILITIES: Mapping[str, tuple[int, int] | None] = {
+    "ability.conflict.uprising.pay3_spice_to_gain1_vp": (
+        3,
+        0,
+    ),
+    "ability.conflict.uprising.pay4_spice_to_gain1_vp": (
+        4,
+        0,
+    ),
+    "ability.conflict.uprising.pay6_solari_to_gain1_vp": (
+        0,
+        6,
+    ),
+    "ability.activated.uprising.recall2_spies_vp": None,
+}
+
+# Our battle icons -> the app's ``BattleIcons`` names.
+_APP_BATTLE_ICONS: Mapping[str, str] = {
+    "crysknife": "Crysknife",
+    "desert_mouse": "DesertMouse",
+    "ornithopter": "Ornithopter",
+    "wild": "Wildcard",
+}
+# GetFriendshipMod jump table (tags 11..19): (kind, faction).
+_FRIENDSHIP_TAGS: Mapping[str, tuple[str, str]] = {
+    "FremenInfluence": ("influence", "fremen"),
+    "FremenAlliance": ("alliance", "fremen"),
+    "SpacingGuildAlliance": ("alliance", "spacing_guild"),
+    "EmperorAlliance": ("alliance", "emperor"),
+    "SpacingGuildInfluence": ("influence", "spacing_guild"),
+    "EmperorInfluence": ("influence", "emperor"),
+    "BeneGesseritInfluence": ("influence", "bene_gesserit"),
+    "BeneGesseritAlliance": ("alliance", "bene_gesserit"),
+}
+# GetAcquireEffectsValue jump table: AcquireEffects -> faction id
+# of the GetGainInfluenceValue(F, 1, -1, false) term.
+_RANK_EFFECTS: Mapping[str, str] = {
+    "RankE": "emperor",
+    "RankSG": "spacing_guild",
+    "RankBG": "bene_gesserit",
+    "RankF": "fremen",
+}
+# The app's ``Factions.None`` ("best faction") as ``gain_influence_value``
+# spells it (``influence.NO_FACTION``). No Uprising card has ``AnyRank`` in its
+# AcquireEffectList, so the branch is dead in our games.
+_ANY_FACTION = "none"
+
+# Synergy: GetSynergyMod reads intrigue/contract abilities among the cards'
+# *direct* children, where none live (spec §7.1, [I] structural), so they add
+# nothing. Kept as a switch in case the inference is refuted.
+SYNERGY_READS_HELD_CARD_ABILITIES = False
+
+# The Uprising reserve in ``Decks.UprisingReserveDeck`` order after
+# ``Distinct()`` (Foldspace, absent here, is excluded by the buy helpers).
+_RESERVE_ORDER = ("prepare_the_way", "the_spice_must_flow")
+
+
+def _mul(s: Summer, factor: float, reason: str) -> None:
+    """``AIProfileAbsUtils.Multiply``: ``s.Add(m*Sum - Sum)``.
+
+    Spec §0.2: the new sum is ``Sum + (m*Sum - Sum)``, not ``m*Sum``.
+    """
+
+    s.add(reason, factor * s.sum - s.sum)
+
+
+def _dsum(values: Sequence[float]) -> float:
+    """``Enumerable.Sum<double>``: left to right from 0.0, uncompensated."""
+
+    total = 0.0
+    for value in values:
+        total += value
+    return total
+
+
+def _to_decimal(value: float) -> Decimal:
+    """``Convert.ToDecimal(double)``: rounded to 15 significant digits."""
+
+    return Decimal(format(value, ".15g"))
+
+
+def _knapsack(
+    items: Sequence[tuple[Entity, int, float]], max_weight: int
+) -> list[tuple[Entity, float]]:
+    """``AIAlgorithmUtil.KnapsackSolver`` (``KnapsackSolver``), spec §5.4: a 0/1
+knapsack over decimal values.
+
+    Returns the chosen items in yield order (descending item index) with
+    their double value. Ties keep the lowest item indices.
+    """
+
+    if max_weight < 0:  # "maxWeight cannot be negative": yields nothing
+        return []
+    count = len(items)
+    values = [_to_decimal(value) for _, _, value in items]
+    zero = Decimal(0)
+    table = [[zero] * (max_weight + 1)]
+    for i in range(1, count + 1):
+        weight = items[i - 1][1]
+        value = values[i - 1]
+        previous = table[i - 1]
+        row = [zero] * (max_weight + 1)
+        for w in range(1, max_weight + 1):
+            if weight > w:  # strict >
+                row[w] = previous[w]
+            else:
+                row[w] = max(previous[w], previous[w - weight] + value)
+        table.append(row)
+    chosen: list[tuple[Entity, float]] = []
+    current_value = table[count][max_weight]
+    current_weight = max_weight
+    i = count
+    while i > 0 and current_value > zero:
+        if current_value == table[i - 1][current_weight]:
+            i -= 1
+            continue
+        current_value -= values[i - 1]
+        current_weight -= items[i - 1][1]
+        chosen.append((items[i - 1][0], items[i - 1][2]))
+        i -= 1
+    return chosen
+
+
+def _battle_icon_list(player: PlayerState) -> list[str]:
+    """``Player.BattleIconList``: icons of the face-up battle cards.
+
+    R5 §4.5: the Objective and won Conflict cards still face up (paired ones
+    are flipped down), in app ``BattleIcons`` names.
+    """
+
+    icons: list[str] = []
+    for battle_card in face_up_battle_card_ids(player):
+        objective = OBJECTIVES_BY_ID.get(battle_card)
+        icon = (
+            objective.battle_icon
+            if objective is not None
+            else CONFLICTS_BY_ID[battle_card].battle_icon
+        )
+        if icon is not None:
+            icons.append(_APP_BATTLE_ICONS[str(icon)])
+    return icons
+
+
+class EconomyMixin(ProfileCore):
+    """Overrides of the ProfileCore declarations for this area."""
+
+    # ===========================================================================
+    # Honest state reads (AppContext rules) shared by the methods below
+    # ===========================================================================
+
+    def _profile(self) -> Profile:
+        """``self`` as the full ``Profile`` the ability hooks expect."""
+
+        return cast("Profile", self)
+
+    def _own_reveal_context(self) -> Mapping[str, ActionValue] | None:
+        """This seat's open Reveal frame (``IsInPlayerTurn(RevealTurn)``)."""
+
+        return self.ctx.own_frame_context("reveal")
+
+    def _in_reveal_turn(self) -> bool:
+        """``Player.IsInPlayerTurn(RevealTurn = 2)`` for this seat.
+
+        Judgement: our engine has no ``PlayerTurn`` attribute; the seat is in
+        its Reveal turn while its own REVEAL frame is open.
+        """
+
+        return self._own_reveal_context() is not None
+
+    def _persuasion_pool(self) -> int:
+        """``P.GetAttributeValue<int>(Persuasion, 0)``: the live pool.
+
+        Our engine keeps Persuasion only inside the Reveal frame (the
+        spendable rest after purchases); outside it the pool is 0.
+        """
+
+        context = self._own_reveal_context()
+        if context is None:
+            return 0
+        value = context.get("persuasion")
+        if isinstance(value, bool) or not isinstance(value, int):
+            return 0
+        return value
+
+    def _intrigue_shorts(self) -> list[str]:
+        """App archetypes of the held Intrigue (``P.IntrigueHand``)."""
+
+        return [
+            INTRIGUE_ARCHETYPES.get(card_id(instance), "")
+            for instance in self.ctx.intrigue_cards
+        ]
+
+    def _has_intrigue(self, archetype: str) -> bool:
+        """``Player.HasIntrigueCard``."""
+
+        return archetype in self._intrigue_shorts()
+
+    def _leader_short(self) -> str:
+        """The app archetype of this seat's Leader (``P.Leader.ArchID``)."""
+
+        return LEADER_ARCHETYPES.get(self.ctx.me.leader_id or "", "")
+
+    def _influence(self, player: PlayerState, faction: str) -> int:
+        """``GetFactionInfluence(f)`` (our faction id)."""
+
+        return int(getattr(player.influence, faction))
+
+    def _own_cards(self, *zones: tuple[str, ...]) -> list[Entity]:
+        """Own personal cards of ``zones`` as entities, in zone order."""
+
+        seat = self.ctx.seat
+        return [card_entity(instance, seat) for zone in zones for instance in zone]
+
+    def _deck_cards(self) -> list[Entity]:
+        """The own draw pile as a multiset (sorted instance ids, never order)."""
+
+        return self._own_cards(tuple(sorted(self.ctx.me.deck)))
+
+    def _all_imperium_cards(self) -> list[Entity]:
+        """``Player.AllImperiumCards``.
+
+        Deck ++ Hand ++ Discard ++ PlayArea ++ ActiveAgentArea (our ``in_play``
+        holds both play areas).
+        """
+
+        me = self.ctx.me
+        return [
+            *self._deck_cards(),
+            *self._own_cards(me.hand, me.discard_pile, me.in_play),
+        ]
+
+    def _owned_with_tag(self, tag: str) -> int:
+        """``P.AllImperiumCards.Count(c => tag in c.Tags)``."""
+
+        return sum(
+            1 for card in self._all_imperium_cards() if tag in card.list_attr("Tags")
+        )
+
+    def _row_cards(self) -> list[Entity]:
+        """``ImperiumAndReserveRowCards(M, includeFoldspace=false)``.
+
+        Imperium Row order, then one entity per non-empty reserve pile
+        (``reserve:<card_id>``). Judgement: the app's ``ReserveRow`` holds one
+        entity per archetype (``Distinct()``, spec §5.2 [I]); an empty pile is
+        left out because nothing can be bought from it.
+        """
+
+        cards = [card_entity(instance) for instance in self.ctx.imperium_row]
+        remaining = dict(self.ctx.reserve_stacks)
+        for reserve_id in _RESERVE_ORDER:
+            if remaining.get(reserve_id, 0) > 0:
+                card = card_entity(f"reserve:{reserve_id}")
+                if self.ctx.scouts:  # app-style Arrakeen Scouts: Market Opening
+                    card = self._profile().market_opening_reserve_card(card)
+                cards.append(card)
+        return cards
+
+    def _abilities(self, card: Entity) -> tuple[Ability, ...]:
+        """``Playable.Abilities``: the card's ability ports in order."""
+
+        from dune_imperium.agents.app_ai.abilities import abilities_of
+
+        return abilities_of(card)
+
+    # ===========================================================================
+    # §1 Game arc
+    # ===========================================================================
+
+    def game_arc(self) -> int:
+        """``AIProfile.GetGameArc`` (spec §1.1).
+
+        0 Early (rounds 1-3), 1 Mid (4-6), 2 Late (7+ or climax).
+        """
+
+        if self.is_climax():
+            return 2
+        round_number = self.ctx.round_number
+        if round_number > 6:  # strict >
+            return 2
+        return 1 if round_number >= 4 else 0
+
+    def is_climax(self) -> bool:
+        """``AIProfile.IsClimax`` (spec §1.2).
+
+        Cached in ``_isClimax`` for the decision.
+        """
+
+        if self._is_climax is not None:
+            return self._is_climax
+        trigger = self.ctx.endgame_trigger_score
+        players = self.ctx.players
+        if any(self.ctx.vp(p) >= trigger - 1 for p in players):  # >=
+            result = True
+        elif sum(1 for p in players if self.ctx.vp(p) >= trigger - 2) > 1:
+            result = True  # >= ; count strict > 1
+        elif self.ctx.conflict_deck_size < 2:  # strict <
+            result = True
+        else:
+            result = any(  # >=
+                self.possible_end_of_round_score(seat) >= trigger
+                for seat in self.current_combat_order()[:2]
+            )
+        self._is_climax = result
+        return result
+
+    def is_final_round(self) -> bool:
+        """``AIProfile.IsFinalRound`` (spec §1.3).
+
+        Reads ``_isFinalRound`` but never writes it (the app's own quirk), so
+        the value is always recomputed.
+        """
+
+        if self._is_final_round is not None:
+            return self._is_final_round
+        trigger = self.ctx.endgame_trigger_score
+        if self._is_endgame(trigger):
+            return True
+        return any(
+            self.possible_end_of_round_score(seat) >= trigger
+            for seat in self.current_combat_order()[:2]
+        )
+
+    def _is_endgame(self, trigger: int) -> bool:
+        """``Match.IsEndgame`` (non-campaign)."""
+
+        if self.ctx.conflict_deck_size == 0:
+            return True
+        return any(self.ctx.vp(p) >= trigger for p in self.ctx.players)
+
+    def possible_end_of_round_score(self, seat: int) -> int:
+        """``AIProfile.GetPossibleEndOfRoundScore`` (spec §1.2)."""
+
+        player = self.ctx.player(seat)
+        score = self.ctx.vp(player)
+        conflict = self.ctx.current_conflict_id
+        if conflict is None:
+            return score
+        score += self._possible_combat_reward_vp(conflict, player, False)
+        if not self.ctx.uprising:  # SetOn(4): the sandworm and battle-icon terms
+            return score
+        if player.sandworms_conflict > 0:  # any(p.ConflictSandworms)
+            # The 1st-place reward again, with doubleCost = true.
+            score += self._possible_combat_reward_vp(conflict, player, True)
+        icon = conflict_entity(conflict, self.ctx.choam).attr("BattleIcon")
+        if icon in _battle_icon_list(player):  # List.Contains: +1 once
+            score += 1
+        return score
+
+    def _possible_combat_reward_vp(
+        self, conflict: str, player: PlayerState, double_cost: bool
+    ) -> int:
+        """``ConflictPlayable.GetPossibleCombatRewardVP(p, 1, doubleCost)``
+ -> ``GenericConflictAbility.GetPossibleRewardVP``.
+
+        The 1st-place reward's ``VictoryPoints`` plus, for each of its custom
+        ability ids, ``GetPossibleConflictVP`` of the first ``DeferredAbility``
+        of the conflict card with that id (board.md §2.4.2 / §2.4.6).
+
+        ``GetPossibleCombatRewardVP`` dispatches to ``AbilityForPlacement(1)``; Epic's
+        Economic Supremacy overrides it with
+        ``EconomicSupremacyFirstAbility.GetPossibleRewardVP``
+        (spec/epic-goto11-promo-draft.md §2.4), and the original game's
+        ``<Card>FirstAbility`` leave it to the base
+        ``ConflictAbility.GetPossibleRewardVP`` (the card's ``VictoryPoints``, whatever
+        ``player`` holds).
+        """
+
+        card = conflict_entity(conflict, self.ctx.choam)
+        if _ES_FIRST in card.ability_ids:
+            return self._economic_supremacy_first_reward_vp(player, double_cost)
+        place_one = self._place_one_ability(card)
+        if place_one is not None and not isinstance(place_one, GenericConflictAbility):
+            return place_one.possible_reward_vp(self._profile(), double_cost)
+        rewards = conflict_reward_entities(conflict, self.ctx.choam)
+        if not rewards:
+            return 0
+        reward = rewards[0]  # ConflictPlace ?? 1
+        vp = reward.int_attr("VictoryPoints")
+        card_abilities = card.ability_ids
+        for custom in reward.list_attr("CustomAbilityIDs"):
+            if custom not in card_abilities or custom not in _CONFLICT_VP_ABILITIES:
+                continue  # no DeferredAbility of the card with that id
+            costs = _CONFLICT_VP_ABILITIES[custom]
+            if costs is None:
+                # Recall2SpiesVPAbility.GetPossibleConflictVP
+                if not double_cost and len(player.spy_post_ids) >= 2:
+                    vp += 1
+                continue
+            # PayAttributeToGainVPAbility.GetPossibleConflictVP
+            spice_cost, solari_cost = costs
+            shift = 1 if double_cost else 0
+            if (
+                player.resources.spice >= spice_cost << shift
+                and player.resources.solari >= solari_cost << shift
+            ):
+                vp += 1
+        return vp
+
+    def _place_one_ability(self, card: Entity) -> ConflictAbility | None:
+        """``ConflictPlayable.AbilityForPlacement(1)``: the
+        first ``ConflictAbility`` of the card with ``ConflictPlace`` 1."""
+
+        for ability in self._abilities(card):
+            if isinstance(ability, ConflictAbility) and ability.place == 1:
+                return ability
+        return None
+
+    @staticmethod
+    def _economic_supremacy_first_reward_vp(
+        player: PlayerState, double_cost: bool
+    ) -> int:
+        """``EconomicSupremacyFirstAbility.GetPossibleRewardVP``.
+
+        ``2 - (Solari < need) + (spice >= need)`` on ``player``'s current resources: 6
+        Solari / 4 spice, 12 / 8 with ``doubleCost`` (the sandworm copy). The literals
+        are the method's own (12 / 6).
+        """
+
+        need_solari = 12 if double_cost else 6
+        need_spice = 4 * int(double_cost) + 4
+        return (
+            2
+            - int(player.resources.solari < need_solari)
+            + int(player.resources.spice >= need_spice)
+        )
+
+    def select_for_game_arc(self, choices: Sequence[float]) -> float:
+        """``AIProfile.SelectForGameArc`` (spec §1.4)."""
+
+        if len(choices) < 3:  # strict <
+            return 0.0
+        return choices[self.game_arc()]
+
+    # =========================================================================== §4.5
+    # "Short"/"Long" flags (read by the original game's intrigue evaluators)
+    # ===========================================================================
+
+    def is_solari_short(self) -> bool:
+        """``IsSolariShort``: ``GetResourceValue(Solari, 1, false) >=
+        SolariShortValue``."""
+
+        return self.resource_value(Attr.SOLARI, 1, False) >= self.C.SolariShortValue
+
+    def is_solari_long(self) -> bool:
+        """``IsSolariLong``: ``!IsSolariShort``."""
+
+        return not self.is_solari_short()
+
+    def is_spice_short(self) -> bool:
+        """``IsSpiceShort``: the Swordmaster holder (the ``Swordmaster`` attribute;
+        false without it) with ``SpiceShortAmount >= Spice``."""
+
+        me = self.ctx.me
+        return me.swordmaster_acquired and self.C.SpiceShortAmount >= me.resources.spice
+
+    def is_troop_short(self) -> bool:
+        """``IsTroopShort``: ``TroopShortAmount >= GarrisonTroops`` (Bloodlines
+        Commanders count, D1)."""
+
+        return self.C.TroopShortAmount >= self._profile().garrison_troop_count()
+
+    def is_water_long(self) -> bool:
+        """``IsWaterLong``: not the Early arc and ``Water >= WaterShortAmount``."""
+
+        if self.game_arc() == 0:
+            return False
+        return self.ctx.me.resources.water >= self.C.WaterShortAmount
+
+    # ===========================================================================
+    # §2 Tables and abundance
+    # ===========================================================================
+
+    def _values_dict(self) -> dict[Attr, tuple[float, float, float]]:
+        """``AIProfile.ValuesDict`` (spec §2.1)."""
+
+        c = self.C
+        return {
+            Attr.PERSUASION: (
+                c.PersuasionValueEarly,
+                c.PersuasionValueMid,
+                c.PersuasionValueLate,
+            ),
+            Attr.STRENGTH: (
+                c.StrengthValueEarly,
+                c.StrengthValueMid,
+                c.StrengthValueLate,
+            ),
+            Attr.SOLARI: (c.SolariValueEarly, c.SolariValueMid, c.SolariValueLate),
+            Attr.SPICE: (c.SpiceValueEarly, c.SpiceValueMid, c.SpiceValueLate),
+            Attr.WATER: (c.WaterValueEarly, c.WaterValueMid, c.WaterValueLate),
+            Attr.TROOPS: (c.TroopValueEarly, c.TroopValueMid, c.TroopValueLate),
+            Attr.DREADNOUGHT: (c.DreadnoughtEarly, c.DreadnoughtMid, c.DreadnoughtLate),
+            Attr.SPECIMEN: (
+                c.SpecimenValueEarly,
+                c.SpecimenValueMid,
+                c.SpecimenValueLate,
+            ),
+            Attr.SANDWORMS: (
+                c.SandwormValueEarly,
+                c.SandwormValueMid,
+                c.SandwormValueLate,
+            ),
+        }
+
+    def _abundance_thresholds(self) -> dict[Attr, tuple[float, float, float]]:
+        """``AIProfile.AbundanceThresholdDict`` (spec §2.2)."""
+
+        c = self.C
+        return {
+            Attr.SOLARI: (
+                c.SolariNormalThreshold,
+                c.SolariRichThreshold,
+                c.SolariFloodedThreshold,
+            ),
+            Attr.SPICE: (
+                c.SpiceNormalThreshold,
+                c.SpiceRichThreshold,
+                c.SpiceFloodedThreshold,
+            ),
+            Attr.WATER: (
+                c.WaterNormalThreshold,
+                c.WaterRichThreshold,
+                c.WaterFloodedThreshold,
+            ),
+            Attr.TROOPS: (
+                c.TroopNormalThreshold,
+                c.TroopRichThreshold,
+                c.TroopFloodedThreshold,
+            ),
+            Attr.SPECIMEN: (
+                c.SpecimenNormalThreshold,
+                c.SpecimenRichThreshold,
+                c.SpecimenFloodedThreshold,
+            ),
+            Attr.INTRIGUE_CARD: (
+                c.IntrigueNormalThreshold,
+                c.IntrigueRichThreshold,
+                c.IntrigueFloodedThreshold,
+            ),
+        }
+
+    def _stock(self, attr: Attr) -> int:
+        """``P.GetAttributeValue<int>(attr, 0)`` for the stocked resources."""
+
+        me = self.ctx.me
+        if attr is Attr.SOLARI:
+            return me.resources.solari
+        if attr is Attr.SPICE:
+            return me.resources.spice
+        if attr is Attr.WATER:
+            return me.resources.water
+        if attr is Attr.SPECIMEN:
+            # The player's ``Specimen`` attribute, which the app never writes:
+            # its specimens are troop entities in the tanks (``GetSpecimens``),
+            # so ``GetAbundanceLevel(Specimen)`` is always Poor (spec
+            # immortality.md §2.3, §9 note 1). Not ``me.specimens``.
+            return 0
+        if attr is Attr.VICTORY_POINTS:
+            return self.ctx.vp(me)
+        return 0
+
+    def abundance_level(self, attr: Attr) -> int:
+        """``AIProfile.GetAbundanceLevel`` (spec §2.3).
+
+        0 Poor, 1 Supplied, 2 Rich, 3 Flooded; -1 without thresholds.
+        """
+
+        thresholds = self._abundance_thresholds().get(attr)
+        if thresholds is None:
+            return -1
+        if attr is Attr.TROOPS:
+            # GarrisonTroops: Bloodlines garrison Commanders count as troops
+            # (bloodlines-systems.md §1.1, D1); 0 without the option.
+            me = self.ctx.me
+            have = me.troops_garrison + me.commanders_garrison
+        elif attr is Attr.INTRIGUE_CARD:
+            have = len(self.ctx.intrigue_cards)  # IntrigueHandCount
+        else:
+            have = self._stock(attr)
+        for index, threshold in enumerate(thresholds):
+            if have < threshold:  # strict <
+                return index
+        return len(thresholds)
+
+    # ===========================================================================
+    # §3 GetResourceValue and its wrappers
+    # ===========================================================================
+
+    def resource_value(
+        self, attr: Attr, amount: int, include_combat_posture_mod: bool = False
+    ) -> float:
+        """``AIProfile.GetResourceValue`` (spec §3).
+
+        Rise of Ix tile modifiers read holdings (rix-tech §5.1). Other Ix
+        branches belong to the profile slice. Immortality's two
+        branches (spec/immortality.md §2.4) run under ``SetOn(3)``.
+        """
+
+        s = Summer()
+        if amount == 0:
+            return 0.0
+        me = self.ctx.me
+        c = self.C
+        if attr is Attr.SANDWORMS and me.leader_id == "liet_kynes":
+            # Bloodlines Liet Kynes summons no sandworms: each is a trash, a
+            # spice and an Intrigue card instead (bloodlines-systems.md §4.8,
+            # D44; Muad'Dib's per-worm add-on precedent).
+            return self._profile().planetologist_value(amount)
+        values = self._values_dict().get(attr)
+        if values is not None:
+            if (
+                attr is Attr.STRENGTH
+                # ConflictUnits (Bloodlines Commanders and the Into the Fray
+                # Agent included, bloodlines-systems.md §1.1; 0 without it)
+                and me.units_in_conflict == 0
+                and me.agents_available <= 1  # RemainingAgents.Count()
+            ):
+                return s.sum
+            s.add("Base Value", values[self.game_arc()])
+            not_late_solari = self.game_arc() < 2 or attr is not Attr.SOLARI
+            level = self.abundance_level(attr)
+            if level == 0:
+                _mul(s, c.PoorMod, "Poor")
+            elif level == 1:
+                _mul(s, 1.0, "Supplied")  # literal
+            elif level == 2:
+                _mul(s, c.RichMod, "Rich")
+                if not not_late_solari:
+                    _mul(s, c.RichMod, "Late Game")
+            elif level == 3:
+                _mul(s, c.FloodedMod, "Flooded")
+                if not not_late_solari:
+                    _mul(s, c.FloodedMod, "Late Game")
+
+            if attr is Attr.SOLARI:
+                if self.game_arc() <= 1:
+                    if not me.high_council:
+                        _mul(s, c.SolariMissingHighCouncilMod, "Missing High Council")
+                    if not me.swordmaster_acquired:
+                        _mul(s, c.SolariMissingSwordmasterMod, "Missing Swordmaster")
+                if self._has_intrigue(_CHOAM_SHARES):
+                    _mul(s, c.ChoamSharesSolariMod, "Choam Shares")
+                if self.ctx.has_tech("shuttle_fleet"):
+                    _mul(s, c.ShuttleFleetSolariMod, "Shuttle Fleet")
+                if self.ctx.has_tech("flagship"):
+                    _mul(s, c.FlagshipSolariMod, "Flagship")
+                if (
+                    self.ctx.immortality  # SetOn(3)
+                    and self.game_arc() >= 2
+                    and self._has_intrigue(_ECONOMIC_POSITIONING)
+                ):
+                    _mul(s, c.EconomicPositioningSolariMod, "Economic Positioning Mod")
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_BUY_ACCESS):
+                        _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySolariMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_MERCENARIES):
+                        _mul(s, c.MercenariesSolariMod, "Mercenaries Mod")
+
+            if include_combat_posture_mod and attr in (
+                Attr.STRENGTH,
+                Attr.TROOPS,
+                Attr.DREADNOUGHT,
+                Attr.SANDWORMS,
+            ):
+                # Dead in the app: every caller passes false (spec §3.2).
+                _mul(s, self.combat_posture_mod(), "Combat Posture")
+
+            leader = self._leader_short()
+            if attr is Attr.TROOPS and leader == _GLOSSU_RABBAN:
+                _mul(s, c.GlossuRabbanTroopsValueMod, "Glossu Rabban")
+
+            if attr is Attr.SPICE:
+                if leader == _DUKE_LETO:
+                    _mul(s, c.DukeLetoAtreidesSpiceValueMod, "Duke Leto")
+                if leader == _EARL_MEMNON:
+                    _mul(s, c.EarlMemnonThorvaldSpiceValueMod, "Earl Memnon")
+                if self._has_intrigue(_SLEEPER_MUST_AWAKEN):
+                    _mul(s, c.TheSleeperMustAwakenSpiceMod, "Sleeper Must Awaken")
+                if self._has_intrigue(_PRIVATE_ARMY):
+                    _mul(s, c.PrivateArmySpiceMod, "Private Army")
+                if self.ctx.has_tech("spy_satellites") and sum(
+                    self._influence(me, f) < 2
+                    for f in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+                ) >= 3:
+                    _mul(s, c.SpySatellitesSpiceMod, "Spy Satellites")
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_STRATEGIC_STOCKPILING):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingSpiceMod,
+                            "Strategic Stockpiling Mod",
+                        )
+
+            if attr is Attr.WATER:
+                if leader == _COUNTESS_ARIANA:
+                    _mul(s, c.CountessArianaThorvaldWaterValueMod, "Countess Ariana")
+                if self.ctx.uprising:  # SetOn(4)
+                    if me.maker_hooks:
+                        _mul(s, c.WaterHooksMod, "Water Hooks Mod")
+                    if (
+                        self._has_intrigue(_STRATEGIC_STOCKPILING)
+                        and self._influence(me, "fremen") >= 2
+                    ):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingWaterMod,
+                            "Strategic Stockpiling Mod",
+                        )
+                    if self._has_intrigue(_UNEXPECTED_ALLIES):
+                        _mul(s, c.UnexpectedAlliesWaterMod, "Unexpected Allies Mod")
+
+            if attr is Attr.TROOPS:
+                if self._has_intrigue(_RAPID_MOBILIZATION):
+                    _mul(s, c.RapidMobilizationTroopMod, "Rapid Mobilization")
+                # ConflictTroops / GarrisonTroops: Commanders are troops there
+                # (bloodlines-systems.md §1.1 D1; 0 without Bloodlines).
+                conflict_troops = me.troops_conflict + me.commanders_conflict
+                garrison_troops = me.troops_garrison + me.commanders_garrison
+                if (
+                    self._has_intrigue(_STAGED_INCIDENT)
+                    and c.StagedIncidentDeployedTroopThreshold >= conflict_troops
+                    and c.StagedIncidentTotalTroopThreshold
+                    >= conflict_troops + garrison_troops
+                ):
+                    _mul(s, c.StagedIncidentTroopMod, "Staged Incident")
+                if self.ctx.has_tech("training_drones"):
+                    _mul(s, c.TrainingDronesTroopMod, "Training Drones")
+                if self.ctx.has_tech("flagship"):
+                    # App re-reads slot 304, NOT FlagshipTroopMod (rix-tech §5.1).
+                    _mul(s, c.TrainingDronesTroopMod, "Flagship")
+                # Capped at the troops left in the supply (after the mods).
+                amount = min(amount, me.troops_supply)
+
+            if attr is Attr.DREADNOUGHT and self.ctx.has_tech("detonation_devices"):
+                _mul(s, c.DetonationDevicesDreadnoughtMod, "Detonation Devices")
+            if self.ctx.immortality and attr is Attr.SPECIMEN:  # SetOn(3)
+                # immortality.md §2.4: the row card with the best AcquireValue
+                # (OrderByDescending is stable: row order on ties). Unaffordable and
+                # good: more specimens are worth a bonus, added before "Amount" so a
+                # specimen cost is penalised by it too. The row always holds Reclaimed
+                # Forces (an empty one would throw in the app).
+                best = first_strictly_best(
+                    [
+                        (row_card, self.acquire_value(row_card).sum)
+                        for row_card in self.tleilaxu_row_cards()
+                    ]
+                )
+                if best is not None:
+                    row_card, best_value = best
+                    if (
+                        best_value > c.SpecimenGoodTleilaxuThreshold  # strict
+                        and row_card.int_attr("SpecimenCost", 0)
+                        > self.ctx.specimens()  # strict
+                    ):
+                        s.add(
+                            "Need More specimens for Good Card",
+                            c.SpecimenGoodTleilaxuBonus,
+                        )
+
+            if attr is Attr.SANDWORMS and self.ctx.uprising:  # SetOn(4)
+                interest = self.current_conflict_interest().sum  # always computed
+                if leader == _MUAD_DIB:
+                    s.add("Muad'Dib Intrigue", self.intrigue_value())
+                if (
+                    self._has_intrigue(_DETONATION)
+                    and me.maker_hooks
+                    and interest >= self.conflict_posture_bounds()[0]
+                ):
+                    s.add("Detonation SandWorm Mod", c.DetonationSandWormMod)
+                if self._has_intrigue(_DEVOUR):
+                    _mul(s, c.DevourSandWormMod, "Devour SandWorm Mod")
+                if self._has_intrigue(_INSPIRE_AWE):
+                    _mul(s, c.InspireAweSandWormMod, "Devour SandWorm Mod")
+                if (
+                    self._has_intrigue(_SPECIAL_MISSION)
+                    and me.maker_hooks
+                    and interest >= self.conflict_posture_bounds()[0]
+                ):
+                    s.add("Special Mission SandWorm Mod", c.SpecialMissionSandWormMod)
+
+        # AMOUNT:
+        _mul(s, float(amount), "Amount")
+        if attr is Attr.PERSUASION:
+            s.add("Buy Gains", self.buy_gains(amount))
+        return s.sum
+
+    def persuasion_value(self, amount: int) -> float:
+        """``AIProfile.GetPersuasionValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.PERSUASION, amount, False)
+
+    def solari_value(self, amount: int) -> float:
+        """``AIProfile.GetSolariValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.SOLARI, amount, False)
+
+    def spice_value(self, amount: int) -> float:
+        """``AIProfile.GetSpiceValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.SPICE, amount, False)
+
+    def water_value(self, amount: int) -> float:
+        """``AIProfile.GetWaterValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.WATER, amount, False)
+
+    def specimen_value(self, amount: int) -> float:
+        """``AIProfile.GetSpecimenValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.SPECIMEN, amount, False)
+
+    def strength_value(
+        self, amount: int, include_combat_posture_mod: bool = False
+    ) -> float:
+        """``AIProfile.GetStrengthValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.STRENGTH, amount, include_combat_posture_mod)
+
+    def troop_value(
+        self, amount: int, include_combat_posture_mod: bool = False
+    ) -> float:
+        """``AIProfile.GetTroopValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.TROOPS, amount, include_combat_posture_mod)
+
+    def dreadnought_value(
+        self, amount: int, include_combat_posture_mod: bool = False
+    ) -> float:
+        """``AIProfile.GetDreadnoughtValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.DREADNOUGHT, amount, include_combat_posture_mod)
+
+    def sandworm_value(
+        self, amount: int, include_combat_posture_mod: bool = False
+    ) -> float:
+        """``AIProfile.GetSandWormValue`` (spec §3.1)."""
+
+        return self.resource_value(Attr.SANDWORMS, amount, include_combat_posture_mod)
+
+    # ===========================================================================
+    # §4 Victory points, cards and other scalars
+    # ===========================================================================
+
+    def victory_point_value(self, amount: int) -> float:
+        """``AIProfile.GetVictoryPointValue`` (spec §4.1).
+
+        The doubling line is a literal 10, also in Epic.
+        """
+
+        c = self.C
+        value = (
+            c.VictoryPointValueEarly,
+            c.VictoryPointValueMid,
+            c.VictoryPointValueLate,
+        )[self.game_arc()]
+        mult = 1.0 if self.ctx.vp(self.ctx.me) + amount < 10 else 2.0
+        return (float(amount) * value) * mult
+
+    def card_draw_value(self) -> float:
+        """``AIProfile.CardDrawValue`` (spec §4.2).
+
+        Paul Atreides (``leader.original.paul_atreides``, the original game's leader)
+        reads the card on top of his own deck (``Deck.children.FirstOrDefault``): ``v *
+        (PersuasionCost / 10.0 + 1.0)`` (0 for an empty deck). His Prescience shows him
+        that card at any time [DI p. 13], so it is in his ``PlayerView``
+        (``peeked_card_id``, ``core.observation``), not a read of the deck order.
+        """
+
+        value = self.C.CardDrawValue
+        if self._leader_short() == _PAUL_ATREIDES:
+            private = self.ctx.view.private
+            top = private.peeked_card_id if private is not None else ""
+            cost = card_entity(top).int_attr("PersuasionCost") if top else 0
+            return value * (cost / 10.0 + 1.0)
+        return value * 1.0
+
+    def card_draw_value_with_buy_gains(self) -> float:
+        """``AIProfile.CardDrawValueWithBuyGains`` (spec §4.2)."""
+
+        draw = self.card_draw_value()
+        return self.buy_gains(self.possible_persuasion_gain()) + draw
+
+    def intrigue_value(self) -> float:
+        """``AIProfile.IntrigueValue`` (spec §4.4).
+
+        Plain, no summer; Sonic Snoopers is holding-gated (rix-tech §5.2).
+        """
+
+        c = self.C
+        value = (
+            c.IntrigueValueEarly,
+            c.IntrigueValueMid,
+            c.IntrigueValueLate,
+        )[self.game_arc()]
+        if self.ctx.has_tech("sonic_snoopers"):
+            value *= c.SonicSnoopersIntrigueMod
+        level = self.abundance_level(Attr.INTRIGUE_CARD)
+        if level == 3:
+            value *= c.FloodedMod
+        elif level == 2:
+            value *= c.RichMod
+        elif level == 0:
+            value *= c.PoorMod
+        if self._profile().suspensor_suits_active():
+            # Bloodlines Suspensor Suits (bloodlines-systems.md §9, D59): each
+            # Intrigue gained in the own turn deploys a troop.
+            value += self.troop_value(1, False)
+        return value
+
+    def trash_card_value(self) -> float:
+        """``AIProfile.TrashCardValue`` (spec §4.3)."""
+
+        c = self.C
+        value = (c.TrashCardEarly, c.TrashCardMid, c.TrashCardLate)[self.game_arc()]
+        if self.ctx.me.leader_id == "count_hasimir_fenring":
+            # Bloodlines Assassin: +1 Solari per trashed card
+            # (bloodlines-systems.md §4.2, D33; Count Ilban's leader term
+            # precedent).
+            value += self.solari_value(1)
+        return value
+
+    def minimum_acquire_value(self) -> float:
+        """``AIProfile.MinimumAcquireValue`` (spec §4.3)."""
+
+        c = self.C
+        return (
+            c.MinimumAcquireValueEarly,
+            c.MinimumAcquireValueMid,
+            c.MinimumAcquireValueLate,
+        )[self.game_arc()]
+
+    def trash_mod(self) -> float:
+        """``AIProfile.TrashMod`` (spec §11.1).
+
+        Discard ++ AllCardsInPlay only (hand and draw pile not looked at).
+        """
+
+        me = self.ctx.me
+        cards = self._own_cards(me.discard_pile, me.in_play)
+        if not cards:
+            return -1.0
+        if self._has_intrigue(_CORNER_THE_MARKET) or self.ctx.has_tech(
+            "holtzman_engine"
+        ):
+            cards = [card for card in cards if card.short not in _TSMF]
+        if not cards:
+            return -1.0
+        best = max(card.float_attr("TrashValue", 0.0) for card in cards)
+        if best > 1.5:  # strict >
+            return 1.5
+        return -1.0 if best <= 0.0 else best
+
+    def swordmaster_value(self) -> float:
+        """``AIProfile.SwordmasterValue`` (spec §4.3)."""
+
+        c = self.C
+        return (c.GainSwordmasterEarly, c.GainSwordmasterMid, c.GainSwordmasterLate)[
+            self.game_arc()
+        ]
+
+    def high_council_value(self) -> float:
+        """``AIProfile.HighCouncilValue`` (spec §4.3)."""
+
+        c = self.C
+        return (
+            c.GainHighCouncilEarly,
+            c.GainHighCouncilMid,
+            c.GainHighCouncilLate,
+        )[self.game_arc()]
+
+    def foldspace_value(self) -> float:
+        """``AIProfile.FoldspaceValue`` (spec §4.3)."""
+
+        c = self.C
+        return (c.GainFoldspaceEarly, c.GainFoldspaceMid, c.GainFoldspaceLate)[
+            self.game_arc()
+        ]
+
+    def mentat_value(self) -> float:
+        """``AIProfile.MentatValue`` (spec §4.3)."""
+
+        c = self.C
+        base = (c.GainMentatEarly, c.GainMentatMid, c.GainMentatLate)[self.game_arc()]
+        m1 = (
+            c.CalculatedHireMentatValueMod
+            if self._has_intrigue(_CALCULATED_HIRE)
+            else 1.0
+        )
+        m2 = (
+            c.UrgentMissionMentatValueMod
+            if self._has_intrigue(_URGENT_MISSION)
+            else 1.0
+        )
+        return (base * m1) * m2
+
+    def control_solari_value(self) -> float:
+        """``AIProfile.ControlSolariValue`` (spec §4.3)."""
+
+        c = self.C
+        return (c.ControlSolariEarly, c.ControlSolariMid, c.ControlSolariLate)[
+            self.game_arc()
+        ]
+
+    def control_spice_value(self) -> float:
+        """``AIProfile.ControlSpiceValue`` (spec §4.3)."""
+
+        c = self.C
+        return (c.ControlSpiceEarly, c.ControlSpiceMid, c.ControlSpiceLate)[
+            self.game_arc()
+        ]
+
+    def control_value_avg(self) -> float:
+        """``AIProfile.ControlValueAvg`` (spec §4.3)."""
+
+        spice = self.control_spice_value()
+        solari = self.control_solari_value()
+        return (spice + (solari + solari)) / 3.0
+
+    def discard_value(self) -> float:
+        """``AIProfile.DiscardValue`` (spec §4.3)."""
+
+        c = self.C
+        return (c.DiscardEarly, c.DiscardMid, c.DiscardLate)[self.game_arc()]
+
+    # ===========================================================================
+    # §5 Persuasion forecast and the knapsack
+    # ===========================================================================
+
+    def _reveal_preview_value(self, ability_class: str, card: Entity) -> int:
+        """``GetRevealPreviewValue(M, P)["Persuasion"]`` of one Reveal ability.
+
+        Base ``RevealAbility`` = the printed ``Persuasion`` attribute; the overrides
+        follow the app's classes. Keys other than ``Persuasion`` (OptionalPersuasion,
+        Strength...) do not reach the Persuasion forecast.
+        """
+
+        me = self.ctx.me
+        if ability_class == _DESERT_POWER_REVEAL:
+            return 0  # only {"OptionalPersuasion": 2}
+        if ability_class == _BG_OPERATIVE_REVEAL:
+            # + 2 while fewer than 2 Spies are left in the supply.
+            bonus = 2 if me.spies_supply < 2 else 0
+            return card.int_attr("Persuasion") + bonus
+        if ability_class in (
+            _CALCULUS_REVEAL,  # (OptionalStrength aside)
+            _SARDAUKAR_COORD_REVEAL,
+            _IN_HIGH_PLACES_REVEAL,  # (OptionalPersuasion aside)
+        ):
+            return 2
+        if ability_class == _INTERSTELLAR_REVEAL:
+            return len(me.completed_contract_ids)  # GetContractsCompletedCount
+        if ability_class == _PARACOMPASS_REVEAL:
+            if not me.high_council:
+                return 0
+            return 2 | (1 if me.swordmaster_acquired else 0)
+        if ability_class == _SOUTHERN_ELDERS_REVEAL:
+            # 2 if another own card in play or in hand is Fremen.
+            others = (
+                other
+                for other in self._own_cards(me.in_play, me.hand)
+                if other.ref != card.ref
+            )
+            return (
+                2 if any("Fremen" in o.list_attr("FactionList") for o in others) else 0
+            )
+        if ability_class == _LIET_KYNES_REVEAL:  # (Stilgar)
+            fremen = [
+                other
+                for other in self._own_cards(me.in_play, me.hand)
+                if "Fremen" in other.list_attr("FactionList")
+            ]
+            return len(fremen) * 2
+        if ability_class == _THUFIR_REVEAL:
+            return 1
+        if ability_class == _UNDERCOVER_REVEAL:
+            return 0  # only {"OptionalStrength": 2}
+        if ability_class in (_BG_SISTER_REVEAL, _WORM_RIDERS_REVEAL):
+            # {OptionalPersuasion 2, OptionalStrength 2}
+            # {Strength}: no Persuasion key.
+            return 0
+        if ability_class == _FIRM_GRIP_REVEAL:  #: InAlliance(Emperor) << 2
+            return 4 if "emperor" in me.alliance_faction_ids else 0
+        if ability_class == _FEDAYKIN_REVEAL:  # {Persuasion 1, Strength}
+            return 1  # literal
+        if ability_class == _SIETCH_RM_REVEAL:
+            # 3 with another own Fremen card in play or in hand (the same
+            # test as Southern Elders').
+            others = (
+                other
+                for other in self._own_cards(me.in_play, me.hand)
+                if other.ref != card.ref
+            )
+            return (
+                3 if any("Fremen" in o.list_attr("FactionList") for o in others) else 0
+            )
+        if ability_class == _BT_RESEARCHER_REVEAL:
+            return self.ctx.genetic_markers() + 1  # GeneticMarkers; inc
+        if ability_class == _LISAN_AL_GAIB_PREVIEW:
+            return card.int_attr("Persuasion")  # Owner.Persuasion (Strength aside)
+        if ability_class == _THRONE_ROOM_REVEAL:
+            return 1  # literal (WillClearUndo aside)
+        if ability_class in _APPSTYLE_PREVIEW_REVEALS:  # Bloodlines cards only
+            from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
+                reveal_preview_persuasion,
+            )
+
+            return reveal_preview_persuasion(ability_class, card, self._profile())
+        return card.int_attr("Persuasion")  # base RevealAbility
+
+    def _reveal_preview_persuasion(self) -> int:
+        """``Player.GetRevealPreview(M, false)["Persuasion"]``.
+
+        Spec §5.1. Outside the seat's own Reveal turn: pool + High Council 2 +
+        own Agent on Assembly Hall 1 + the Reveal Persuasion of the hand. In
+        the Reveal turn the hand is already revealed, so: the pool.
+        ``SelectableAbilities(false)`` holds every card's Play/Activated
+        abilities, so no hand card is filtered out.
+
+        Immortality: outside the Reveal turn the in-play cards Chairdog will
+        return to the hand (``P.ChairdogReturnCards``) are previewed too,
+        after the hand, in play-area order.
+        """
+
+        me = self.ctx.me
+        persuasion = self._persuasion_pool()
+        in_reveal_turn = self._in_reveal_turn()
+        if not in_reveal_turn:
+            if me.high_council:
+                persuasion += 2
+            # ``FindSpace(HallofOratory)`` (the original board) and
+            # ``FindSpace(Uprising.AssemblyHall)``: an own Agent there.
+            if "hall_of_oratory" in me.agent_locations:
+                persuasion += 1
+            if "assembly_hall" in me.agent_locations:
+                persuasion += 1
+            if "tech_negotiation" in me.agent_locations:
+                persuasion += 1
+            if self.ctx.has_tech("minimic_film"):
+                persuasion += 1
+            if self.ctx.bloodlines:
+                # Self-Destroying Messages, Charismatic, Navigation card 3
+                # (bloodlines-systems.md §9, D62; Minimic Film precedent).
+                persuasion += self._profile().reveal_preview_bonus()
+        cards = list(self.ctx.hand)
+        returning = self.ctx.chairdog_return_card_ids()
+        if returning and not in_reveal_turn:
+            cards += [card for card in me.in_play if card in returning]
+        for card in self._own_cards(tuple(cards)):
+            for ability_class in card.ability_ids:
+                if ability_class in _REVEAL_CLASSES:
+                    persuasion += self._reveal_preview_value(ability_class, card)
+        return persuasion
+
+    def possible_persuasion(self) -> int:
+        """``AIProfile.PossiblePersuasion`` (spec §5.1)."""
+
+        return self._reveal_preview_persuasion()
+
+    def possible_persuasion_gain(self) -> int:
+        """``AIProfile.PossiblePersuasionGain`` (spec §4.2).
+
+        The mean printed ``Persuasion`` (app attribute) of the draw pile, or
+        of the discard pile when the draw pile is empty, banker-rounded.
+        """
+
+        me = self.ctx.me
+        if me.deck:
+            source = self._deck_cards()
+        elif me.discard_pile:
+            source = self._own_cards(me.discard_pile)
+        else:
+            return app_round(0.0)
+        total = 0
+        for card in source:
+            total += card.int_attr("Persuasion")
+        return app_round(total / len(source))
+
+    def _predict_with_values(self, with_persuasion: int) -> list[tuple[Entity, float]]:
+        """``PredictCardBuys`` with each yielded card's ``AcquireValue.Sum``."""
+
+        items: list[tuple[Entity, int, float]] = []
+        for card in self._row_cards():
+            if card.int_attr("PersuasionCost", 99) <= with_persuasion:  # <=
+                items.append(
+                    (
+                        card,
+                        card.int_attr("PersuasionCost", 0),
+                        self.acquire_value(card).sum,
+                    )
+                )
+        return _knapsack(items, with_persuasion)
+
+    def predict_card_buys(self, with_persuasion: int) -> list[Entity]:
+        """``AIProfile.PredictCardBuys`` (spec §5.3-5.4).
+
+        A 0/1 knapsack over the affordable row and reserve cards (weight =
+        cost, value = ``AcquireValue``); cards in yield order (descending row
+        index).
+        """
+
+        return [card for card, _ in self._predict_with_values(with_persuasion)]
+
+    def buy_gains(self, amount: int) -> float:
+        """``AIProfile.GetBuyGains`` (spec §5.5).
+
+        ``max(0, (Σ AcquireValue(knapsack(P+n)) - Σ AcquireValue(knapsack(P)))
+        - n)`` with ``P`` the Reveal-preview Persuasion; cached per ``n`` for
+        the decision. The sums are in yield order; the app re-evaluates
+        ``AcquireValue`` for them, which gives the same doubles.
+        """
+
+        cached = self._cached_buy_gains.get(amount)
+        if cached is not None:
+            return cached
+        preview = self._reveal_preview_persuasion()
+        base = self._predict_with_values(preview)
+        more = self._predict_with_values(preview + amount)
+        gain = max(
+            0.0,
+            (_dsum([v for _, v in more]) - _dsum([v for _, v in base])) - float(amount),
+        )
+        self._cached_buy_gains[amount] = gain
+        return gain
+
+    def buy_value(self) -> float:
+        """``AIProfile.GetBuyValue`` (spec §5.5)."""
+
+        chosen = self._predict_with_values(self._reveal_preview_persuasion())
+        return _dsum([value for _, value in chosen])
+
+    def acquire_cards_by_value(self, with_persuasion: int) -> list[Entity]:
+        """``AIProfile.GetAcquireCardsByValue`` (spec §5.6).
+
+        Affordable row/reserve cards, stable-sorted by ``AcquireValue``
+        descending.
+        """
+
+        affordable = [
+            card
+            for card in self._row_cards()
+            if card.int_attr("PersuasionCost", 99) <= with_persuasion
+        ]
+        keyed = [(card, self.acquire_value(card).sum) for card in affordable]
+        keyed.sort(key=lambda item: item[1], reverse=True)  # stable
+        return [card for card, _ in keyed]
+
+    def deck_agent_icons(self) -> dict[str, int]:
+        """``AIProfile.DeckAgentIcons`` (spec §6.1).
+
+        Icon (app ``IconList`` name) -> count over the draw pile only, one per
+        list entry.
+        """
+
+        icons: dict[str, int] = {}
+        bloodlines = self.ctx.bloodlines
+        for card in self._deck_cards():
+            # Bloodlines: the permanent icon grants (Mohiam, Servo-Receivers;
+            # bloodlines-systems.md §1.7, D40).
+            listed = (
+                self._profile().icon_list(card)
+                if bloodlines
+                else card.list_attr("IconList")
+            )
+            for icon in listed:
+                icons[icon] = icons.get(icon, 0) + 1
+        return icons
+
+    # ===========================================================================
+    # §6 AcquireValue and its terms
+    # ===========================================================================
+
+    def acquire_value(self, card: Entity) -> Summer:
+        """``ImperiumPlayable.AcquireValue`` (spec §6).
+
+        A Tleilaxu card (``EntityType == Tleilaxu``) takes the branch of
+        spec/immortality.md §2.5 and returns early.
+        """
+
+        c = self.C
+        me = self.ctx.me
+        s = Summer()
+        s.add("Archetype Value", card.float_attr("AcquireValue", 0.0))
+
+        if card.attr("EntityType") == "Tleilaxu":
+            # The specimen cost is *added* as the base; tag bonuses; no icons,
+            # consolidation, synergy, friendship, acquire effects, arc multiplier or
+            # minimum. Counts are ``K * double(n)``; ``n`` includes the card only if
+            # owned.
+            s.merge(self.specific_acquire_bonus(card))
+            s.add("Specimen Cost", float(card.int_attr("SpecimenCost", 0)))
+            tags = card.list_attr("Tags")
+            markers = self.ctx.genetic_markers()
+            if "Shadow" in tags:
+                s.add(
+                    "Shadow Bonus",
+                    c.TleilaxuShadowSynergyMod * float(self._owned_with_tag("Shadow")),
+                )
+            if "Helix" in tags and markers > 0:
+                s.add("Helix Bonus", c.TleilaxuHelixSynergyBonus)
+            if "DoubleHelix" in tags and markers >= 2:
+                s.add("Double Helix Bonus", c.TleilaxuDoubleHelixSynergyBonus)
+            if "WantsGraft" in tags:
+                s.add(
+                    "Graft Cards For WantsGraft",
+                    c.TleilaxuGraftSynergyBonus * float(self._owned_with_tag("Graft")),
+                )
+            if "Graft" in tags:
+                s.add(
+                    "WantsGraft Cards For Graft",
+                    c.TleilaxuGraftSynergyBonus
+                    * float(self._owned_with_tag("WantsGraft")),
+                )
+            return s
+
+        # (a) new agent icons
+        if not self.is_climax():
+            deck_icons = self.deck_agent_icons()
+            # Bloodlines: the permanent icon grants (bloodlines-systems.md
+            # §1.7, D40).
+            card_icons = (
+                self._profile().icon_list(card)
+                if self.ctx.bloodlines
+                else card.list_attr("IconList")
+            )
+            icons = _dsum(
+                [
+                    0.0
+                    if (icon in deck_icons and deck_icons[icon] > 2)  # strict > 2
+                    else c.AcquireNewIconsBonus
+                    for icon in card_icons
+                ]
+            )
+            if self._has_intrigue(_PLANS_WITHIN_PLANS):
+                icons *= c.PoliticsPayoffMod
+            # Grand Conspiracy is handled by the Ix profile slice.
+            if self.ctx.has_tech("memocorders"):
+                icons *= c.PoliticsPayoffMod
+            if self._leader_short() == _STABAN_TUEK:
+                icons *= c.StabanTuekIconMod
+            s.add("New Icons", icons)  # added even when 0
+
+        # (b) consolidation (spend big)
+        cost = card.int_attr("PersuasionCost", 0)
+        pool = self._persuasion_pool()  # the live pool, not the preview
+        if cost > 0 and pool >= cost:  # strict > 0 ; >=
+            s.add(
+                "Consolidation",
+                c.ConsolidationValueMod * ((float(pool) - float(cost)) / float(cost)),
+            )
+
+        s.merge(self.synergy_mod(card))
+        s.merge(self.friendship_mod(card))
+        s.merge(self.acquire_effects_value(card))
+        s.merge(self.specific_acquire_bonus(card))
+        # player.CallToArms: Call to Arms played and waiting face up.
+        if any(card_id(i) == "call_to_arms" for i in me.intrigue_faceup):
+            s.add("Call To Arms", c.CallToArmsAcquireMod)
+        if (
+            "WantSpy" in card.list_attr("Tags")
+            and self._leader_short() in _WANT_SPY_LEADERS
+        ):
+            _mul(s, c.WantSpyImperiumMod, "WantSpy mod")
+
+        mod = (
+            card.float_attr("EarlyMod", 1.0),
+            1.0,
+            card.float_attr("LateMod", 1.0),
+        )[self.game_arc()]
+        _mul(s, mod, "Game Arc")
+        if self.minimum_acquire_value() > s.sum:  # strict >
+            _mul(s, 0.0, "Game Arc Min")
+        return s
+
+    def synergy_mod(self, card: Entity) -> Summer:
+        """``AIProfile.GetSynergyMod`` (spec §7.1).
+
+        The deck-pile synergy of every ability of every owned card
+        (``ValueInPileForOtherPlay`` with the Deck), plus tag incentives,
+        capped at ``SynergyModMaxValue``. The Helix/Double Helix incentives
+        (immortality.md §2.6) multiply the sum so far, the TSMF term
+        included.
+        """
+
+        c = self.C
+        me = self.ctx.me
+        tags = card.list_attr("Tags")
+        s = Summer()
+        if card.short in _TSMF and self._in_reveal_turn():
+            # ActiveCards: in play with an unexhausted Play/Activated ability;
+            # judgement: a played Guild Spy always keeps one (AcquireAbility).
+            guild_spy = any(
+                played.short == _GUILD_SPY for played in self._own_cards(me.in_play)
+            )
+            contract_open = self.ctx.uprising and any(  # SetOn(4)
+                CONTRACT_ARCHETYPES.get(card_id(contract)) == _CONTRACT_BASE_20
+                for contract in me.active_contract_ids
+            )
+            if guild_spy or contract_open:
+                s.add("TSMF Uprising Mod", c.SynergyTSMFUprisingMod)
+        if not self.is_climax():
+            from dune_imperium.agents.app_ai.abilities import Pile
+
+            profile = self._profile()
+            concat = Summer()
+            for owned in self._all_imperium_cards():
+                for ability in self._abilities(owned):
+                    concat.merge(
+                        ability.value_in_pile_for_other_play(profile, Pile.DECK, card)
+                    )
+            if SYNERGY_READS_HELD_CARD_ABILITIES:
+                held = [intrigue_entity(i, self.ctx.seat) for i in me.intrigue_cards]
+                if self.ctx.uprising:  # SetOn(4): the ContractArea
+                    held += [
+                        contract_entity(i, self.ctx.seat)
+                        for i in me.active_contract_ids
+                    ]
+                for owned in held:
+                    for ability in self._abilities(owned):
+                        concat.merge(
+                            ability.value_in_pile_for_other_play(
+                                profile, Pile.DECK, card
+                            )
+                        )
+            s.merge(concat)
+            markers = self.ctx.genetic_markers()
+            if markers > 0 and "Helix" in tags:
+                _mul(s, c.SynergyHelixMod, "Helix Incentive")
+            if markers >= 2 and "DoubleHelix" in tags:
+                _mul(s, c.SynergyDoubleHelixMod, "Double Helix Incentive")
+            if "WantSpy" in tags:
+                s.add(
+                    "WantSpy Spy count incentive",
+                    c.SynergySpyMod * float(len(me.spy_post_ids)),
+                )
+            if (
+                "WantContract2" in tags
+                or "WantContract4" in tags
+                or "WantContractX" in tags
+            ):
+                s.add(
+                    "Contract Completed incentive",
+                    min(
+                        c.SynergyContractCompleted * len(me.completed_contract_ids),
+                        c.SynergyContractCompletedMax,
+                    ),
+                )
+                s.add(
+                    "Contract Open incentive",
+                    min(
+                        c.SynergyContractOpen * len(me.active_contract_ids),
+                        c.SynergyContractOpenMax,
+                    ),
+                )
+            if "WantHooks" in tags:
+                if me.maker_hooks:
+                    s.add("Has Hooks Incentive", c.SynergyHaveHooksMod)
+                elif self._influence(me, "fremen") >= 2:
+                    s.add(
+                        "No Hooks + 2 Fremen Incentive",
+                        c.SynergyHooksFremenInfluenceMod,
+                    )
+        if s.sum > c.SynergyModMaxValue:  # strict >
+            _mul(s, 0.0, "Exceeded Synergy Max")
+            s.add("Synergy Max", c.SynergyModMaxValue)
+        return s
+
+    def friendship_mod(self, card: Entity) -> Summer:
+        """``AIProfile.GetFriendshipMod`` (spec §8).
+
+        Literals 1.5 / 0.5 / 2.5 / 1.0, the same on every level.
+        """
+
+        value = 0.0
+        for tag in card.list_attr("Tags"):
+            entry = _FRIENDSHIP_TAGS.get(tag)
+            if entry is None:
+                continue  # incl. DiscardEnabler (case 15: nothing)
+            kind, faction = entry
+            if kind == "influence":
+                value += self._influence_check(faction)
+            else:
+                value += self._alliance_check(faction)
+        s = Summer()
+        s.add("Friendship Mod", value)
+        return s
+
+    def _influence_check(self, faction: str) -> float:
+        """``TwoInfluenceCheck`` (also inlined)."""
+
+        influence = self._influence(self.ctx.me, faction)
+        if influence > 1:  # strict > 1
+            return 1.5
+        return 0.5 if influence == 1 else 0.0
+
+    def _alliance_check(self, faction: str) -> float:
+        """``AllianceCheck``."""
+
+        me = self.ctx.me
+        if faction in me.alliance_faction_ids:
+            return 2.5
+        if self._influence(me, faction) >= 2 and all(
+            faction not in o.alliance_faction_ids for o in self.ctx.opponents
+        ):
+            return 1.0
+        return 0.0
+
+    def acquire_effects_value(self, card: Entity) -> Summer:
+        """``AIProfile.GetAcquireEffectsValue`` (spec §9).
+
+        Invasion Ships (Rise of Ix): dead. Research (16) and Shadow (17)
+        (Immortality, immortality.md §2.7): ``ResearchValue`` and
+        ``TleilaxuValue(1)``. Unlisted effects (Intrigue, Contract,
+        PlaceSpy, ...) are worth 0.
+        """
+
+        value = 0.0
+        for effect in card.list_attr("AcquireEffectList"):
+            faction = _RANK_EFFECTS.get(effect)
+            if faction is not None:
+                value += self.gain_influence_value(faction, 1, -1, False).sum
+            elif effect == "AnyRank":
+                value += self.gain_influence_value(_ANY_FACTION, 1, -1, False).sum
+            elif effect == "VP":
+                value += self.victory_point_value(1)
+            elif effect == "Water":
+                value += self.resource_value(Attr.WATER, 1, False)
+            elif effect == "Troop":
+                value += self.resource_value(Attr.TROOPS, 1, False)
+            elif effect == "Research":
+                value += self.research_value().sum
+            elif effect == "Shadow":
+                value += self.tleilaxu_value(1).sum
+            elif effect == "Solari":
+                value += self.resource_value(Attr.SOLARI, 1, False)
+            elif effect == "Spice":
+                value += self.resource_value(Attr.SPICE, 1, False)
+        s = Summer()
+        s.add("Acquire Effects", value)
+        return s
+
+    def specific_acquire_bonus(self, card: Entity) -> Summer:
+        """``AIProfile.GetSpecificAcquireBonus`` (spec §10).
+
+        The ``SpecificAcquireValue`` of each of the card's abilities
+        (concatenated). Detonation Devices (Rise of Ix): dead.
+        """
+
+        profile = self._profile()
+        concat = Summer()
+        for ability in self._abilities(card):
+            concat.merge(ability.specific_acquire_value(profile))
+        s = Summer()
+        s.merge(concat)
+        return s
+
+    # ===========================================================================
+    # §4.6-4.7 Space costs
+    # ===========================================================================
+
+    def spice_for_sell_melange(self) -> int:
+        """``AIProfile.GetSpiceForSellMelange`` (spec §4.6).
+
+        The original board's Sell Melange (not on the Uprising board).
+        """
+
+        c = self.C
+        spice = self.ctx.me.resources.spice
+        value = self.resource_value(Attr.SOLARI, 1, False)
+        if c.SellMelangeLowSolariValueThreshold > value:  # strict
+            return min(2, spice)
+        if c.SellMelangeMidSolariValueThreshold > value:
+            return min(3, spice)
+        n = 4 if c.SellMelangeHighSolariValueThreshold > value else 5
+        return min(n, spice)
+
+    def spice_for_spice_refinery(self) -> int:
+        """``AIProfile.GetSpiceForSpiceRefinery`` (spec §4.6)."""
+
+        spice = self.ctx.me.resources.spice
+        value = self.resource_value(Attr.SOLARI, 1, False)
+        pay = 1 if self.C.SpiceRefineryLowSolariValueThreshold <= value else 0
+        return min(pay, spice)
+
+    def can_agent_ability_be_played_with_space(
+        self, space: Entity | None, attr: Attr, amount: int
+    ) -> bool:
+        """``AIProfile.CanAgentAbilityBePlayedWithSpace``.
+
+        Spec §4.7. Judgement: a missing space (a null deref in the app) reads
+        as a space with no costs or gains.
+        """
+
+        me = self.ctx.me
+
+        def attribute(name: str) -> int:
+            return 0 if space is None else space.int_attr(name)
+
+        if attr is Attr.SPICE:
+            # ``SpiceDiscount``: Navigation Chamber's −1 (NEW, absent = 0;
+            # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount.
+            need = attribute("SpiceCost") + attribute("SpiceDiscount")
+            if space is not None and space.short == _SELL_MELANGE:
+                need = self.spice_for_sell_melange()
+            bonus = 0
+            if space is not None and space.has("BonusSpice"):
+                # Runtime BonusSpice: our maker spaces' bonus spice.
+                bonus = dict(self.ctx.view.maker_bonus_spice).get(
+                    space.ref, space.int_attr("BonusSpice")
+                )
+            return need + amount <= me.resources.spice + attribute("Spice") + bonus
+        if attr is Attr.SOLARI:
+            return attribute("SolariCost") + amount + attribute(
+                "SolariDiscount"
+            ) <= me.resources.solari + attribute("Solari")
+        if attr is Attr.WATER:
+            return attribute("WaterCost") + amount <= me.resources.water + attribute(
+                "Water"
+            )
+        return True
+
+    # ===========================================================================
+    # §11 Trashing
+    # ===========================================================================
+
+    def card_to_trash(
+        self, targets: Sequence[Entity], min_trash_value: float
+    ) -> tuple[Entity | None, float]:
+        """``AIProfile.GetCardToTrash`` (spec §11.2).
+
+        Shuffles (ListUtil.Shuffle, here ``self.rng``), then keeps the last
+        card whose score is ``>=`` the best so far (starting at
+        ``min_trash_value``). Rise of Ix card bonuses: dead. Replacement
+        Eyes (immortality.md §2.8, not gated by the set): +1.5 in the Late
+        arc unless it is in the hand.
+        """
+
+        c = self.C
+        me = self.ctx.me
+        candidates = list(targets)
+        convincing_argument = any(
+            card.short == _CONVINCING_ARGUMENT for card in candidates
+        )
+        self.rng.shuffle(candidates)
+        tsmf_owned = sum(
+            1 for owned in self._all_imperium_cards() if owned.short in _TSMF
+        )
+        discard = set(me.discard_pile)
+        played = set(me.in_play)
+        hand = set(me.hand)
+        best: Entity | None = None
+        best_value = min_trash_value
+        for card in candidates:
+            s = Summer()
+            trash_value = card.float_attr("TrashValue", 0.0)
+            if card.short in _TSMF:
+                if self._has_intrigue(_CORNER_THE_MARKET) or self.ctx.has_tech(
+                    "holtzman_engine"
+                ):
+                    trash_value = 0.0
+                # Grand Conspiracy (Rise of Ix): dead.
+                elif self._has_intrigue(_SECURE_SPICE_TRADE) and tsmf_owned < 3:
+                    trash_value = 0.0
+            s.add("Archetype", trash_value)
+            if convincing_argument:  # every candidate
+                s.add(
+                    "Convincing Argument TrashValueMod",
+                    c.ConvincingArgumentTrashValueMod,
+                )
+            # IsArchetype(ReplacementEyes), arc >= 2, c.Parent != P.Hand.
+            if (
+                card.short == _REPLACEMENT_EYES
+                and self.game_arc() >= 2
+                and card.ref not in hand
+            ):
+                s.add("Replacement Eyes TrashValueMod", c.ReplacementEyesTrashValueMod)
+            if s.sum > 0.0:  # strict >
+                if s.sum > 1.0:  # strict >
+                    s.add("TrashValue: x > 1", 10.0)
+                else:
+                    s.add("TrashValue: x > 0", 0.0)
+                _mul(s, 10.0, "Value Shift")
+            else:
+                _mul(s, 0.0, "Avoid Trashing")
+                s.add("Ignore", -1.0)
+            if card.ref in discard:
+                s.add("Is Discarded", 0.2)
+            elif card.ref in played:
+                s.add("Is Played", 0.1)
+            elif card.ref in hand:
+                s.add("In Hand", 0.0)
+            s.add(
+                "Persuasion Cost",
+                float(card.int_attr("PersuasionCost", 0)) * -0.01 + 0.09,
+            )
+            if s.sum >= best_value:  # >= : the later card wins ties
+                best, best_value = card, s.sum
+        return best, best_value
+
+    # ===========================================================================
+    # §3.3, §13 Opponents and turn order
+    # ===========================================================================
+
+    def opponent_ratio(self, condition: Callable[[PlayerState], bool]) -> float:
+        """``AIProfile.OpponentRatio`` (spec §3.3)."""
+
+        opponents = self.ctx.opponents
+        matching = sum(1 for opponent in opponents if condition(opponent))
+        return float(matching) / float(len(opponents))
+
+    def _active_seat(self) -> int:
+        """``M.ActiveAccountID``'s seat: the turn owner, else the decider."""
+
+        view = self.ctx.view
+        if view.turn_owner is not None:
+            return view.turn_owner
+        if view.decision_owner is not None:
+            return view.decision_owner
+        return self.ctx.seat
+
+    def ordered_players(self) -> list[int]:
+        """``AIProfile.GetOrderedPlayers`` (spec §13).
+
+        Seat order rotated to the active player; the active player goes last
+        unless its ``PlayerTurn`` is Undetermined. Judgement (UNTRACED in the
+        spec): Undetermined = the turn-start prompt, our ``turn`` window.
+        """
+
+        count = len(self.ctx.players)
+        active = self._active_seat()
+        order = [(active + k) % count for k in range(count)]
+        undetermined = self.ctx.decision_kind == "turn"
+        if not undetermined:
+            order.append(order.pop(0))
+        return order
+
+    def has_turn_before_opponent_next_round(self, opponent: int) -> bool:
+        """``AIProfile.HasTurnBeforeOpponentNextRound``.
+
+        Spec §13: ``PlayerTurnOrder`` from the First Player marker.
+        """
+
+        first = self.ctx.first_player
+        if first is None:
+            # No First Player: an empty order, FirstIndexOf -1 < -1 is false.
+            return False
+        if first == opponent:
+            return True
+        if first == self.ctx.seat:
+            return False
+        count = len(self.ctx.players)
+        rest = [(first + k) % count for k in range(1, count)]  # Skip(1)
+        return rest.index(self.ctx.seat) < rest.index(opponent)  # strict <
+
+    def bad_intrigue_cards_in_hand(self) -> list[Entity]:
+        """``AIProfile.GetBadIntrigueCardsInHand``.
+
+        intrigues.md §4.5: held Intrigue cards with an ``IntrigueAbility``
+        whose ``IsBadIntrigue`` holds. Callers are Rise of Ix only. Judgement:
+        an ability port answers through an ``is_bad_intrigue(profile)`` hook
+        (``IntrigueAbility`` default false); a port without it counts false.
+        """
+
+        profile = self._profile()
+        bad: list[Entity] = []
+        for instance in self.ctx.intrigue_cards:
+            card = intrigue_entity(instance, self.ctx.seat)
+            for ability in self._abilities(card):
+                hook = getattr(ability, "is_bad_intrigue", None)
+                if callable(hook) and bool(hook(profile)):
+                    bad.append(card)
+                    break
+        return bad
+
+    # ===========================================================================
+    # §12 Discarding
+    # ===========================================================================
+
+    def _first_ability_value(self, card: Entity, classes: frozenset[str]) -> float:
+        """``c.Abilities.OfType<T>().FirstOrDefault()?.ValueForPlayer(P, [])``."""
+
+        from dune_imperium.agents.app_ai.abilities import ability_for
+
+        for ability_class in card.ability_ids:
+            if ability_class in classes:
+                ability = ability_for(ability_class, card)
+                return ability.value_for_player(self._profile(), ()).sum
+        return 0.0
+
+    def discard_order(
+        self, cards: Sequence[Entity], spacing_guild_bonus: bool
+    ) -> list[Entity]:
+        """``ChooseDiscardEvaluator.GetDiscardOrder`` (spec §12.1).
+
+        Ascending, stable. ``WithAgentValue`` while an Agent is left
+        (``GetNextAgent``), else ``NoAgentValue``. The evaluator itself
+        (``Evaluate``) takes the first ``n`` of this order.
+        """
+
+        def reveal_value(card: Entity) -> float:  # g__RevealValue|0
+            return self._first_ability_value(card, _REVEAL_CLASSES)
+
+        def play_value(card: Entity) -> float:  # g__PlayValue|1
+            return self._first_ability_value(card, _AGENT_CLASSES)
+
+        def incentive_discard(card: Entity) -> bool:
+            if "IncentiveDiscard" in card.list_attr("Tags"):
+                return True
+            return (
+                spacing_guild_bonus
+                and "SpacingGuild" in card.list_attr("FactionList")
+                and card.int_attr("PersuasionCost", 0) < 5  # strict < 5
+            )
+
+        def no_agent_value(card: Entity) -> float:  # g__NoAgentValue|3
+            rv = reveal_value(card)
+            inc = (
+                play_value(card) - (100000.0 * rv + 1000000.0)
+                if incentive_discard(card)
+                else 0.0
+            )
+            return float(card.int_attr("PersuasionCost", 0)) + (
+                100.0 * rv + (0.0 + inc)
+            )
+
+        def with_agent_value(card: Entity) -> float:  # g__WithAgentValue|4
+            tv = card.float_attr("TrashValue", 0.0)
+            rv = reveal_value(card)
+            pv = play_value(card)
+            x = (
+                (pv - (100000.0 * rv + 1000000.0)) + 0.0
+                if incentive_discard(card)
+                else 0.0
+            )
+            y = (tv * -10000.0 + x) if 0.0 < tv else x  # strict 0 < tv
+            cost = card.int_attr("PersuasionCost", 0)
+            return 1.5 * rv + (pv + (float(100 * cost) + y))
+
+        key = with_agent_value if self.ctx.me.agents_available > 0 else no_agent_value
+        return sorted(cards, key=key)

@@ -1,0 +1,2142 @@
+"""Tests for the Immortality Imperium cards with choice boxes (slice 5b-2).
+
+Rule source: the card faces transcribed in
+``docs/implementation-audits/immortality.md``; OQ-052 (a short Intrigue
+deck) and OQ-053 (the Surgeon's two troops from one zone).
+"""
+
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from tests.support.reward_windows import answer_reward_windows
+
+from dune_imperium import RulesetConfig
+from dune_imperium.adapters import ActionCodec, ActionTemplate
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.immortality.board import RESEARCH_START_ID
+from dune_imperium.content.registry.conflicts import CONFLICTS
+from dune_imperium.content.registry.imperium import imperium_deck_instance_ids
+from dune_imperium.content.registry.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
+from dune_imperium.core import (
+    DecisionFrame,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    PlayerState,
+    Resources,
+    RuleResult,
+)
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision
+from dune_imperium.core.engine import Transition
+from dune_imperium.core.observation import observe_state, peeked_intrigue_ids
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.acquisition import (
+    apply_agent_card_acquisition,
+    legal_agent_card_acquisitions,
+)
+from dune_imperium.rules.agent_effects import (
+    agent_card_effect_is_unavailable,
+    apply_agent_card_influence,
+    apply_agent_card_payment,
+    apply_agent_card_trash,
+    legal_agent_card_influence_actions,
+    legal_agent_card_payment_actions,
+    legal_agent_card_trash_actions,
+    resolve_agent_card_effect,
+    resolve_agent_card_icon,
+    resolve_faction_influence,
+)
+from dune_imperium.rules.agent_turn import apply_agent_action, legal_agent_actions
+from dune_imperium.rules.board_effects import (
+    legal_board_effect_actions,
+    resolve_board_effect,
+)
+from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.effect_steps import steps_for
+from dune_imperium.rules.effects import agent_card_source, current_agent_effect_context
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.graft import (
+    apply_graft_partner,
+    legal_graft_partner_actions,
+)
+from dune_imperium.rules.graft_boxes import other_box_state
+from dune_imperium.rules.intrigue_peek import (
+    apply_intrigue_peek,
+    legal_intrigue_peek_actions,
+)
+from dune_imperium.rules.optional_trash import (
+    apply_optional_trash,
+    legal_optional_trash_actions,
+)
+from dune_imperium.rules.reveal_turn import (
+    apply_reveal_gain,
+    apply_reveal_influence_loss,
+    apply_reveal_troop_move,
+    apply_reveal_troop_sacrifice,
+    begin_reveal_turn,
+    legal_reveal_deployments,
+    legal_reveal_gain_actions,
+    legal_reveal_influence_loss_actions,
+    legal_reveal_troop_move_actions,
+    legal_reveal_troop_sacrifice_actions,
+)
+from dune_imperium.rules.strength import refresh_pre_reveal_strength
+from dune_imperium.simulation.invariants import check_observation_privacy
+
+# tests/support isn't a package pytest or mypy resolve from a dotted import
+# (see tests/support/turn_end.py's module docstring).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from turn_end import finish_agent_turn  # type: ignore[import-not-found]  # noqa: E402
+
+IMMORTALITY = RulesetConfig(immortality=True)
+IMMORTALITY_BLOODLINES = RulesetConfig(immortality=True, bloodlines=True)
+STARTERS = starting_deck_instance_ids(0, immortality=True)
+DAGGER = next(card for card in STARTERS if "dagger:0" in card)
+# Immortality replaces Dune, the Desert Planet with Experimentation, the only
+# starter carrying its Spice Trade icon [Immortality p. 5].
+EXPERIMENTATION = next(card for card in STARTERS if "experimentation:0" in card)
+FACE_DANCER = "tleilaxu:face_dancer:0"
+INTRIGUE = intrigue_deck_instance_ids(False, immortality=True)
+
+
+def _card(card_id: str, copy: int = 0) -> str:
+    return f"imperium:{card_id}:{copy}"
+
+
+def _seat(seat: int, **extra: object) -> PlayerState:
+    values: dict[str, object] = {
+        "player_id": seat,
+        "research_space": RESEARCH_START_ID,
+        "family_atomics": True,
+    }
+    values.update(extra)
+    return PlayerState(**values)  # type: ignore[arg-type]
+
+
+def _owner(hand: tuple[str, ...], **extra: object) -> PlayerState:
+    values: dict[str, object] = {
+        "hand": hand,
+        "deck": tuple(card for card in STARTERS if card not in hand),
+        "resources": Resources(solari=4, spice=2, water=2),
+    }
+    values.update(extra)
+    return _seat(0, **values)
+
+
+def _state(owner: PlayerState, *others: PlayerState, **overrides: object) -> GameState:
+    imperium = imperium_deck_instance_ids(False)
+    seats = [owner, *others]
+    seats.extend(_seat(seat) for seat in range(len(seats), 4))
+    values: dict[str, object] = {
+        "config": IMMORTALITY,
+        "seed": 1,
+        "phase": GamePhase.PLAYER_TURNS,
+        "round_number": 1,
+        "current_conflict_ids": (CONFLICTS[0].card.card_id,),
+        "intrigue_deck": INTRIGUE[:6],
+        "imperium_row": imperium[:5],
+        "imperium_deck": imperium[5:20],
+        "tleilaxu_track_spice": 2,
+        "reserve_stacks": (("prepare_the_way", 8), ("the_spice_must_flow", 10)),
+        "players": tuple(seats),
+        "decision_stack": (
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    }
+    values.update(overrides)
+    return GameState(**values)  # type: ignore[arg-type]
+
+
+def _place(
+    state: GameState, card_id: str, space_id: str, *, graft: bool = False
+) -> GameState:
+    action = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["card_id"] == card_id
+        and dict(action.arguments)["space_id"] == space_id
+        and (dict(action.arguments).get("graft") is True) == graft
+        and "infiltrate_post_id" not in dict(action.arguments)
+    )
+    return apply_agent_action(state, action).state
+
+
+def _graft(state: GameState, card_id: str, space_id: str, partner_id: str) -> GameState:
+    placed = _place(state, card_id, space_id, graft=True)
+    partner = next(
+        action
+        for action in legal_graft_partner_actions(placed, 0)
+        if dict(action.arguments)["card_id"] == partner_id
+    )
+    return apply_graft_partner(placed, partner).state
+
+
+def _reveal(state: GameState) -> GameState:
+    return begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+
+
+def _payment(state: GameState, action_id: str) -> DomainAction:
+    return next(
+        action
+        for action in legal_agent_card_payment_actions(state, 0)
+        if action.action_id == action_id
+    )
+
+
+def _offered_ids(state: GameState) -> set[str]:
+    """Every whole action id seat 0 is offered now, through the engine
+    (stage B3b-2: the Reveal frame offers its effects effect first, so its
+    legal rows are not these ids)."""
+
+    actions = UprisingRulesEngine().whole_actions(state, 0)
+    return {action.action_id for action in actions}
+
+
+def _finish_reveal(state: GameState) -> Transition:
+    """Press ``finish_reveal``: every Reveal choice still pending lapses."""
+
+    return UprisingRulesEngine().apply(
+        state, DomainAction(action_id="finish_reveal", actor=0)
+    )
+
+
+def _lapsed(result: Transition) -> list[dict[str, object]]:
+    return [dict(e.payload) for e in result.events if e.kind == "reveal_choice_lapsed"]
+
+
+def _turn_end_offered(state: GameState) -> bool:
+    """Whether seat 0 may press its Agent turn's end now (OQ-095 (2))."""
+
+    return any(
+        action.action_id == "finish_agent_turn"
+        for action in UprisingRulesEngine().legal_actions(state, 0)
+    )
+
+
+def _throne_room_troop(state: GameState) -> GameState:
+    """Throne Room Politics' troops icon, its own step (OQ-027 card Agent box
+    extension 3; printed-effects audit P-2, user 2026-11-09)."""
+
+    return resolve_agent_card_icon(
+        state, DomainAction("resolve_agent_card_effect", 0, (("effect", "troops"),))
+    ).state
+
+
+def _trash_icon_waits_on_the_agent_turn(state: GameState) -> None:
+    """Throne Room Politics' black trash icon is its own icon of the box: in
+    the owner's own Agent turn it is offered as its icon's rows with no
+    refusal and, optional [FAQ p. 3], holds no turn end back (OQ-095 (2))."""
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert dict(top.context)["pending_agent_icons"] == "trash"
+    offered = {a.action_id for a in UprisingRulesEngine().whole_actions(state, 0)}
+    assert "trash_agent_card" in offered
+    assert "decline_agent_card_trash" not in offered
+    assert _turn_end_offered(state)
+
+
+def _trash_waits_on_the_agent_turn(
+    state: GameState, printer: str, *, specimen_waits: bool = False
+) -> None:
+    """Cleanup-2b (user decision 2026-10-17, OQ-095 (2)): inside the owner's
+    own Agent turn an optional "[trash a card]" icon opens no window; it
+    waits on the turn's effect frame as rows with no refusal and, optional,
+    holds no turn end back. With ``specimen_waits`` the research space's
+    specimen waits beside it as a mandatory row of its own, which does hold
+    the end (user decision 2026-10-17, composed-effects plan 5, rule decision
+    5; OQ-027 [Main p. 9]). The trash records ``printer``, the entity that
+    printed its icon (stage B3c-2b)."""
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert [(kind, value) for kind, _source, value in turn_rows.pending(top)] == [
+        *(((turn_rows.RESEARCH_ICON, "specimen"),) if specimen_waits else ()),
+        (turn_rows.OPTIONAL_TRASH, printer),
+    ]
+    legal = {a.action_id for a in legal_optional_trash_actions(state, 0)}
+    assert legal == {"trash_optional_card"}
+    assert "decline_optional_trash" not in {
+        a.action_id for a in UprisingRulesEngine().legal_actions(state, 0)
+    }
+    assert _turn_end_offered(state) == (not specimen_waits)
+
+
+def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
+    kit = _card("dissecting_kit")
+    # A Graft card "can't be played alone" [Immortality p. 10].
+    alone = _state(_owner((kit,)))
+    assert not any(
+        dict(a.arguments)["card_id"] == kit for a in legal_agent_actions(alone, 0)
+    )
+
+    grafted = _graft(
+        _state(_owner((kit, FACE_DANCER))),
+        kit,
+        "arrakeen",
+        FACE_DANCER,
+    )
+    assert {a.action_id for a in legal_agent_card_payment_actions(grafted, 0)} == {
+        "decline_agent_card_payment",
+        "trash_grafted_card_for_specimen",
+    }
+    result = apply_agent_card_payment(
+        grafted, _payment(grafted, "trash_grafted_card_for_specimen")
+    )
+    owner = result.state.players[0]
+    assert FACE_DANCER in owner.trashed and FACE_DANCER not in owner.in_play
+    assert owner.specimens == 1
+    # The partner's un-activated box expired with it (OQ-022).
+    _, context = current_agent_effect_context(result.state)
+    assert context["graft_pending_effect"] is False
+    assert "card_trashed" in {event.kind for event in result.events}
+
+    marked = _reveal(_state(_owner((kit,), research_space="c4r2")))
+    gains = dict(marked.decision_stack[-1].context)["reveal_pending_gains"]
+    assert str(gains).startswith("tleilaxu|1|")
+
+
+def test_dissecting_kit_pays_a_trashed_unload_box_before_its_specimen() -> None:
+    """ "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, docs/rules/rise-of-ix.md 7): the graft
+    trash is the box's cost, so a trashed Unload card -- CHOAM Delegate, whose
+    box is 3 Solari -- pays in the same step, before the specimen, and leaves
+    no Unload row behind. Rise of Ix with Immortality (on the original game
+    since stage P7b) is judged here with the cards' own data on an Uprising +
+    Immortality table."""
+
+    kit = _card("dissecting_kit")
+    delegate = "imperium:choam_delegate:0"
+    grafted = _graft(_state(_owner((kit, delegate))), kit, "arrakeen", delegate)
+    solari = grafted.players[0].resources.solari
+    engine = UprisingRulesEngine()
+    result = apply_whole(
+        engine, grafted, _payment(grafted, "trash_grafted_card_for_specimen")
+    )
+    owner = result.state.players[0]
+    assert delegate in owner.trashed
+    assert owner.resources.solari == solari + 3
+    assert owner.specimens == 1
+    kinds = [event.kind for event in result.events]
+    unloaded = next(
+        index
+        for index, event in enumerate(result.events)
+        if event.kind == "resources_gained" and dict(event.payload).get("solari") == 3
+    )
+    assert kinds.index("card_trashed") < unloaded < kinds.index("specimens_generated")
+    assert "resolve_unload_icon" not in _offered_ids(result.state)
+    assert not any(
+        item[0] == turn_rows.UNLOAD_ICON
+        for frame in result.state.decision_stack
+        for item in turn_rows.pending(frame)
+    )
+
+
+def test_dissecting_kit_trashing_subversive_advisor_keeps_the_space_influence() -> None:
+    # The trashed Subversive Advisor's box expires before it resolves
+    # (OQ-022), so its "gain two Influence instead of one" lapses; the
+    # visited space's own "Faction Influence도 1" [Main p. 7] [Main p. 9]
+    # is offered again.
+    kit = _card("dissecting_kit")
+    subversive = _card("subversive_advisor")
+    grafted = _graft(
+        _state(
+            _owner(
+                (subversive, kit),
+                spies_supply=2,
+                spy_post_ids=("emperor-sardaukar-dutiful-service",),
+            )
+        ),
+        subversive,
+        "dutiful_service",
+        kit,
+    )
+    _, context = current_agent_effect_context(grafted)
+    assert context["pending_agent_effect"] is True
+    assert context["pending_faction_influence"] is False
+    switched = other_box_state(grafted)
+
+    result = apply_agent_card_payment(
+        switched, _payment(switched, "trash_grafted_card_for_specimen")
+    )
+
+    owner = result.state.players[0]
+    assert subversive in owner.trashed and owner.influence.emperor == 0
+    _, context = current_agent_effect_context(result.state)
+    assert context["graft_pending_effect"] is False
+    assert context["pending_faction_influence"] is True
+
+
+def test_for_humanity_chooses_influence_and_trades_influence_for_a_vp() -> None:
+    humanity = _card("for_humanity")
+    placed = _place(_state(_owner((humanity,))), humanity, "assembly_hall")
+    picks = {
+        dict(a.arguments)["faction"]
+        for a in legal_agent_card_influence_actions(placed, 0)
+    }
+    assert picks == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+
+    plain = _reveal(_state(_owner((humanity,), influence=Influence(fremen=2))))
+    assert plain.decision_stack[-1].kind == FrameKind.REVEAL
+    # Without the Bene Gesserit Alliance the Reveal choice offers nothing.
+    assert legal_reveal_influence_loss_actions(plain, 0) == ()
+    assert "lose_reveal_influence_for_vp" not in _offered_ids(plain)
+    # "Bene Gesserit Alliance: [lose two Influence] -> [1 VP]": the Reveal
+    # prints a "?" Influence diamond with two red chevrons [For Humanity card]
+    # (Dune Cards Hub: "lose 2 Influence with any one Faction"; BGG inventory:
+    # "-2 Influence with a Faction -> +1 Victory Point"). Like gaining two,
+    # both steps come from one Faction [Main p. 20], and an arrow cost is
+    # paid in full or not at all: "If you don't pay the cost, you don't get
+    # the effect" [Main p. 20]. The engine used to take one Influence.
+    allied = _reveal(
+        _state(
+            _owner(
+                (humanity,),
+                influence=Influence(bene_gesserit=4, fremen=2, emperor=1),
+                alliance_faction_ids=("bene_gesserit",),
+                victory_points=4,
+            )
+        )
+    )
+    # The cost is an arrow, so the effect is optional [FAQ p. 3]: the Reveal
+    # frame offers the loss beside its other rows and no refusal.
+    assert allied.decision_stack[-1].kind == FrameKind.REVEAL
+    actions = legal_reveal_influence_loss_actions(allied, 0)
+    assert [(a.action_id, dict(a.arguments).get("faction")) for a in actions] == [
+        ("lose_reveal_influence_for_vp", "bene_gesserit"),
+        ("lose_reveal_influence_for_vp", "fremen"),
+    ]
+    assert "decline_reveal_influence_loss" not in _offered_ids(allied)
+    assert "finish_reveal" in _offered_ids(allied)
+    lose = next(a for a in actions if dict(a.arguments).get("faction") == "fremen")
+    result = apply_reveal_influence_loss(allied, lose)
+    owner = result.state.players[0]
+    # Fremen 2 -> 0 gives back its two-Influence VP; the card pays one.
+    assert owner.influence.fremen == 0 and owner.victory_points == 4
+    assert result.state.decision_stack[-1].kind == FrameKind.REVEAL
+    # Not paying means pressing ``finish_reveal``: the choice lapses unused.
+    finished = _finish_reveal(allied)
+    assert _lapsed(finished) == [
+        {
+            "card_id": humanity,
+            "effect": "may_lose_influence_for_vp_if_bene_gesserit_alliance",
+            "player": 0,
+        }
+    ]
+    assert finished.state.players[0].victory_points == 4
+    assert finished.state.players[0].influence == allied.players[0].influence
+    # Paid with Bene Gesserit, 4 -> 2 costs the Alliance (nobody else has
+    # four, so the token returns) but keeps the two-Influence VP.
+    bene = apply_reveal_influence_loss(allied, actions[0]).state.players[0]
+    assert bene.influence.bene_gesserit == 2
+    assert bene.alliance_faction_ids == ()
+    assert bene.victory_points == 4
+
+
+def test_for_humanity_passes_the_alliance_on_the_second_step() -> None:
+    # Influence is lost one space at a time; a holder who was already tied
+    # before a step hands the token to the tied player, and picks among
+    # several [FAQ p. 1] (uprising-systems.md, Alliance). At five Bene
+    # Gesserit Influence with two rivals on four, the first step keeps the
+    # token and the second passes it, so the recipient is offered for the
+    # two-Influence cost [For Humanity card].
+    humanity = _card("for_humanity")
+    allied = _reveal(
+        _state(
+            _owner(
+                (humanity,),
+                influence=Influence(bene_gesserit=5),
+                alliance_faction_ids=("bene_gesserit",),
+                victory_points=3,
+            ),
+            _seat(1, influence=Influence(bene_gesserit=4), victory_points=2),
+            _seat(2, influence=Influence(bene_gesserit=4), victory_points=2),
+        )
+    )
+    actions = legal_reveal_influence_loss_actions(allied, 0)
+    assert [dict(a.arguments) for a in actions] == [
+        {"alliance_recipient": 1, "faction": "bene_gesserit"},
+        {"alliance_recipient": 2, "faction": "bene_gesserit"},
+    ]
+
+    result = apply_reveal_influence_loss(allied, actions[1]).state
+    owner, first, second = result.players[:3]
+    assert owner.influence.bene_gesserit == 3
+    assert owner.alliance_faction_ids == ()
+    assert owner.victory_points == 3 - 1 + 1
+    assert first.alliance_faction_ids == ()
+    assert second.alliance_faction_ids == ("bene_gesserit",)
+    assert second.victory_points == 3
+
+
+def test_for_humanity_passes_the_alliance_when_a_step_starts_tied() -> None:
+    # OQ-014 (reinforced 2026-10-07): "Guild 6인 보유자가 5인 상대를 두고
+    # 2를 잃으면(Opportunism, For Humanity) 4로 끝나 token을 지킨다. 한 칸씩
+    # 읽으면 6→5에서 동률이 되고 5→4에서 상대가 token을 가져간다. 엔진은
+    # 한 칸씩 처리하며 ... 이 읽기를 유지한다." (a project convention, not an
+    # official rule; each space applies "You were previously tied for
+    # Influence with another player; the player you were tied with now takes
+    # the Alliance token." [FAQ p. 1].) For Humanity's Bene Gesserit Alliance
+    # cost is two Influence [For Humanity card]: a holder on 6 with one rival
+    # on 5 falls to 5 (tied, token kept) and then to 4, where the rival takes
+    # the token. Exactly one rival is tied, so no recipient is offered.
+    humanity = _card("for_humanity")
+    allied = _reveal(
+        _state(
+            _owner(
+                (humanity,),
+                influence=Influence(bene_gesserit=6),
+                alliance_faction_ids=("bene_gesserit",),
+                victory_points=3,
+            ),
+            _seat(1, influence=Influence(bene_gesserit=5), victory_points=2),
+        )
+    )
+    actions = legal_reveal_influence_loss_actions(allied, 0)
+    assert [(a.action_id, dict(a.arguments)) for a in actions] == [
+        ("lose_reveal_influence_for_vp", {"faction": "bene_gesserit"})
+    ]
+
+    result = apply_reveal_influence_loss(allied, actions[0])
+
+    owner, rival = result.state.players[:2]
+    assert owner.influence.bene_gesserit == 4
+    assert owner.alliance_faction_ids == ()
+    # Token point lost, the card's Victory Point gained.
+    assert owner.victory_points == 3 - 1 + 1
+    assert rival.influence.bene_gesserit == 5
+    assert rival.alliance_faction_ids == ("bene_gesserit",)
+    assert rival.victory_points == 3
+    transfers = [e for e in result.events if e.kind == "alliance_transferred"]
+    assert [dict(e.payload) for e in transfers] == [
+        {"faction": "bene_gesserit", "from_player": 0, "to_player": 1}
+    ]
+    # ...:lost:<faction>:<space>:alliance:0 -- it moved in the second space.
+    assert transfers[0].event_id.endswith(":lost:bene_gesserit:1:alliance:0")
+
+
+def test_high_priority_travel_offers_the_draw_or_the_combat_icon() -> None:
+    travel = _card("high_priority_travel")
+    low = _place(_state(_owner((travel,))), travel, "assembly_hall")
+    assert legal_agent_card_payment_actions(low, 0) == ()
+    assert (
+        resolve_agent_card_effect(low).events[0].kind == "agent_card_effect_unavailable"
+    )
+
+    high = _place(
+        _state(
+            _owner(
+                (travel,),
+                influence=Influence(spacing_guild=2),
+                troops_garrison=2,
+                troops_supply=10,
+            )
+        ),
+        travel,
+        "assembly_hall",
+    )
+    assert {a.action_id for a in legal_agent_card_payment_actions(high, 0)} == {
+        "resolve_agent_card_effect",
+        "take_agent_card_combat_icon",
+    }
+    drawn = resolve_agent_card_effect(high)
+    assert len(drawn.state.players[0].hand) == 1
+    combat = apply_agent_card_payment(
+        high, _payment(high, "take_agent_card_combat_icon")
+    )
+    _, context = current_agent_effect_context(combat.state)
+    assert context["pending_combat_deployment"] is True
+    assert len(combat.state.players[0].hand) == 0
+    revealed = _reveal(_state(_owner((travel,))))
+    assert (
+        dict(revealed.decision_stack[-1].context)["reveal_pending_gains"]
+        == "resources|1/0/0|imperium:high_priority_travel:0"
+    )
+
+
+def test_imperium_ceremony_peeks_two_intrigue_cards_and_keeps_one() -> None:
+    ceremony = _card("imperium_ceremony")
+    placed = _place(_state(_owner((ceremony,))), ceremony, "assembly_hall")
+    result = resolve_agent_card_effect(placed)
+    state = result.state
+    assert state.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+    assert peeked_intrigue_ids(state, 0) == INTRIGUE[:2]
+    assert peeked_intrigue_ids(state, 1) == ()
+    own_view = observe_state(state, 0).private
+    other_view = observe_state(state, 1).private
+    assert own_view is not None and own_view.peeked_intrigue_ids == INTRIGUE[:2]
+    assert other_view is not None and other_view.peeked_intrigue_ids == ()
+    check_observation_privacy(state)
+    actions = legal_intrigue_peek_actions(state, 0)
+    assert [dict(a.arguments)["instance_id"] for a in actions] == list(INTRIGUE[:2])
+    kept = apply_intrigue_peek(state, actions[1])
+    owner = kept.state.players[0]
+    assert owner.intrigue_cards == (INTRIGUE[1],)
+    assert kept.state.intrigue_deck == (INTRIGUE[0], *INTRIGUE[2:6])
+    assert kept.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    private = [event for event in kept.events if event.visible_to is not None]
+    assert private[0].kind == "intrigue_card_kept" and private[0].visible_to == (0,)
+    assert not any(
+        "card_id" in dict(event.payload)
+        for event in kept.events
+        if event.visible_to is None
+    )
+    # Stage B3d-2a: the seat is shown the two cards by target rows, so the
+    # whole template is in no catalog.
+    codec = ActionCodec(IMMORTALITY)
+    rows = tuple(steps_for(action, effect_row=False)[0] for action in actions)
+    assert UprisingRulesEngine().legal_actions(state, 0) == rows
+    for action, row in zip(actions, rows, strict=True):
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
+
+    # OQ-052 (user ruling): with one card face down and a discard pile, the
+    # discard is shuffled into a new deck beneath that card and the peek
+    # then looks at two — the old top card first.
+    short = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=INTRIGUE[1:4],
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert short.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    assert dict(short.state.decision_stack[-1].context)["purpose"] == "peek"
+    engine = UprisingRulesEngine()
+    decision = engine.current_decision(short.state)
+    assert isinstance(decision, ChanceDecision)
+    shuffled = apply_whole(
+        engine, short.state, ChanceResolver(seed=5).resolve(decision)
+    ).state
+    assert shuffled.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+    assert shuffled.intrigue_discard == ()
+    peeked = peeked_intrigue_ids(shuffled, 0)
+    assert peeked[0] == INTRIGUE[0] and peeked[1] in INTRIGUE[1:4]
+    assert len(shuffled.intrigue_deck) == 4
+    # An empty deck shuffles too.
+    empty = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)), intrigue_deck=(), intrigue_discard=INTRIGUE[:3]
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert empty.state.decision_stack[-1].kind == FrameKind.INTRIGUE_RESHUFFLE
+    # With nothing to shuffle the single face-down card is all there is to
+    # look at: the peek window opens on it and keeping it is the only choice
+    # (user ruling 2026-10-02, L2-Q3: "①②는 확인 창" -- (2) OQ-052's single
+    # card; it used to be kept without a window).
+    lone = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)), intrigue_deck=INTRIGUE[:1], intrigue_discard=()
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    frame = lone.state.decision_stack[-1]
+    assert frame.kind == FrameKind.INTRIGUE_PEEK
+    assert isinstance(frame.decision, PlayerDecision)
+    assert frame.decision.prompt == "Keep the last Intrigue card"
+    assert lone.state.players[0].intrigue_cards == ()
+    assert peeked_intrigue_ids(lone.state, 0) == INTRIGUE[:1]
+    assert peeked_intrigue_ids(lone.state, 1) == ()
+    check_observation_privacy(lone.state)
+    peek = [event for event in lone.events if event.kind == "intrigue_cards_peeked"]
+    assert [dict(event.payload)["count"] for event in peek] == [1]
+    only = UprisingRulesEngine().whole_actions(lone.state, 0)
+    assert only == (
+        DomainAction(
+            action_id="keep_peeked_intrigue",
+            actor=0,
+            arguments=(("instance_id", INTRIGUE[0]),),
+        ),
+    )
+    # Stage B3d-2a: the seat is shown the card by its target row.
+    assert UprisingRulesEngine().legal_actions(lone.state, 0) == (
+        DomainAction(
+            action_id="choose_intrigue_card",
+            actor=0,
+            arguments=(("card_id", INTRIGUE[0]),),
+        ),
+    )
+    kept_lone = apply_intrigue_peek(lone.state, only[0]).state
+    assert kept_lone.players[0].intrigue_cards == (INTRIGUE[0],)
+    assert kept_lone.intrigue_deck == ()
+    assert kept_lone.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    # Nothing face down and nothing to shuffle: no effect.
+    nothing = resolve_agent_card_effect(
+        _place(
+            _state(_owner((ceremony,)), intrigue_deck=(), intrigue_discard=()),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert nothing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert nothing.state.players[0].intrigue_cards == ()
+    assert "intrigue_cards_peeked" not in [event.kind for event in nothing.events]
+    # The keep-one draw falls short, which is logged (user ruling
+    # 2026-10-02, L2-Q4: "로그 + 클릭 전 경고"); the lone card is no shortfall.
+    assert [
+        dict(event.payload)
+        for event in nothing.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+    assert "intrigue_draw_short" not in [event.kind for event in lone.events]
+
+
+def test_imperium_ceremony_peek_never_shuffles_twisted_cards_in() -> None:
+    # OQ-052's reshuffle leaves Piter De Vries' Twisted cards in the discard
+    # (OQ-097, user ruling 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은
+    # 없도록").
+    ceremony = _card("imperium_ceremony")
+    twisted = ("intrigue:twisted_withdrawn:0", "intrigue:twisted_controlled:0")
+    engine = UprisingRulesEngine()
+    mixed = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=(twisted[0], INTRIGUE[1], twisted[1]),
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    decision = engine.current_decision(mixed.state)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == INTRIGUE[1:2]
+    assert decision.count == 1
+    shuffled = apply_whole(
+        engine, mixed.state, ChanceResolver(seed=5).resolve(decision)
+    )
+    assert peeked_intrigue_ids(shuffled.state, 0) == INTRIGUE[:2]
+    assert shuffled.state.intrigue_discard == twisted
+    # One card face down and only Twisted cards discarded: nothing to
+    # shuffle, so the peek shows the lone card.
+    lone = resolve_agent_card_effect(
+        _place(
+            _state(
+                _owner((ceremony,)),
+                intrigue_deck=INTRIGUE[:1],
+                intrigue_discard=twisted,
+            ),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert lone.state.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+    assert peeked_intrigue_ids(lone.state, 0) == INTRIGUE[:1]
+    # Nothing face down and only Twisted cards discarded: no effect, and the
+    # keep-one draw is logged short.
+    nothing = resolve_agent_card_effect(
+        _place(
+            _state(_owner((ceremony,)), intrigue_deck=(), intrigue_discard=twisted),
+            ceremony,
+            "assembly_hall",
+        )
+    )
+    assert nothing.state.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert nothing.state.intrigue_discard == twisted
+    assert [
+        dict(event.payload)
+        for event in nothing.events
+        if event.kind == "intrigue_draw_short"
+    ] == [{"drawn": 0, "player": 0, "requested": 1, "short": 1}]
+
+
+def test_imperium_ceremony_through_the_engine() -> None:
+    ceremony = _card("imperium_ceremony")
+    engine = UprisingRulesEngine()
+    state = resolve_agent_card_effect(
+        _place(_state(_owner((ceremony,))), ceremony, "assembly_hall")
+    ).state
+    legal = engine.whole_actions(state, 0)
+    assert {a.action_id for a in legal} == {"keep_peeked_intrigue"}
+    after = apply_whole(engine, state, legal[0])
+    assert after.state.players[0].intrigue_cards == (INTRIGUE[0],)
+
+
+def test_interstellar_conspiracy_needs_an_emperor_or_guild_partner() -> None:
+    # "Gain 1 spice, If grafted with an Emperor or Spacing Guild card: Gain 1
+    # Influence with a chosen Faction" [Interstellar Conspiracy card]. Each
+    # printed icon is its own action, in the owner's order ("You may carry
+    # out all these effects in any order." [Main p. 9]; OQ-027 extension 3,
+    # user decision 2026-10-18 "원칙대로 아이콘마다 나누자"): the Faction
+    # choice once paid the spice too, so the spice could not come first
+    # (engine audit 2026-10-22, P4).
+    engine = UprisingRulesEngine()
+    spice_icon = DomainAction("resolve_agent_card_effect", 0, (("effect", "spice"),))
+    conspiracy = _card("interstellar_conspiracy")
+    box = agent_card_source(1, 0, conspiracy)
+    wrong = _graft(_state(_owner((conspiracy, DAGGER))), conspiracy, "arrakeen", DAGGER)
+    assert legal_agent_card_influence_actions(wrong, 0) == ()
+    spice = apply_whole(engine, wrong, spice_icon)
+    assert spice.state.players[0].resources.spice == 3
+    assert spice.events == (
+        resources_gained_event(box, 0, spice=1),
+        agent_box_event(box, conspiracy, 0, BoxOutcome.RESOLVED, effect="spice"),
+    )
+    keys = _card("keys_to_power")  # Spacing Guild, Bene Gesserit
+    right = _graft(_state(_owner((conspiracy, keys))), conspiracy, "arrakeen", keys)
+    picks = legal_agent_card_influence_actions(right, 0)
+    assert {dict(a.arguments)["faction"] for a in picks} == {
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    }
+    assert spice_icon in engine.whole_actions(right, 0)
+    chosen = apply_agent_card_influence(
+        right, next(a for a in picks if dict(a.arguments)["faction"] == "fremen")
+    )
+    owner = chosen.state.players[0]
+    assert owner.influence.fremen == 1 and owner.resources.spice == 2
+    # The spice is still its own step, before or after the Faction.
+    paid = apply_whole(engine, chosen.state, spice_icon).state.players[0]
+    assert paid.influence.fremen == 1 and paid.resources.spice == 3
+    first = apply_whole(engine, right, spice_icon).state
+    assert first.players[0].resources.spice == 3
+    assert legal_agent_card_influence_actions(first, 0) == picks
+
+
+def test_shadout_mapes_deploys_or_retreats_one_troop_at_reveal() -> None:
+    mapes = _card("shadout_mapes")
+    none = _reveal(_state(_owner((mapes,), troops_garrison=0, troops_supply=12)))
+    assert none.decision_stack[-1].kind == FrameKind.REVEAL
+    assert legal_reveal_troop_move_actions(none, 0) == ()
+
+    revealed = _reveal(
+        _state(_owner((mapes,), troops_garrison=2, troops_conflict=1, troops_supply=9))
+    )
+    # "You may" makes the move optional [FAQ p. 3]: the Reveal frame offers
+    # the two moves and no refusal.
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    assert [a.action_id for a in actions] == [
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+    assert "decline_reveal_troop_move" not in _offered_ids(revealed)
+    assert "finish_reveal" in _offered_ids(revealed)
+    deployed = apply_reveal_troop_move(revealed, actions[0])
+    owner = deployed.state.players[0]
+    assert owner.troops_conflict == 2 and owner.troops_garrison == 1
+    assert dict(deployed.state.decision_stack[-1].context)["strength"] == 2 * 2 + 1
+    retreated = apply_reveal_troop_move(revealed, actions[1])
+    owner = retreated.state.players[0]
+    assert owner.troops_conflict == 0 and owner.troops_garrison == 3
+    assert owner.combat_strength == 0
+    assert dict(retreated.state.decision_stack[-1].context)["strength"] == 0
+    # Not moving a troop means pressing ``finish_reveal``: the choice lapses.
+    finished = _finish_reveal(revealed)
+    assert _lapsed(finished) == [
+        {
+            "card_id": mapes,
+            "effect": "may_deploy_or_retreat_one_troop",
+            "player": 0,
+        }
+    ]
+    owner = finished.state.players[0]
+    assert owner.troops_conflict == 1 and owner.troops_garrison == 2
+
+
+# Shadout Mapes: "You may deploy or retreat one of your troops." [Shadout
+# Mapes card]; a Sardaukar Commander "is a 'troop' that's worth 2 strength in
+# the Conflict" [Bloodlines p. 4] (docs/rules/bloodlines.md: "troop을 대상으로
+# 하는 효과(예: Go to Ground의 retreat)는 Commander에도 적용된다"), so with
+# Bloodlines a Commander is a legal unit for either move.
+def _mapes_reveal(
+    *, troops_garrison: int = 0, troops_conflict: int = 0, **extra: object
+) -> GameState:
+    owner = _owner(
+        (_card("shadout_mapes"),),
+        troops_supply=12 - troops_garrison - troops_conflict,
+        troops_garrison=troops_garrison,
+        troops_conflict=troops_conflict,
+        **extra,
+    )
+    state = _state(owner, config=IMMORTALITY_BLOODLINES)
+    return _reveal(refresh_pre_reveal_strength(RuleResult(state=state)).state)
+
+
+def test_shadout_mapes_leaves_harkonnen_advisors_troop_in_the_garrison() -> None:
+    # "Reveal turn에서도 Harkonnen Advisor의 troop은 배치 불가로 남는다"
+    # (OQ-062 (b); "You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card], OQ-038 (b)): the Reveal frame's
+    # ``undeployable_troops`` keeps that troop out of Shadout Mapes' deploy
+    # too (2026-10-18; it used to count every garrison troop).
+    def with_advisor_troop(state: GameState) -> GameState:
+        frame = state.decision_stack[-1]
+        context = {**dict(frame.context), "undeployable_troops": 1}
+        return replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:-1],
+                replace(frame, context=tuple(sorted(context.items()))),
+            ),
+        )
+
+    only_advisor = with_advisor_troop(
+        _mapes_reveal(troops_garrison=1, troops_conflict=1)
+    )
+    assert [a.action_id for a in legal_reveal_troop_move_actions(only_advisor, 0)] == [
+        "retreat_reveal_card_troop"
+    ]
+    one_more = with_advisor_troop(_mapes_reveal(troops_garrison=2, troops_conflict=1))
+    assert [a.action_id for a in legal_reveal_troop_move_actions(one_more, 0)] == [
+        "deploy_reveal_card_troop",
+        "retreat_reveal_card_troop",
+    ]
+
+
+def test_shadout_mapes_deploys_a_garrison_commander() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=0,
+        commanders_garrison=1,
+        skill_ids=("skill:charismatic:0", "skill:loyal:0"),
+        influence=Influence(emperor=3),
+    )
+    # The Commander alone offers the move (it used to need a plain troop).
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    (deploy,) = legal_reveal_troop_move_actions(revealed, 0)
+    assert deploy == DomainAction(
+        "deploy_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
+    )
+    assert "decline_reveal_troop_move" not in _offered_ids(revealed)
+    result = apply_whole(UprisingRulesEngine(), revealed, deploy)
+    owner = result.state.players[0]
+    assert (owner.commanders_conflict, owner.commanders_garrison) == (1, 0)
+    context = dict(result.state.decision_stack[-1].context)
+    # Commander 2 + Mapes' sword; the Skills switch on with the Commander:
+    # Loyal's 2 strength and Charismatic's late Persuasion (OQ-028 (c)).
+    assert owner.combat_strength == 2 + 1 + 2
+    # The Reveal's running total moves with the Skill share as combat_strength
+    # does (it held 2 + 1 until the engine audit 2026-10-22, R3: units leaving
+    # and coming back then brought a stale share back) [Main p. 12]
+    # [Bloodlines p. 4].
+    assert context["strength"] == owner.combat_strength
+    assert context["persuasion"] == 1 + 1
+    assert "commanders_deployed" in {event.kind for event in result.events}
+
+
+def test_shadout_mapes_retreats_the_last_commander_and_its_skills() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=0,
+        commanders_conflict=1,
+        skill_ids=("skill:loyal:0",),
+        influence=Influence(emperor=3),
+    )
+    # Commander 2 + Loyal 2 before the Reveal, + Mapes' sword.
+    assert revealed.players[0].combat_strength == 5
+    (retreat,) = legal_reveal_troop_move_actions(revealed, 0)
+    assert retreat == DomainAction(
+        "retreat_reveal_card_troop", 0, (("commanders", 1), ("source", "shadout_mapes"))
+    )
+    retreated = apply_whole(UprisingRulesEngine(), revealed, retreat).state
+    owner = retreated.players[0]
+    assert (owner.commanders_conflict, owner.commanders_garrison) == (0, 1)
+    # No unit left in the Conflict: no strength and no active Skill; "she will
+    # no longer have any Sardaukar Commanders in the Conflict, and so will not
+    # get any extra strength" [Bloodlines p. 4].
+    assert owner.combat_strength == 0 and owner.skill_strength_applied == 0
+    assert dict(retreated.decision_stack[-1].context)["strength"] == 0
+
+
+def test_shadout_mapes_offers_both_unit_kinds_in_each_zone() -> None:
+    revealed = _mapes_reveal(
+        troops_garrison=1,
+        troops_conflict=1,
+        commanders_garrison=1,
+        commanders_conflict=1,
+    )
+    actions = legal_reveal_troop_move_actions(revealed, 0)
+    mapes = ("source", "shadout_mapes")
+    assert actions == (
+        DomainAction("deploy_reveal_card_troop", 0, (mapes,)),
+        DomainAction("deploy_reveal_card_troop", 0, (("commanders", 1), mapes)),
+        DomainAction("retreat_reveal_card_troop", 0, (mapes,)),
+        DomainAction("retreat_reveal_card_troop", 0, (("commanders", 1), mapes)),
+    )
+    # Stage B3d-2a: the Reveal choice offers each move as the effect row of the
+    # card that prints it, so the whole template is in no catalog.
+    codec = ActionCodec(IMMORTALITY_BLOODLINES)
+    for action in actions:
+        (row,) = steps_for(action)
+        assert row.action_id in {"deploy", "retreat"}
+        assert dict(row.arguments)["printed"] == "shadout_mapes"
+        assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
+
+
+def test_tleilaxu_master_acquires_a_cheap_card_and_researches_at_reveal() -> None:
+    master = _card("tleilaxu_master")
+    unmarked = _place(_state(_owner((master,))), master, "assembly_hall")
+    assert legal_agent_card_acquisitions(unmarked, 0) == ()
+    # An optional acquisition resolves through its rows only: with none to
+    # offer, the dry run answers that the box can only lapse (cleanup-2c-2).
+    assert agent_card_effect_is_unavailable(unmarked)
+    with pytest.raises(BoxNeedsRows):
+        resolve_agent_card_effect(unmarked)
+
+    imperium = imperium_deck_instance_ids(False)
+    row = (_card("spiritual_fervor"), _card("for_humanity"), *imperium[2:5])
+    one = _place(
+        _state(_owner((master,), research_space="c4r2"), imperium_row=row),
+        master,
+        "assembly_hall",
+    )
+    actions = legal_agent_card_acquisitions(one, 0)
+    ids = {
+        (
+            a.action_id,
+            dict(a.arguments).get("instance_id", dict(a.arguments).get("card_id")),
+        )
+        for a in actions
+    }
+    assert ("decline_agent_card_acquisition", None) in ids
+    assert ("acquire_imperium_by_card", _card("spiritual_fervor")) in ids  # cost 3
+    assert ("acquire_imperium_by_card", _card("for_humanity")) not in ids  # cost 7
+    assert ("acquire_reserve_by_card", "prepare_the_way") in ids
+    acquire = next(
+        a
+        for a in actions
+        if dict(a.arguments).get("instance_id") == _card("spiritual_fervor")
+    )
+    result = apply_agent_card_acquisition(one, acquire)
+    owner = result.state.players[0]
+    assert _card("spiritual_fervor") in owner.discard_pile
+    # Spiritual Fervor's Research acquire box opened above the turn.
+    assert result.state.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+
+    two = _place(
+        _state(_owner((master,), research_space="c8r4"), imperium_row=row),
+        master,
+        "assembly_hall",
+    )
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(two, 0)
+        if dict(a.arguments).get("card_id") == "prepare_the_way"
+    )
+    owner = apply_agent_card_acquisition(two, acquire).state.players[0]
+    assert any(card.startswith("reserve:prepare_the_way") for card in owner.hand)
+    assert any(card.startswith("reserve:prepare_the_way") for card in owner.hand_public)
+
+    revealed = _reveal(_state(_owner((master,))))
+    assert (
+        dict(revealed.decision_stack[-1].context)["reveal_pending_gains"]
+        == "research|2|imperium:tleilaxu_master:0"
+    )
+
+
+def test_tleilaxu_master_reaches_its_owners_set_aside_card_at_the_printed_cost() -> (
+    None
+):
+    # "You may use other means to acquire the card ... though the 1
+    # persuasion discount will not apply" [FAQ p. 3]: Desert Power (6) is in
+    # reach of "a card costing 6 or less", Long Live the Fighters (7, 6 with
+    # the discount) is not.
+    master = _card("tleilaxu_master")
+    in_reach = _card("desert_power")
+    over = _card("long_live_the_fighters")
+    state = _place(
+        _state(
+            _owner(
+                (master,), research_space="c4r2", imperium_set_aside=(in_reach, over)
+            )
+        ),
+        master,
+        "assembly_hall",
+    )
+    offered = [
+        dict(action.arguments)["instance_id"]
+        for action in legal_agent_card_acquisitions(state, 0)
+        if action.action_id == "acquire_imperium_by_card"
+    ]
+    assert in_reach in offered and over not in offered
+    result = apply_agent_card_acquisition(
+        state,
+        DomainAction(
+            action_id="acquire_imperium_by_card",
+            actor=0,
+            arguments=(("instance_id", in_reach),),
+        ),
+    )
+    owner = result.state.players[0]
+    assert in_reach in owner.discard_pile
+    assert owner.imperium_set_aside == (over,)
+    assert result.state.imperium_row == state.imperium_row
+
+
+def test_tleilaxu_masters_acquired_troop_joins_a_combat_turns_allowance() -> None:
+    # Tleilaxu Master's Agent box may acquire Arrakis Revolt (cost 6, at the
+    # "6 or less" cap [card face]) whose own acquire box recruits one troop
+    # [Main p. 20]; "그 turn에 어떤 출처에서 recruit했든 새 troop은
+    # Conflict에 deploy할 수 있다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md). This Agent turn visits a Combat space
+    # (Imperial Basin's Spice Trade icon [Main p. 15]), so the troop must
+    # join ``troops_recruited`` and ``legal_combat_deployments`` there, not
+    # just the garrison -- the engine used to put the troop in the garrison
+    # without crediting any turn frame.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master,), research_space="c4r2"),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "imperial_basin",
+    )
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    _, context = current_agent_effect_context(result.state)
+    assert context["troops_recruited"] == 1
+    assert [
+        dict(a.arguments)["count"] for a in legal_combat_deployments(result.state, 0)
+    ] == [1, 2, 3]
+
+
+def test_tleilaxu_masters_last_effect_troop_counts_for_its_turn_not_the_next() -> None:
+    # Same acquire box as above, but resolved as the Agent turn's very last
+    # pending effect (Assembly Hall carries no Combat icon, so nothing keeps
+    # a deployment window open) while every other seat has already
+    # revealed. The turn no longer closes on its last effect: it stays open
+    # on its owner's effect frame until the owner presses the end, so the
+    # acquisition's troop counts for this turn (OQ-095 (1), (3)). "그
+    # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137): the troop belongs to this turn, and
+    # pressing the end reopens seat 0's own fresh "turn" frame (seats 1-3
+    # revealed) without carrying it into that next turn's deploy allowance.
+    master = _card("tleilaxu_master")
+    arrakis_revolt = "imperium:arrakis_revolt:0"
+    placed = _place(
+        _state(
+            _owner((master, EXPERIMENTATION), research_space="c4r2"),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            imperium_row=(arrakis_revolt,),
+        ),
+        master,
+        "assembly_hall",
+    )
+    # Assembly Hall's own Landsraad icon is a separate pending effect from
+    # Tleilaxu Master's marker ability; resolve it first so the acquisition
+    # below is the turn's last one [Main p. 9] (OQ-027).
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    acquire = next(
+        a
+        for a in legal_agent_card_acquisitions(placed, 0)
+        if dict(a.arguments).get("instance_id") == arrakis_revolt
+    )
+
+    result = apply_agent_card_acquisition(placed, acquire)
+
+    assert result.state.players[0].troops_garrison == 4
+    _, context = current_agent_effect_context(result.state)
+    assert context["turn_owner"] == 0
+    assert context["troops_recruited"] == 1
+    assert legal_combat_deployments(result.state, 0) == ()
+    assert _turn_end_offered(result.state)
+
+    ended = finish_agent_turn(result.state)
+    top = ended.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(ended, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_throne_room_politics_last_effect_trash_counts_for_its_own_turn() -> None:
+    # Throne Room Politics' box (troop 1 + trash, two icons each resolved on
+    # its own, OQ-027 extension 3) is the Agent turn's last effect, with every
+    # other seat revealed. Its trash icon waits on the owner's
+    # still-open effect frame as rows, so Eliminate Allies'
+    # trashed troops count for this turn (OQ-095 (3)) -- before OQ-095 the
+    # turn had already closed and they were kept off the fresh "turn" frame
+    # that reopened for the same player (2026-09-26 review round 3). "그
+    # turn에 어떤 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수
+    # 있다. 이미 garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개
+    # 제한을 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137); Eliminate Allies: "When this card is
+    # trashed: 2 troops" [Eliminate Allies card]. Pressing the end then
+    # opens seat 0's next turn without that credit.
+    throne = _card("throne_room_politics")
+    eliminate_allies = _card("eliminate_allies")
+    placed = _place(
+        _state(
+            _owner((throne, eliminate_allies, EXPERIMENTATION)),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=IMMORTALITY_BLOODLINES,
+        ),
+        throne,
+        "dutiful_service",
+    )
+    # Dutiful Service's own resources icon and the matching-Faction
+    # Influence gain are separate pending effects from Throne Room
+    # Politics' box [Main p. 9] (OQ-027); resolve both first so the Agent
+    # card's box is the turn's last one.
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = _throne_room_troop(placed)
+    _trash_icon_waits_on_the_agent_turn(resolved)
+
+    trash = next(
+        a
+        for a in legal_agent_card_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_agent_card_trash(resolved, trash).state
+
+    # The box's troop and the two trashed troops all count for this turn.
+    assert trashed.players[0].troops_garrison == 6
+    _, context = current_agent_effect_context(trashed)
+    assert context["turn_owner"] == 0
+    assert context["troops_recruited"] == 1 + 2
+    assert _turn_end_offered(trashed)
+
+    ended = finish_agent_turn(trashed)
+    top = ended.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+    next_placed = _place(ended, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_throne_room_politics_last_effect_trash_stays_out_of_a_later_reveal() -> None:
+    # Same scenario as above, carried one step further: Eliminate Allies'
+    # two troops count for the Agent turn still open when they are trashed
+    # (OQ-095 (3)); once the owner presses the end, the fresh "turn" frame
+    # that reopens for this player chooses Reveal. Adaptive Tactics (a Plot
+    # Intrigue card, playable from a bare "turn" frame [Bloodlines p. 12])
+    # legitimately recruits one troop and grants a Combat icon in that same
+    # fresh turn; only that one troop -- not the closed turn's two -- may
+    # carry into the Reveal's allowance. "이번 turn에 recruit한 유닛 전부와
+    # garrison에서 최대 두 개" [Bloodlines pp. 5, 12] applies to an Agent or
+    # a Reveal turn alike (docs/rules/player-turns.md:137) [Main p. 10]
+    # [FAQ p. 4].
+    throne = _card("throne_room_politics")
+    eliminate_allies = _card("eliminate_allies")
+    adaptive_tactics = "intrigue:adaptive_tactics:0"
+    placed = _place(
+        _state(
+            _owner((throne, eliminate_allies), intrigue_cards=(adaptive_tactics,)),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=IMMORTALITY_BLOODLINES,
+        ),
+        throne,
+        "dutiful_service",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = _throne_room_troop(placed)
+    trash = next(
+        a
+        for a in legal_agent_card_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_agent_card_trash(resolved, trash).state
+    _, context = current_agent_effect_context(trashed)
+    assert context["troops_recruited"] == 1 + 2
+
+    ended = finish_agent_turn(trashed)
+    assert ended.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(ended.decision_stack[-1].context).get("troops_recruited") in (
+        None,
+        0,
+    )
+
+    engine = UprisingRulesEngine()
+    played = apply_whole(engine, 
+        ended,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", adaptive_tactics), ("option", 0)),
+        ),
+    ).state
+    assert played.decision_stack[-1].kind == FrameKind.TURN
+    assert dict(played.decision_stack[-1].context)["troops_recruited"] == 1
+    assert played.players[0].combat_icon_turn is True
+
+    revealed = _reveal(played)
+
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    reveal_context = dict(revealed.decision_stack[-1].context)
+    assert reveal_context["reveal_troops_recruited"] == 1
+    assert {
+        dict(a.arguments)["count"]
+        for a in legal_reveal_deployments(revealed, 0)
+        if a.action_id == "deploy_troops"
+    } == {1, 2, 3}
+
+
+def test_throne_room_politics_last_effect_bank_commander_counts_for_its_turn() -> None:
+    # The same last-effect scenario as Eliminate Allies above, reached
+    # through the Sardaukar Standard trash effect instead (the trash waits on
+    # the owner's still-open effect frame as rows). Its bank-Commander
+    # acquisition is queued and opens later through ``begin_skill_choice``,
+    # on top of that effect frame, so the Commander counts
+    # for this turn (OQ-095 (3)). Before OQ-095 the turn had already closed
+    # and the queued ``pending_skill_choices`` entry carried a
+    # ``turn_closed`` marker to keep the Commander off the fresh "turn"
+    # frame (2026-09-26 review round 4, Finding 1). "그 turn에 어떤 출처에서
+    # recruit했든 새 troop은 Conflict에 deploy할 수 있다..." [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137); a Sardaukar Commander is a
+    # "troop" worth 2 strength [Bloodlines p. 4], counted in its own slot
+    # (OQ-070).
+    from dune_imperium.content.bloodlines.sardaukar import skill_tile_instance_ids
+    from dune_imperium.rules.sardaukar import (
+        apply_skill_choice,
+        begin_skill_choice,
+        legal_skill_choice_actions,
+    )
+
+    throne = _card("throne_room_politics")
+    standard = _card("sardaukar_standard")
+    skills = skill_tile_instance_ids()
+    placed = _place(
+        replace(
+            _state(
+                _owner((throne, standard, EXPERIMENTATION)),
+                _seat(1, has_revealed=True),
+                _seat(2, has_revealed=True),
+                _seat(3, has_revealed=True),
+                config=IMMORTALITY_BLOODLINES,
+            ),
+            sardaukar_commanders_bank=1,
+            skill_face_up=skills[:4],
+            skill_stack=skills[4:],
+        ),
+        throne,
+        "dutiful_service",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    if dict(placed.decision_stack[-1].context)["pending_faction_influence"] is True:
+        placed = resolve_faction_influence(placed).state
+    resolved = _throne_room_troop(placed)
+    _trash_icon_waits_on_the_agent_turn(resolved)
+
+    trash = next(
+        a
+        for a in legal_agent_card_trash_actions(resolved, 0)
+        if dict(a.arguments).get("card_id") == standard
+    )
+    trashed = apply_agent_card_trash(resolved, trash).state
+    assert trashed.pending_skill_choices[0][0] == 0
+    assert trashed.pending_skill_choices[0][1] == standard
+
+    opened = begin_skill_choice(trashed).state
+    assert opened.decision_stack[-1].kind == "skill_choice"
+    assert opened.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+    actions = legal_skill_choice_actions(opened, 0)
+    chosen = apply_skill_choice(opened, actions[0]).state
+
+    assert chosen.players[0].commanders_garrison == 1
+    _, context = current_agent_effect_context(chosen)
+    assert context["turn_owner"] == 0
+    assert context["commanders_recruited"] == 1
+    assert _turn_end_offered(chosen)
+
+    ended = finish_agent_turn(chosen)
+    top = ended.decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+    assert dict(top.context).get("commanders_recruited") in (None, 0)
+
+    next_placed = _place(ended, EXPERIMENTATION, "imperial_basin")
+    assert [
+        dict(a.arguments)["count"]
+        for a in legal_combat_deployments(next_placed, 0)
+    ] == [1, 2]
+
+
+def test_research_bonus_after_the_last_effect_credits_an_alliance_to_its_turn() -> None:
+    # Experimentation's Research icon is the Agent turn's last effect, with
+    # every other seat revealed, and its INFLUENCE_ANY bonus completes Earn
+    # Any Alliance. The Research frames open on top of the owner's
+    # still-open effect frame, so the Contract's troops count for this turn
+    # (OQ-095 (3)). Before OQ-095 the turn had already closed and a
+    # ``turn_closed`` marker on the RESEARCH_BONUS frame kept the troops off
+    # the fresh "turn" frame (2026-09-26 review round 4, Finding 3). "Earn
+    # any Alliance is completed the next time you take an Alliance token you
+    # do not already have" [Bloodlines p. 2]; "그 turn에 어떤 출처에서
+    # recruit했든 새 troop은 Conflict에 deploy할 수 있다" [Main p. 10]
+    # [FAQ p. 4] (docs/rules/player-turns.md:137).
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        legal_research_bonus_actions,
+    )
+
+    earn_alliance = "contract:bloodlines_earn_any_alliance"
+    owner = _owner(
+        (EXPERIMENTATION,),
+        research_space="c5r5",
+        influence=Influence(spacing_guild=3),
+        active_contract_ids=(earn_alliance,),
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(
+        placed, legal_contract_actions(placed, 0)[0]
+    ).state
+    resolved = resolve_agent_card_effect(taken).state
+    assert resolved.decision_stack[-1].kind == "research_advance"
+    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+
+    to_influence_choice = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c6r6"
+    )
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
+
+    influence_choice = next(
+        a
+        for a in legal_research_bonus_actions(advanced, 0)
+        if dict(a.arguments).get("faction") == "spacing_guild"
+    )
+    result = apply_whole(engine, advanced, influence_choice).state
+
+    owner_after = result.players[0]
+    assert owner_after.influence.spacing_guild == 4
+    assert owner_after.alliance_faction_ids == ("spacing_guild",)
+    assert owner_after.completed_contract_ids == (earn_alliance,)
+    # The Contract's reward waits on the Agent turn as rows (stage B3b,
+    # OQ-112 (4)); its troops come with the row, and the end waits for it.
+    assert result.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert turn_rows.holds_the_end(result, 0)
+    assert not _turn_end_offered(result)
+    result = answer_reward_windows(engine, result)
+    owner_after = result.players[0]
+    # The Contract completes, and its troops count for the open turn.
+    assert owner_after.troops_garrison == 3 + 2
+    _, context = current_agent_effect_context(result)
+    assert context["turn_owner"] == 0
+    assert context["troops_recruited"] == 2
+    assert _turn_end_offered(result)
+
+    # Pressing the end reopens this seat's own next turn without the credit.
+    top = finish_agent_turn(result).decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_an_unused_research_bonus_lapses_at_the_turn_end_press() -> None:
+    # Cleanup-2b (user decision 2026-10-17; OQ-095 (2): an optional effect
+    # "holds no turn end back and offers no refusal; the press lapses it"):
+    # c8r6's "7 Solari -> two Tleilaxu" arrow raised by Experimentation's
+    # Research waits on the Agent turn, offers nothing with 3 Solari, holds
+    # no end back, and the press lapses it with ``research_bonus_lapsed``.
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        pending_research_bonuses,
+    )
+
+    owner = _owner(
+        (EXPERIMENTATION,), research_space="c7r5", resources=Resources(solari=3)
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(placed, legal_contract_actions(placed, 0)[0]).state
+    resolved = resolve_agent_card_effect(taken).state
+    to_c8r6 = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c8r6"
+    )
+    advanced = apply_whole(engine, resolved, to_c8r6).state
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [bonus.value for bonus, _ in pending_research_bonuses(advanced, 0)] == [
+        "seven_solari_for_two_tleilaxu"
+    ]
+    assert "pay_research_bonus" not in _offered_ids(advanced)
+    assert "decline_research_bonus" not in _offered_ids(advanced)
+    assert _turn_end_offered(advanced)
+
+    pressed = apply_whole(engine, 
+        advanced, DomainAction(action_id="finish_agent_turn", actor=0)
+    )
+    lapsed = [
+        dict(e.payload) for e in pressed.events if e.kind == "research_bonus_lapsed"
+    ]
+    assert lapsed == [{"bonus": "seven_solari_for_two_tleilaxu", "player": 0}]
+    assert pressed.state.players[0].resources.solari == 3
+
+
+def test_research_bonus_after_the_last_effect_credits_a_navigation_play() -> None:
+    # Experimentation's Research icon is the Agent turn's last effect, with
+    # every other seat revealed, and its INFLUENCE_ANY bonus reaches the
+    # Emperor's Navigation trigger (Steersman Y'rkoon). The Navigation play
+    # opens on top of the owner's still-open effect frame, so the troop it
+    # recruits counts for this turn (OQ-095 (3)). Before OQ-095 the turn had
+    # already closed and the queued Navigation play was flagged
+    # ``turn_closed`` to keep the troop off the fresh "turn" frame
+    # (2026-09-26 review round 5, Finding 2/4; OQ-044 (d)). "그 turn에 어떤
+    # 출처에서 recruit했든 새 troop은 Conflict에 deploy할 수 있다. 이미
+    # garrison에 있던 troop을 다시 recruit한 것으로 취급해 두 개 제한을
+    # 우회할 수는 없다" [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    from dune_imperium.rules.contracts import (
+        apply_contract_action,
+        legal_contract_actions,
+    )
+    from dune_imperium.rules.immortality import (
+        legal_research_advance_actions,
+        legal_research_bonus_actions,
+    )
+    from dune_imperium.rules.navigation import legal_navigation_play_actions
+
+    nav_card_6 = "intrigue:navigation_card_6:0"
+    owner = _owner(
+        (EXPERIMENTATION,),
+        research_space="c5r5",
+        leader_id="steersman_y_rkoon",
+        navigation_slots=(nav_card_6,),
+        influence=Influence(emperor=1),
+    )
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            owner,
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+            config=replace(IMMORTALITY_BLOODLINES, choam_module=True),
+            face_up_contract_ids=("contract:arrakeen_i",),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    taken = apply_contract_action(placed, legal_contract_actions(placed, 0)[0]).state
+    resolved = resolve_agent_card_effect(taken).state
+    assert resolved.decision_stack[-1].kind == "research_advance"
+    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+
+    to_influence_choice = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c6r6"
+    )
+    advanced = apply_whole(engine, resolved, to_influence_choice).state
+    # The bonus waits on the open turn as rows (cleanup-2b); c6r6 is
+    # mandatory, so the end waits for it.
+    assert advanced.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert not _turn_end_offered(advanced)
+
+    influence_choice = next(
+        a
+        for a in legal_research_bonus_actions(advanced, 0)
+        if dict(a.arguments).get("faction") == "emperor"
+    )
+    opened = apply_whole(engine, advanced, influence_choice).state
+
+    # The Influence gain happens, and the queued Navigation play opens on
+    # the owner's open turn.
+    assert opened.players[0].influence.emperor == 2
+    assert opened.decision_stack[-1].kind == "navigation_choice"
+    assert opened.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+
+    play = next(
+        a
+        for a in legal_navigation_play_actions(opened, 0)
+        if dict(a.arguments)["option"] == 0
+    )
+    result = apply_whole(engine, opened, play).state
+
+    # Card 6 option 0 (RecruitTroops(1)) recruits its troop for this turn.
+    assert result.players[0].troops_garrison == 3 + 1
+    _, context = current_agent_effect_context(result)
+    assert context["turn_owner"] == 0
+    assert context["troops_recruited"] == 1
+    assert _turn_end_offered(result)
+
+    # Pressing the end reopens this seat's own next turn without the credit.
+    top = finish_agent_turn(result).decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_research_icon_last_effect_credits_a_trash_and_specimen_to_its_turn() -> None:
+    # Experimentation's own Research icon [Immortality pp. 3, 5] as the
+    # Agent turn's last effect, with every other seat revealed: the two-way
+    # fork (c2r4 -> c3r3/c3r5) opens on top of the owner's still-open effect
+    # frame and the TRASH_AND_SPECIMEN trash waits on it as rows, so
+    # Eliminate Allies' troops count for this turn (OQ-095 (3)). Before
+    # OQ-095 the turn had already closed and reopened a fresh "turn" frame
+    # for this same player, and a ``turn_closed`` marker on these frames kept
+    # the troops off it
+    # (2026-09-26 review round 4, minor). "그 turn에 어떤 출처에서 recruit했든
+    # 새 troop은 Conflict에 deploy할 수 있다..." [Main p. 10] [FAQ p. 4]
+    # (docs/rules/player-turns.md:137).
+    from dune_imperium.rules.immortality import legal_research_advance_actions
+
+    eliminate_allies = _card("eliminate_allies")
+    engine = UprisingRulesEngine()
+    placed = _place(
+        _state(
+            _owner((EXPERIMENTATION, eliminate_allies), research_space="c2r4"),
+            _seat(1, has_revealed=True),
+            _seat(2, has_revealed=True),
+            _seat(3, has_revealed=True),
+        ),
+        EXPERIMENTATION,
+        "accept_contract",
+    )
+    for board_action in legal_board_effect_actions(placed, 0):
+        placed = resolve_board_effect(placed, board_action).state
+    resolved = resolve_agent_card_effect(placed).state
+    assert resolved.decision_stack[-1].kind == "research_advance"
+    assert resolved.decision_stack[-2].kind == FrameKind.AGENT_EFFECTS
+
+    to_trash_and_specimen = next(
+        a
+        for a in legal_research_advance_actions(resolved, 0)
+        if dict(a.arguments)["space_id"] == "c3r3"
+    )
+    advanced = apply_whole(engine, resolved, to_trash_and_specimen).state
+    # The two icons are independent effects in the owner's order (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 5; OQ-027 [Main
+    # p. 9]): the specimen waits as a mandatory row beside the trash, and holds
+    # the turn's end until it is taken.
+    assert advanced.players[0].specimens == 0
+    _trash_waits_on_the_agent_turn(advanced, "research|c3r3", specimen_waits=True)
+
+    # The trash is taken first; the specimen still waits.
+    trash = next(
+        a
+        for a in legal_optional_trash_actions(advanced, 0)
+        if dict(a.arguments).get("card_id") == eliminate_allies
+    )
+    trashed = apply_optional_trash(advanced, trash).state
+
+    assert trashed.players[0].troops_garrison == 3 + 2
+    _, context = current_agent_effect_context(trashed)
+    assert context["turn_owner"] == 0
+    assert context["troops_recruited"] == 2
+    assert trashed.players[0].specimens == 0 and not _turn_end_offered(trashed)
+    # c3r3 printed the specimen icon (stage B3e-1: the row names it).
+    specimen = DomainAction(
+        action_id="resolve_research_icon",
+        actor=0,
+        arguments=(
+            ("effect", "specimen"),
+            ("printed", "c3r3"),
+            ("source", "research"),
+        ),
+    )
+    assert specimen in engine.whole_actions(trashed, 0)
+    trashed = apply_whole(engine, trashed, specimen).state
+    assert trashed.players[0].specimens == 1
+    assert _turn_end_offered(trashed)
+
+    # Pressing the end reopens this seat's own next turn without the credit.
+    top = finish_agent_turn(trashed).decision_stack[-1]
+    assert top.kind == FrameKind.TURN
+    assert dict(top.context)["turn_owner"] == 0
+    assert dict(top.context).get("troops_recruited") in (None, 0)
+
+
+def test_tleilaxu_surgeon_spends_specimens_and_sacrifices_troops() -> None:
+    surgeon = _card("tleilaxu_surgeon")
+    dry = _place(
+        _state(_owner((surgeon,), specimens=1, troops_supply=8)), surgeon, "arrakeen"
+    )
+    assert [a.action_id for a in legal_agent_card_payment_actions(dry, 0)] == [
+        "decline_agent_card_payment"
+    ]
+    wet = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7)), surgeon, "arrakeen"
+    )
+    paid = apply_agent_card_payment(wet, _payment(wet, "pay_agent_card_two_specimens"))
+    owner = paid.state.players[0]
+    assert owner.specimens == 0 and owner.troops_supply == 9
+    assert owner.tleilaxu_space == 2
+    # The track's second space: its Intrigue card waits as the owner's own
+    # step (user ruling 2026-10-10, OQ-106).
+    assert [entry[1] for entry in owner.owed_draws] == ["tleilaxu_track"]
+
+    revealed = _reveal(
+        _state(
+            _owner((surgeon,), troops_garrison=2, troops_conflict=2, troops_supply=8)
+        )
+    )
+    # "May" makes the sacrifice optional [FAQ p. 3]: the Reveal frame offers
+    # the three zone pairs and no refusal.
+    assert revealed.decision_stack[-1].kind == FrameKind.REVEAL
+    actions = legal_reveal_troop_sacrifice_actions(revealed, 0)
+    assert [(a.action_id, dict(a.arguments).get("zones")) for a in actions] == [
+        ("lose_reveal_troops_for_specimens", "garrison,garrison"),
+        ("lose_reveal_troops_for_specimens", "garrison,conflict"),
+        ("lose_reveal_troops_for_specimens", "conflict,conflict"),
+    ]
+    assert "decline_reveal_troop_sacrifice" not in _offered_ids(revealed)
+    assert "finish_reveal" in _offered_ids(revealed)
+    garrison = apply_reveal_troop_sacrifice(revealed, actions[0]).state.players[0]
+    assert garrison.troops_garrison == 0 and garrison.specimens == 2
+    assert garrison.troops_supply == 8  # two lost, two into the tanks
+    conflict = apply_reveal_troop_sacrifice(revealed, actions[2])
+    owner = conflict.state.players[0]
+    assert owner.troops_conflict == 0 and owner.specimens == 2
+    assert dict(conflict.state.decision_stack[-1].context)["strength"] == 0
+    # One from each zone (OQ-053, user ruling): the Conflict troop's two
+    # strength leaves with it.
+    mixed = apply_reveal_troop_sacrifice(revealed, actions[1])
+    owner = mixed.state.players[0]
+    assert owner.troops_garrison == 1 and owner.troops_conflict == 1
+    assert owner.specimens == 2
+    assert dict(mixed.state.decision_stack[-1].context)["strength"] == 2
+    # Keeping the troops means pressing ``finish_reveal``: the choice lapses.
+    finished = _finish_reveal(revealed)
+    assert _lapsed(finished) == [
+        {
+            "card_id": surgeon,
+            "effect": "may_lose_two_troops_for_two_specimens",
+            "player": 0,
+        }
+    ]
+    owner = finished.state.players[0]
+    assert owner.troops_garrison == 2 and owner.troops_conflict == 2
+    assert owner.specimens == 0
+    one_each = _reveal(
+        _state(
+            _owner((surgeon,), troops_garrison=1, troops_conflict=1, troops_supply=10)
+        )
+    )
+    # A troop in each zone still makes two (OQ-053).
+    assert one_each.decision_stack[-1].kind == FrameKind.REVEAL
+    assert [
+        dict(a.arguments).get("zones")
+        for a in legal_reveal_troop_sacrifice_actions(one_each, 0)
+    ] == ["garrison,conflict"]
+
+
+def test_tleilaxu_surgeon_still_refuses_sardaukar_commanders() -> None:
+    """OQ-105 (user ruling 2026-10-10) lets a Commander pay the self-paid
+    troop costs, but not Tleilaxu Surgeon's "Lose two troops": its specimens
+    come from the troop supply [Immortality p. 8] (OQ-053, unchanged). A
+    seat whose garrison and Conflict hold only Commanders is offered no
+    sacrifice, and one with a troop in each zone still pays with those."""
+
+    surgeon = _card("tleilaxu_surgeon")
+    commanders = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=0,
+                troops_supply=12,
+                commanders_garrison=1,
+                commanders_conflict=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert legal_reveal_troop_sacrifice_actions(commanders, 0) == ()
+    mixed = _reveal(
+        _state(
+            _owner(
+                (surgeon,),
+                troops_garrison=1,
+                troops_conflict=1,
+                troops_supply=10,
+                commanders_garrison=1,
+            ),
+            config=IMMORTALITY_BLOODLINES,
+        )
+    )
+    assert [
+        dict(a.arguments).get("zones")
+        for a in legal_reveal_troop_sacrifice_actions(mixed, 0)
+    ] == ["garrison,conflict"]
+
+
+def test_tleilaxu_surgeon_offers_no_payment_at_the_tleilaxu_track_end() -> None:
+    # On the track's last space a further advance does nothing (OQ-048), so
+    # the two specimens would buy nothing and are not offered (OQ-071, user
+    # decision 2026-09-29); one space short, the first advance still pays.
+    surgeon = _card("tleilaxu_surgeon")
+    at_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=7)),
+        surgeon,
+        "arrakeen",
+    )
+    assert [a.action_id for a in legal_agent_card_payment_actions(at_end, 0)] == [
+        "decline_agent_card_payment"
+    ]
+    near_end = _place(
+        _state(_owner((surgeon,), specimens=2, troops_supply=7, tleilaxu_space=6)),
+        surgeon,
+        "arrakeen",
+    )
+    paid = apply_agent_card_payment(
+        near_end, _payment(near_end, "pay_agent_card_two_specimens")
+    )
+    assert paid.state.players[0].tleilaxu_space == 7
+
+
+def test_tleilaxu_surgeon_advances_chanis_tactics_once() -> None:
+    # The two troops Tleilaxu Surgeon loses are one source: "Each different
+    # source of retreating or losing troops is handled separately" [FAQ
+    # p. 1], and passing the end of the track "still reset[s] at the
+    # starting space (and do[es] not advance for those extra troops)"
+    # [Bloodlines p. 12].
+    surgeon = _card("tleilaxu_surgeon")
+    chani = _owner(
+        (surgeon,),
+        leader_id="chani",
+        tactics_track_space=9,
+        troops_garrison=0,
+        troops_conflict=2,
+        troops_supply=10,
+    )
+    revealed = _reveal(
+        _state(chani, config=RulesetConfig(bloodlines=True, immortality=True))
+    )
+    sacrifice = next(
+        action
+        for action in legal_reveal_troop_sacrifice_actions(revealed, 0)
+        if dict(action.arguments).get("zones") == "conflict,conflict"
+    )
+    owner = apply_reveal_troop_sacrifice(revealed, sacrifice).state.players[0]
+    assert owner.troops_conflict == 0
+    assert owner.tactics_track_space == 2  # not 3
+    assert owner.resources.water == 2 + 1
+
+
+def test_the_codec_holds_the_slice_choices_only_with_immortality() -> None:
+    codec = ActionCodec(IMMORTALITY)
+    base_templates = set(ActionCodec(RulesetConfig()).catalog)
+    base = {template.action_id for template in base_templates}
+    # Stage B3a: the Agent-effect frame offers these as the effect row of the
+    # Immortality card that prints them (then a target row, a card or a
+    # reserve stack that other catalogs may hold too); the effect rows are
+    # the templates only the Immortality catalogs hold.
+    for action, printed in (
+        (DomainAction("pay_agent_card_two_specimens", 0), "tleilaxu_surgeon"),
+        (DomainAction("trash_grafted_card_for_specimen", 0), "dissecting_kit"),
+        (DomainAction("take_agent_card_combat_icon", 0), "high_priority_travel"),
+        (
+            DomainAction(
+                "acquire_reserve_by_card", 0, (("card_id", "prepare_the_way"),)
+            ),
+            "tleilaxu_master",
+        ),
+        (
+            DomainAction(
+                "acquire_imperium_by_card", 0, (("instance_id", _card("for_humanity")),)
+            ),
+            "tleilaxu_master",
+        ),
+    ):
+        rows = steps_for(action, printed)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        effect = ActionTemplate(rows[0].action_id, rows[0].arguments)
+        assert effect not in base_templates
+    # Stage B3d-2a: the Reveal choice offers these as the effect row of the
+    # card that prints them (then the Faction and the recipient of an
+    # Alliance token), so their whole templates are in no catalog and the
+    # effect rows are Immortality's alone. Shadout Mapes' troop move is its
+    # own row now: Unswerving Loyalty's "Fremen Bond: You may deploy or
+    # retreat one of your troops" [Unswerving Loyalty card] is the one every
+    # catalog holds.
+    for action in (
+        DomainAction("lose_reveal_influence_for_vp", 0, (("faction", "fremen"),)),
+        DomainAction(
+            "lose_reveal_influence_for_vp",
+            0,
+            (("alliance_recipient", 2), ("faction", "fremen")),
+        ),
+        DomainAction("deploy_reveal_card_troop", 0, (("source", "shadout_mapes"),)),
+        DomainAction("retreat_reveal_card_troop", 0, (("source", "shadout_mapes"),)),
+        DomainAction(
+            "lose_reveal_troops_for_specimens", 0, (("zones", "garrison,conflict"),)
+        ),
+    ):
+        rows = steps_for(action)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        with pytest.raises(ValueError, match="not present"):
+            codec.encode(action)
+        assert ActionTemplate(rows[0].action_id, rows[0].arguments) not in (
+            base_templates
+        )
+    loyalty = steps_for(
+        DomainAction("deploy_reveal_card_troop", 0, (("source", "unswerving_loyalty"),))
+    )
+    assert ActionTemplate(loyalty[0].action_id, loyalty[0].arguments) in base_templates
+    # Stage B3d-3: no handler ever answered ``decline_reveal_troop_sacrifice``,
+    # so it left every catalog (the Reveal frame never offers it either).
+    assert "decline_reveal_troop_sacrifice" not in {
+        template.action_id for template in codec.catalog
+    }
+    for action in (
+        DomainAction(
+            "resume_reveal_choice", 0, (("effect", "may_deploy_or_retreat_one_troop"),)
+        ),
+    ):
+        assert codec.decode(codec.encode(action), 0) == action
+        assert action.action_id not in base or action.action_id == (
+            "resume_reveal_choice"
+        )
+    assert "may_deploy_or_retreat_one_troop" not in {
+        dict(template.arguments).get("effect")
+        for template in ActionCodec(RulesetConfig()).catalog
+        if template.action_id == "resume_reveal_choice"
+    }
+    # Mapes' Commander moves exist only where Commanders do [Bloodlines p. 4].
+    # Each card's move is its own effect row (``printed``, stage B3d-2a); the
+    # whole ids ``deploy_reveal_card_troop`` and ``retreat_reveal_card_troop``
+    # are in no catalog.
+    def troop_moves(config: RulesetConfig) -> set[tuple[str, tuple[object, ...]]]:
+        catalog = ActionCodec(config).catalog
+        assert not any(t.action_id.endswith("_reveal_card_troop") for t in catalog)
+        return {
+            (template.action_id, template.arguments)
+            for template in catalog
+            if template.action_id in {"deploy", "retreat"}
+            and dict(template.arguments).get("source") == "reveal_card"
+            and dict(template.arguments).get("printed")
+            in {"shadout_mapes", "unswerving_loyalty"}
+        }
+
+    moves = {"shadout_mapes", "unswerving_loyalty"}
+    assert troop_moves(IMMORTALITY_BLOODLINES) == {
+        (action_id, (*units, ("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
+        for units in ((), (("commanders", 1),))
+    }
+    assert troop_moves(IMMORTALITY) == {
+        (action_id, (("printed", printed), ("source", "reveal_card")))
+        for action_id in ("deploy", "retreat")
+        for printed in moves
+    }
+
+
+def test_an_acquired_research_box_stacks_above_the_acquiring_frame() -> None:
+    """Spiritual Fervor's Research direction never buries the acquirer's frame.
+
+    Found by the 2026-09-08 heuristic soak (seed 11): an Intrigue
+    acquisition raised "buried its choice frame" once the acquire box
+    opened its direction choice.
+    """
+
+    fervor = _card("spiritual_fervor")
+    imperium = imperium_deck_instance_ids(False)
+    row = (fervor, *imperium[1:5])
+    engine = UprisingRulesEngine()
+
+    # Inspire Awe: "acquire a card costing 3 or less" (an Intrigue slot).
+    awe = next(card for card in INTRIGUE if ":inspire_awe:" in card)
+    # From c1r3 the research forks (c2r2 / c2r4), so a direction frame opens.
+    state = _state(
+        _owner((DAGGER,), intrigue_cards=(awe,), research_space="c1r3"),
+        imperium_row=row,
+    )
+    play = DomainAction("play_intrigue", 0, (("card_id", awe), ("option", 0)))
+    opened = apply_whole(engine, state, play).state
+    assert opened.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    acquire = next(
+        a
+        for a in engine.whole_actions(opened, 0)
+        if dict(a.arguments).get("instance_id") == fervor
+    )
+    done = apply_whole(engine, opened, acquire).state
+    assert [frame.kind for frame in done.decision_stack] == [
+        FrameKind.TURN,
+        FrameKind.RESEARCH_ADVANCE,
+    ]
+    assert fervor in done.players[0].discard_pile
+    assert awe in done.intrigue_discard
+
+    # Price is No Object: "acquire a card to your hand, paying Solari".
+    price = _card("price_is_no_object")
+    state = _state(
+        _owner((price,), resources=Resources(solari=5), research_space="c1r3"),
+        imperium_row=row,
+    )
+    placed = _place(state, price, "dutiful_service")
+    acquire = next(
+        a
+        for a in engine.whole_actions(placed, 0)
+        if a.action_id == "acquire_imperium_with_solari"
+        and dict(a.arguments)["instance_id"] == fervor
+    )
+    done = apply_whole(engine, placed, acquire).state
+    assert done.decision_stack[-1].kind == FrameKind.RESEARCH_ADVANCE
+    below = done.decision_stack[-2]
+    assert below.kind == FrameKind.AGENT_EFFECTS
+    assert dict(below.context)["pending_agent_effect"] is False
+    assert fervor in done.players[0].hand
+
+
+def test_reveal_research_icons_resolve_one_per_action_and_share_a_shuffle() -> None:
+    """Tleilaxu Master's two Reveal Research icons resolve apart (designer
+    ruling, OQ-057): each action advances once. Past the second marker each
+    advance draws; with an empty deck the first draw shuffles the discard and
+    the second draws from the new deck without a second shuffle."""
+
+    from dune_imperium.core.chance import ChanceOutcome
+    from dune_imperium.rules.card_draw import apply_personal_draw_reshuffle
+
+    master = _card("tleilaxu_master")
+    discard = tuple(card for card in STARTERS if "dagger" not in card)[:4]
+    owner = _owner((master,), deck=(), discard_pile=discard, research_space="c8r4")
+    revealed = _reveal(_state(owner))
+
+    first = apply_reveal_gain(revealed, legal_reveal_gain_actions(revealed, 0)[0]).state
+    reveal = next(frame for frame in first.decision_stack if frame.kind == "reveal")
+    assert dict(reveal.context)["reveal_pending_gains"] == (
+        "research|1|imperium:tleilaxu_master:0"
+    )
+    reshuffle = first.decision_stack[-1]
+    assert reshuffle.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+    assert dict(reshuffle.context)["count"] == 1
+    assert isinstance(reshuffle.decision, ChanceDecision)
+
+    shuffled = apply_personal_draw_reshuffle(
+        first, ChanceOutcome(reshuffle.decision.decision_id, discard)
+    ).state
+    # A card drawn during the owner's Reveal is revealed at once [FAQ p. 3].
+    assert len(shuffled.players[0].in_play) == 2
+    assert shuffled.decision_stack[-1].kind == "reveal"
+    actions = legal_reveal_gain_actions(shuffled, 0)
+    assert [action.action_id for action in actions] == ["advance_reveal_research"]
+    second = apply_reveal_gain(shuffled, actions[0]).state
+    assert len(second.players[0].in_play) == 3
+    assert not any(
+        frame.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
+        for frame in second.decision_stack
+    )
+    assert legal_reveal_gain_actions(second, 0) == ()
+
+
+def test_imperium_ceremony_keep_owes_a_suspensor_suits_troop() -> None:
+    # Designer ruling (Message from designer, OQ-057): Imperium Ceremony's
+    # "keep one" is an Intrigue draw, so Suspensor Suits pays its troop.
+    from dune_imperium.core.engine import RuleResult
+    from dune_imperium.rules.tech import deploy_suspensor_troops
+
+    ceremony = _card("imperium_ceremony")
+    base = _state(_owner((ceremony,)))
+    state = replace(
+        base,
+        config=RulesetConfig(immortality=True, bloodlines=True, tech_module=True),
+        tech_stacks=(("glowglobes",), (), ()),
+        players=(
+            replace(base.players[0], tech_ids=("suspensor_suits",)),
+            *base.players[1:],
+        ),
+    )
+    placed = _place(state, ceremony, "assembly_hall")
+    peeking = resolve_agent_card_effect(placed).state
+    kept = apply_intrigue_peek(peeking, legal_intrigue_peek_actions(peeking, 0)[0])
+    owner = kept.state.players[0]
+    assert len(owner.intrigue_cards) == 1
+    assert owner.suspensor_owed == 1
+
+    deployed = deploy_suspensor_troops(RuleResult(state=kept.state)).state
+    assert deployed.players[0].suspensor_owed == 0
+    assert deployed.players[0].troops_conflict == 1
+    assert deployed.players[0].troops_supply == 8
+
+

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="135" height="206" viewBox="0 0 66 100">
+  <!-- Discard a card: a brown card with a white arrow down. Drawn by hand for the public build. -->
+  <defs><linearGradient id="cdis" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d07a3a"/><stop offset="1" stop-color="#7a3410"/></linearGradient></defs>
+  <rect x="3" y="3" width="60" height="94" rx="7" fill="#1b1b1b"/><rect x="5" y="5" width="56" height="90" rx="5.5" fill="#f2f2f2"/><rect x="10" y="10" width="46" height="80" rx="3" fill="url(#cdis)"/><polygon points="26,26 40,26 40,50 50,50 33,74 16,50 26,50" fill="#fff" stroke="#3a1a08" stroke-width="2" stroke-linejoin="round"/>
+</svg>

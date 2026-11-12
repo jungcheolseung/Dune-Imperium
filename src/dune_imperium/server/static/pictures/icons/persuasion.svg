@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="156" height="157" viewBox="0 0 100 100">
+  <!-- Persuasion: a blue diamond with a white rim. Drawn by hand for the public build. -->
+  <defs><linearGradient id="pz" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#64aee6"/><stop offset="1" stop-color="#2a5f9e"/></linearGradient></defs>
+  <polygon points="50,4 96,50 50,96 4,50" fill="url(#pz)" stroke="#f4f8ff" stroke-width="4" stroke-linejoin="round"/><polygon points="50,4 96,50 50,96 4,50" fill="none" stroke="#1d3b63" stroke-width="1.4" stroke-linejoin="round"/>
+</svg>

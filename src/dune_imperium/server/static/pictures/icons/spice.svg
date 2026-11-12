@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="156" viewBox="0 0 113 100">
+  <!-- Spice: an orange hexagon. Drawn by hand for the public build. -->
+  <defs><linearGradient id="spi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f59a4a"/><stop offset="1" stop-color="#c24a14"/></linearGradient></defs>
+  <polygon points="108.5,50 82.5,89.8 30.5,89.8 4.5,50 30.5,10.2 82.5,10.2" fill="url(#spi)" stroke="#7a2a06" stroke-width="3.4" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,80 @@
+/* Pieces moving between places (motion.js): bought cards, the Conflict
+   card, the Alliance token, the bonus spice and the Agents going home. They
+   fly over the table, below the card cues and banners, and take no clicks. */
+#fx-layer { position: fixed; inset: 0; z-index: 34; pointer-events: none; overflow: hidden; }
+#fx-layer * { pointer-events: none; }
+.fx-ghost {
+  position: fixed;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+.fx-card {
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fx-color, #d9ab55), #fff 25%),
+    0 10px 28px rgba(0, 0, 0, 0.7), 0 0 22px color-mix(in srgb, var(--fx-color, #d9ab55) 55%, transparent);
+  background: #23282b;
+}
+.fx-card img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.fx-card.textcard {
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  font-size: 0.7rem;
+  text-align: center;
+  color: #f6f1e7;
+  border: 1px solid var(--line, #555);
+}
+/* A Conflict card is wider than tall. */
+.fx-conflict img { object-fit: contain; }
+/* A flying piece fills its box exactly: the box is the size it lands at. */
+.fx-agent, .fx-token, .fx-spice { display: block; }
+.fx-agent { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.8)); }
+.fx-token { filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.8)); }
+.fx-spice { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.9)); }
+.fx-agent > *, .fx-token > *, .fx-spice > * {
+  display: block;
+  position: static;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  transform: none;
+  object-fit: contain;
+}
+.fx-plus { animation-fill-mode: both; }
+/* Where a moved piece lands: a ring in the seat's colour, once. */
+.fx-landing {
+  position: fixed;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--fx-color, #d9ab55), #fff 30%);
+  box-shadow: 0 0 18px var(--fx-color, #d9ab55);
+  opacity: 0;
+  animation: fx-landing 650ms ease-out both;
+}
+@keyframes fx-landing {
+  0% { opacity: 0; transform: scale(0.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+/* An Influence cube sliding to its new level rides above its neighbours. */
+.track-cube.fx-sliding { z-index: 4; }
+/* The Alliance banner (effects.js): the seat's colour, the token for art. */
+.phase-banner.alliance { --banner-color: color-mix(in srgb, var(--seat-color, #d9ab55), #e3b15c 35%); }
+.phase-banner-alliance .alliance-token {
+  position: static;
+  display: block;
+  width: 4.6rem;
+  height: 4.6rem;
+  transform: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+}
+.phase-banner-alliance .alliance-token img { display: block; width: 100%; height: 100%; object-fit: contain; }
+@media (max-width: 700px) {
+  .phase-banner-alliance .alliance-token { width: 3.4rem; height: 3.4rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-landing { display: none; }
+}
+/* ⑩ The help panel's switch for the table's effects (help.js). */
+.help-effects { display: flex; gap: 0.5rem; align-items: flex-start; cursor: pointer; }
+.help-effects input { margin-top: 0.2rem; }
+.help-effects-note { display: block; font-size: 0.8rem; }

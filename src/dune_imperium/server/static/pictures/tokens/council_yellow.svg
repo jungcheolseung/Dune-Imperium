@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Councilor token (yellow): the disc with a seat. Drawn by hand for the public build. -->
+  <defs><linearGradient id="dk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#916627"/><stop offset="1" stop-color="#916627"/></linearGradient></defs>
+  <circle cx="64" cy="64" r="62" fill="#0a0a0a"/><circle cx="64" cy="64" r="57" fill="url(#dk)"/><circle cx="64" cy="64" r="50" fill="none" stroke="#f4c242" stroke-width="5" opacity=".8"/><circle cx="64" cy="64" r="56" fill="none" stroke="#fff" stroke-width="1.4" opacity=".14"/><path d="M52,34 L58,26 H70 L76,34 V60 H86 L80,92 H48 L42,60 H52 Z" fill="none" stroke="#000" stroke-width="5.5" stroke-linejoin="round" opacity=".5"/><path d="M42,60 H86" stroke="#000" stroke-width="5.5" opacity=".5"/>
+</svg>

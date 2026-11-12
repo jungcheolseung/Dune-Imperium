@@ -1,0 +1,2317 @@
+"""Generic ability classes used across many archetypes — spec/generic-abilities.md.
+
+Each port subclasses the port of its app base class and registers itself with
+``@port("<full app class name>")`` (see ``abilities/base.py``), so the app's
+inheritance (``TrashConflictCustomAbility`` -> ``TrashCustomAbility`` ->
+``TrashAbility`` -> ``DeferredAbility`` -> ``ActivatedAbility``) is the Python
+MRO. Card-, space- and leader-specific classes subclass these bases in the
+other modules.
+
+Request / answer encoding used by every ``evaluate`` here (``abilities/base``):
+
+- the candidates of a prompt are ``request.infos[0]``: ``entities`` for entity
+  targets (spaces, cards, contracts, spies, agents, faction tracks) and
+  ``options`` for custom choices and for garrison units (one index per valid
+  unit; ``DeployUnitsAbility``);
+- ``Answer.response is None``: nothing stored (the app's untouched choice,
+  value 0); ``()``: "use this ability" with no sub-targets (the app's
+  ``UpdateSelectionTargets(v, src, null)`` / empty response array);
+  ``((ref, ...),)``: the chosen refs / option indices of the first target info.
+
+Engine-side members: ``selection_mode(p)``, ``can_run_immediately(p)``,
+``always_run_immediately``, ``contextually_deferred``, ``defer_value(p)``,
+``timing``, ``meets_cost(p)`` (the ``Cost`` check where the AI hooks call
+``MeetsCost``) and ``possible_conflict_vp(p, double_cost)``.
+
+"""
+
+from collections.abc import Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, ClassVar
+
+from dune_imperium.agents.app_ai.abilities.base import (
+    Ability,
+    Answer,
+    Pile,
+    Request,
+    SelectionMode,
+    Timing,
+    UnportedAbility,
+    abilities_of,
+    ability_for,
+    port,
+)
+from dune_imperium.agents.app_ai.catalog import (
+    FACTION_NAMES,
+    LEADER_ARCHETYPES,
+    archetype,
+    board_space_ids,
+    card_entity,
+    conflict_entity,
+    contract_entity,
+    intrigue_entity,
+    is_high_council_space,
+    leader_entity,
+    space_archetype,
+    space_entity,
+)
+from dune_imperium.agents.app_ai.context import FACTIONS
+from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
+from dune_imperium.agents.app_ai.summer import Summer
+from dune_imperium.content.registry.board import ALL_OBSERVATION_POSTS
+from dune_imperium.core.state import GamePhase
+
+if TYPE_CHECKING:
+    from dune_imperium.agents.app_ai.profile import Profile
+
+# ---------------------------------------------------------------------------
+# Shared helpers (the app's extension methods, read through AppContext)
+# ---------------------------------------------------------------------------
+
+#: ``GetDeferralThreshold``: ``CustomDeferralThreshold`` if >= 0,
+#: else the literal 3. No Uprising effect sets ``CustomDeferralThreshold``.
+DEFERRAL_THRESHOLD = 3
+
+_APP_TO_FACTION = {app: ours for ours, app in FACTION_NAMES.items()}
+_TSMF_ARCHETYPES = (
+    "imperium.original.the_spice_must_flow",
+    "imperium.uprising.the_spice_must_flow_up",
+)
+_SIGNET_RING = "imperium.original.signet_ring"
+_SIGNET_ABILITY = "ability.activated.signet"
+_REVEREND_MOTHER_ABILITY = (
+    "ability.activated.uprising.reverend_mother"
+)
+_LADY_JESSICA = "leader.uprising.lady_jessica_leader"
+_SHADDAM = "leader.uprising.shaddam_corrino_iv"
+_IRULAN = "leader.uprising.princess_irulan"
+# Base-game leaders the app tests by ArchID; never dealt in 4-player Uprising
+# (``LEADER_ARCHETYPES`` holds none of them), so those branches never fire.
+_BARON = "leader.original.baron_vladimir_harkonnen"
+_MEMNON = "leader.original.earl_memnon_thorvald"
+_ARIANA = "leader.original.countess_ariana_thorvald"
+_ILBAN = "leader.original.count_ilban_richese"
+_ARMAND = "leader.ix.archduke_armand_ecaz"
+_POST_SPACES: dict[str, tuple[str, ...]] = {
+    post.post_id: tuple(post.connected_space_ids) for post in ALL_OBSERVATION_POSTS
+}
+
+
+def app_isinstance(ability: Ability, app_class: str) -> bool:
+    """C# ``ability is <app_class>`` for ports registered in any module.
+
+    True when the port class of ``ability`` (or one of its bases) is registered
+    under ``app_class``, or when ``ability`` is the unported stand-in of exactly
+    that class. Lets the generic code test for classes other modules port
+    (``SignetAbility``, ``ReverendMotherAbility``) without importing them.
+    """
+
+    if isinstance(ability, UnportedAbility):
+        return ability.app_class == app_class
+    return any(vars(k).get("APP_CLASS") == app_class for k in type(ability).__mro__)
+
+
+def ability_id(ability: Ability) -> str:
+    """``GetAbilityID``: the app class name of the ability."""
+
+    if isinstance(ability, UnportedAbility):
+        return ability.app_class
+    return ability.APP_CLASS
+
+
+def collect_first(entities: Sequence[Entity], kind: Kind) -> Entity | None:
+    """``ListUtil.CollectFirst<T>``: the first entity of that type, else None.
+
+    UNTRACED (spec UNTRACED list): assumed "first element of type T".
+    """
+
+    for entity in entities:
+        if entity.kind is kind:
+            return entity
+    return None
+
+
+def _targets(request: Request, kind: Kind) -> list[Entity]:
+    """``choice.GetTargets(...).OfType<T>()``: the first target info's entities."""
+
+    if not request.infos:
+        return []
+    return [e for e in request.infos[0].entities if e.kind is kind]
+
+
+def _faction_influence(entity: Entity) -> list[tuple[str, int]]:
+    """``Attributes.FactionInfluence`` as (our faction id, amount) pairs."""
+
+    raw = entity.attr("FactionInfluence")
+    if not isinstance(raw, Mapping):
+        return []
+    return [(_APP_TO_FACTION[str(f)], int(n)) for f, n in raw.items()]
+
+
+def gain_any_influence_value(p: Profile, amount: int) -> Summer:
+    """``GetGainInfluenceValue(Factions.None, amount, -1, false)``.
+
+    The ``F == None`` branch of ``GetGainInfluenceValue``
+    (``profile-influence-uprising.md`` §1.1), replayed here so the generic
+    ports do not depend on how the influence port spells "no faction":
+    ``amount > 0`` (strict) -> the summer of the faction with the largest
+    ``Sum`` (``Enumerable.Max``: the first maximum in ``FactionList`` order is
+    kept), else the smallest. ``FactionList`` = the four tracks in board order.
+    """
+
+    values = [p.gain_influence_value(f, amount, -1, False) for f in FACTIONS]
+    best = values[0]
+    for value in values[1:]:
+        if (value.sum > best.sum) if amount > 0 else (value.sum < best.sum):
+            best = value
+    return best
+
+
+def _leader(p: Profile) -> Entity | None:
+    """``P.Leader`` with its current face (the flipped face's abilities)."""
+
+    me = p.ctx.me
+    if me.leader_id is None or me.leader_id not in LEADER_ARCHETYPES:
+        return None
+    return leader_entity(me.leader_id, me.leader_face_id)
+
+
+def _leader_arch_id(p: Profile) -> str | None:
+    """``P.Leader.ArchID``.
+
+    Judgement: a flipped leader keeps its own ArchID and gains ``Flipped``
+    (the app tests ``ArchID == LadyJessicaLeader and Flipped``), so this is
+    the archetype of ``leader_id``, never of the flipped face.
+    """
+
+    me = p.ctx.me
+    if me.leader_id is None:
+        return None
+    return LEADER_ARCHETYPES.get(me.leader_id)
+
+
+def _leader_flipped(p: Profile) -> bool:
+    leader = _leader(p)
+    return leader is not None and leader.attr("Flipped") is True
+
+
+def baron_has_secret_factions(p: Profile) -> bool:
+    """``P.Leader.ArchID == BaronVladimirHarkonnen && P.PrivateInformation
+    .Has(BaronHarkonnenSecretFactions)``.
+
+    The Baron's two Factions chosen in secret (``MasterstrokeAbility1``);
+    ``ResolveMasterstroke`` removes the attribute when Masterstroke reveals them
+    (``RemoveAttribute<List<Factions>>``). Ours: ``masterstroke_factions`` held and not
+    yet ``masterstroke_revealed``.
+    """
+
+    me = p.ctx.me
+    return (
+        _leader_arch_id(p) == _BARON
+        and bool(me.masterstroke_factions)
+        and not me.masterstroke_revealed
+    )
+
+
+def _hand_cards(p: Profile) -> list[Entity]:
+    """``P.Hand.children.OfType<ImperiumPlayable>()`` (own hand, in order)."""
+
+    return [card_entity(i, p.ctx.seat) for i in p.ctx.hand]
+
+
+def _cards_in_play(p: Profile) -> list[Entity]:
+    """``P.AllCardsInPlay`` / ``P.PlayArea.children`` (our ``in_play``)."""
+
+    return [card_entity(i, p.ctx.seat) for i in p.ctx.me.in_play]
+
+
+def _intrigue_hand(p: Profile) -> list[Entity]:
+    return [intrigue_entity(i, p.ctx.seat) for i in p.ctx.intrigue_cards]
+
+
+def card_factions(card: Entity) -> tuple[str, ...]:
+    """``EntityExtensions.FactionsList`` (app faction names)."""
+
+    return card.list_attr("FactionList")
+
+
+def signet_icons(card: Entity) -> int:
+    """``EntityExtensions.SignetIcons``.
+
+    The ``SignetIcons`` attribute, or 1 for ``SignetRing`` when the attribute is 0
+    (``leaders.md`` §0.1).
+    """
+
+    n = card.int_attr("SignetIcons")
+    if n == 0 and card.short == _SIGNET_RING:
+        return 1
+    return n
+
+
+def _is_tsmf(card: Entity) -> bool:
+    """``IsTheSpiceMustFlowImperium``."""
+
+    return card.kind is Kind.CARD and card.short in _TSMF_ARCHETYPES
+
+
+def _has_drawable_card(p: Profile) -> bool:
+    """``HasDrawableCard`` (UNTRACED name-level read): a card to draw or to
+    reshuffle, i.e. draw pile or discard pile non-empty (sizes only)."""
+
+    me = p.ctx.me
+    return p.ctx.deck_size + len(me.discard_pile) > 0
+
+
+def _deployed_spies(p: Profile) -> int:
+    """``P.GetDeployedSpies().Count()`` / ``SpyDeployedCount``."""
+
+    return len(p.ctx.me.spy_post_ids)
+
+
+def _observing_spies(p: Profile, space_id: str) -> int:
+    """``space.GetObservingSpies(P).Count()``: P's spies on connected posts."""
+
+    return sum(
+        1 for post in p.ctx.me.spy_post_ids if space_id in _POST_SPACES.get(post, ())
+    )
+
+
+def _space_bonus_spice(p: Profile, space: Entity) -> int:
+    """``EntityExtensions.BonusSpice`` (runtime attribute).
+
+    The app keeps the accumulated bonus spice on the maker space entity; ours is
+    ``state.maker_bonus_spice`` (public). Other spaces: the archetype value (0).
+    """
+
+    for space_id, amount in p.ctx.state.maker_bonus_spice:
+        if space_id == space.ref:
+            return amount
+    return space.int_attr("BonusSpice")
+
+
+def space_solari_cost(p: Profile, space: Entity) -> int:
+    """The space's runtime ``SolariCost`` attribute.
+
+    ``SwordmasterUprisingSpaceAbility.DecreaseInitialCost``
+    adds -2 to the Swordmaster space's ``SolariCost`` (only while it is 8)
+    when the first Swordmaster is taken; our engine charges 6 once anyone holds
+    one (``agent_turn._effective_costs``). Every other cost is static.
+    """
+
+    cost = space.int_attr("SolariCost")
+    if space.ref == "swordmaster" and cost == 8:
+        if any(pl.swordmaster_acquired for pl in p.ctx.players):
+            cost += -2
+    if space.ref == "swordmaster" and p.ctx.me.leader_id == "duncan_idaho":
+        # Bloodlines Ginaz Swordmaster: "costs you 2 less", floor 0
+        # (bloodlines-systems.md §1.7, D35; rules/agent_turn.py).
+        cost = max(cost - 2, 0)
+    return cost
+
+
+def _space_ids_by_archetype(p: Profile) -> dict[str, str]:
+    """Board-space archetype short -> our space id (this game's CHOAM setting)."""
+
+    board = p.ctx.board
+    return {
+        space_archetype(space_id, board): space_id
+        for space_id in board_space_ids(board)
+    }
+
+
+def find_space(p: Profile, arch_id: str) -> Entity | None:
+    """``Playmat.Board.FindSpace(archID)``: the board space with that archetype."""
+
+    space_id = _space_ids_by_archetype(p).get(arch_id)
+    if space_id is None:
+        return None
+    return space_entity(space_id, p.ctx.board)
+
+
+def contract_spaces(p: Profile, contract: Entity) -> list[Entity]:
+    """``ContractPlayable.ContractSpaces``.
+
+    ``BoardSpaces.Where(ReferencedArchetypeIDs.Contains(ArchID))`` in board
+    order (``SPACE_ARCHETYPES`` order).
+    """
+
+    referenced = set(contract.list_attr("ReferencedArchetypeIDs"))
+    board = p.ctx.board
+    spaces = []
+    for space_id in board_space_ids(board):
+        if space_archetype(space_id, board) in referenced:
+            spaces.append(space_entity(space_id, board))
+    return spaces
+
+
+def _contract_area(p: Profile) -> list[Entity]:
+    """``P.ContractArea`` contracts: completed (flipped) ones stay in it.
+
+    Judgement: the app keeps them in the order taken; ours are split into
+    ``completed_contract_ids`` and ``active_contract_ids``, listed oldest
+    group first. The order only changes float summation order.
+    """
+
+    me = p.ctx.me
+    return [
+        contract_entity(i, p.ctx.seat)
+        for i in (*me.completed_contract_ids, *me.active_contract_ids)
+    ]
+
+
+def _contract_options(p: Profile) -> list[str]:
+    """``Player.GetContractOptions``.
+
+    The contract row, then the set-aside Sardaukar contracts listed in
+    ``AdditionalContractOptions`` (only Shaddam's player has them; ours:
+    ``state.sardaukar_contract_ids``, public).
+    """
+
+    options = list(p.ctx.face_up_contract_ids)
+    if _leader_arch_id(p) == _SHADDAM:
+        options.extend(p.ctx.state.sardaukar_contract_ids)
+    return options
+
+
+def _this_turn_agent(p: Profile) -> tuple[list[Entity], list[Entity]]:
+    """The unexhausted agent card(s) and agent space(s) of this turn.
+
+    ``ActiveAgentArea.children.OfType<Playable>().Where(!IsExhausted)``
+    and ``BoardSpaces.Where(PlayerAgent(P) is unexhausted)``: [I]
+    (engine-order §4.1) the card and space of the current Agent turn. Ours:
+    the ``card_id``/``space_id`` of the seat's own open ``agent_effects``
+    frame; none outside an Agent turn.
+
+    ``Player.DeferredThresholdReached`` adds the grafted
+    card (``GetGraftedCard``) when exactly one card is listed
+    (Immortality, spec immortality.md §4.1): ours is the frame's graft
+    partner (``AppContext.graft_cards``; a Usurp partner may be a Row card).
+    Without a graft there is none, so this only acts with Immortality.
+    """
+
+    context = p.ctx.own_frame_context("agent_effects")
+    if context is None:
+        return [], []
+    cards = []
+    spaces = []
+    card_ref = context.get("card_id")
+    if isinstance(card_ref, str) and card_ref:
+        cards.append(card_entity(card_ref, p.ctx.seat))
+    pair = p.ctx.graft_cards()
+    if pair is not None and len(cards) == 1:
+        partner = pair[1] if pair[0] == cards[0].ref else pair[0]
+        if partner != cards[0].ref:
+            cards.append(card_entity(partner, p.ctx.seat))
+    space_ref = context.get("space_id")
+    if isinstance(space_ref, str) and space_ref:
+        spaces.append(space_entity(space_ref, p.ctx.board))
+    return cards, spaces
+
+
+def deferred_threshold_reached(p: Profile) -> bool:
+    """``Player.DeferredThresholdReached()`` (core).
+
+    engine-order.md §4.1: the summed ``DeferValue`` (archetype attribute,
+    absent = 0) of this turn's unexhausted agent card(s), **every intrigue card
+    in hand** and this turn's agent space(s), plus one leader extra, plus the
+    ``DeferValue`` of P's face-up contracts whose spaces include a turn space,
+    reaches ``GetDeferralThreshold`` (3). When it does, draws, space influence
+    and contract gains stop running automatically and wait in the post-action
+    prompt (``DrawAbility``/``GainInfluenceAbility``/``GainContractAbility``/
+    ``Draw2ContractAbility.can_run_immediately``).
+
+    Leader extras (first matching branch only): Baron +2 (while his secret
+    Factions are held), Earl Memnon +2, Countess Ariana +1 and Count Ilban +1
+    are the original game's leaders (``LEADER_ARCHETYPES`` holds them there);
+    Princess Irulan +2 at an Emperor-icon space while her Emperor influence is
+    below 2 or she holds the ``ImperialBirthrightDeferredAbility`` grant.
+    Judgement: our engine resolves Imperial Birthright automatically, so the
+    grant is never held; only the influence test remains.
+    """
+
+    cards, spaces = _this_turn_agent(p)
+    n = 0
+    for entity in (*cards, *_intrigue_hand(p), *spaces):
+        n += entity.int_attr("DeferValue")
+    leader = _leader_arch_id(p)
+    if baron_has_secret_factions(p):  # the Baron before his Masterstroke
+        n += 2
+    elif leader == _MEMNON and any(is_high_council_space(s) for s in spaces):
+        n += 2
+    elif leader == _ARIANA and any(
+        s.int_attr("Spice") > 0 and s.has("BonusSpice") for s in spaces
+    ):
+        n += 1
+    elif leader == _ILBAN and any(s.attr("AgentIcon") == "Pentagon" for s in spaces):
+        n += 1
+    elif leader == _IRULAN and any(s.attr("AgentIcon") == "Emperor" for s in spaces):
+        if p.ctx.me.influence.emperor < 2:
+            n += 2
+    turn_space_ids = {s.ref for s in spaces}
+    for contract_ref in p.ctx.me.active_contract_ids:  # IsFaceUp: not completed
+        contract = contract_entity(contract_ref, p.ctx.seat)
+        defer = contract.int_attr("DeferValue")
+        if defer > 0 and any(
+            s.ref in turn_space_ids for s in contract_spaces(p, contract)
+        ):
+            n += defer
+    return n >= DEFERRAL_THRESHOLD
+
+
+def _no_current_player(p: Profile) -> bool:
+    """``Match.CurrentPlayer() == null``.
+
+    [I] no seat takes a turn outside the player-turns phase. Judgement: inside
+    it the current player is taken to be the deciding seat ``p`` (the app asks
+    these members of the active player's own abilities).
+    """
+
+    return p.ctx.state.phase is not GamePhase.PLAYER_TURNS
+
+
+def _runs_unless_threshold(p: Profile) -> bool:
+    """CanRunImmediately of DrawAbility / GainInfluenceAbility
+ / GainContractAbility.
+
+    ``cp == null or cp.IsInPlayerTurn(Reveal) or !cp.DeferredThresholdReached()``.
+    Ours: in the Reveal turn ``has_revealed`` is already set.
+    """
+
+    if _no_current_player(p):
+        return True
+    if p.ctx.me.has_revealed:
+        return True
+    return not deferred_threshold_reached(p)
+
+
+def _in_combat_phase(p: Profile) -> bool:
+    """``Playmat.RoundPhase == 20 (Combat)`` / ``IsInPlayerTurn(CombatTurn)``."""
+
+    return p.ctx.state.phase is GamePhase.COMBAT
+
+
+def value_for_reveal_abilities(card: Entity, p: Profile) -> Summer:
+    """``ImperiumExtensions.GetValueForRevealAbilities``.
+
+    Merge over the card's ``RevealAbility`` objects of ``ValueForPlayer(P, [])``.
+    """
+
+    value = Summer()
+    for ability in abilities_of(card):
+        if isinstance(ability, RevealAbility):
+            value.merge(ability.value_for_player(p, ()))
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Play abilities: AgentAbility, PowerPlayAgentAbility, RevealAbility
+# ---------------------------------------------------------------------------
+
+
+@port("ability.play.play")
+class PlayAbility(Ability):
+    """``PlayAbilities.PlayAbility`` (abstract; source entity = the card)."""
+
+
+@port("ability.play.agent")
+class AgentAbility(PlayAbility):
+    """``PlayAbilities.AgentAbility``: the generic agent box (spec §2)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT
+    #: ``AgentAttributes`` (+0x80, constructor), insertion order.
+    AGENT_ATTRIBUTES: ClassVar[tuple[tuple[str, Attr], ...]] = (
+        ("AgentWater", Attr.WATER),
+        ("AgentSpice", Attr.SPICE),
+        ("AgentSolari", Attr.SOLARI),
+    )
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``AgentAbility.Evaluate`` (spec §2.1): the space loop.
+
+        For each legal space (``request.infos[0]`` space entities, target
+        order) on which some ``SpaceAbility``-derived ability can run:
+        ``Σ space abilities' value_for_player(p, [card]) +
+        self.value_for_player(p, [space])``; the first strictly best space
+        is kept (the first one always sticks, even at a value <= 0).
+        """
+
+        stored: Answer | None = None
+        for space in _targets(request, Kind.SPACE):
+            space_abilities = abilities_of(space)
+            runnable = [a for a in space_abilities if isinstance(a, SpaceAbility)]
+            if all(not a.can_be_run(p) for a in runnable):
+                continue  # also skips a space without any SpaceAbility
+            card_v = self.value_for_player(p, (space,))
+            space_v = Summer()
+            for ability in space_abilities:
+                space_v.merge(ability.value_for_player(p, (self.owner,)))
+            total = space_v.sum + card_v.sum
+            if stored is None or total > stored.value:
+                stored = Answer(total, ((space.ref,),), f"AgentAbility -> {space.ref}")
+        if stored is None:
+            return Answer(0.0, None, "AgentAbility no space")
+        return stored
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``AgentAbility.ValueForPlayer`` (spec §2.2).
+
+        ``with_entities`` is ``[space]`` from ``evaluate``.
+        """
+
+        v = Summer()
+        card = self.owner
+        abilities = abilities_of(card)
+        # (a) the card's other agent-timed effects, valued with this space
+        for d in abilities:
+            if isinstance(d, DeferredAbility) and d.timing == Timing.AGENT:
+                v.merge(d.value_for_player(p, with_entities))
+        for t in abilities:
+            if isinstance(t, TriggeredAbility) and t.timing == Timing.AGENT:
+                v.merge(t.value_for_player(p, with_entities))
+        # (b) printed agent-box resources
+        for card_attr, resource in self.AGENT_ATTRIBUTES:
+            n = card.int_attr(card_attr)
+            if n > 0:
+                v.add("Agent " + card_attr, p.resource_value(resource, n, False))
+        troops = card.int_attr("AgentTroops")
+        if troops > 0:
+            v.add("Agent Troops", p.troop_value(troops, False))
+        # (c) "Imperium Play Bonus": the other hand cards' play-area synergy
+        bonus: list[Summer] = []
+        for other in _hand_cards(p):
+            if other.ref == card.ref:
+                continue
+            for ability in abilities_of(other):
+                bonus.append(
+                    ability.value_in_pile_for_other_play(p, Pile.PLAY_AREA, card)
+                )
+        if any(b.sum > 0 for b in bonus):  # strict
+            whole = Summer()
+            for b in bonus:
+                whole.merge(b)
+            v.add("Imperium Play Bonus", whole.sum)  # the whole concatenation
+        # (d) leader signet
+        if signet_icons(card) > 0:
+            leader = _leader(p)
+            if leader is not None:
+                for ability in abilities_of(leader):
+                    if app_isinstance(ability, _SIGNET_ABILITY):
+                        v.merge(ability.value_for_player(p, with_entities))
+        # (e) Rise of Ix "One Step Ahead": its player attribute is never set in
+        # Uprising, so the term is absent.
+        # (f) reveal opportunity cost (rix-tech §5.2).
+        rv = value_for_reveal_abilities(card, p)
+        if p.ctx.has_tech("artillery") and card.int_attr("Strength") > 0:
+            rv.multiply(" with Artillery", p.C.ArtilleryRevealMod)
+        rv.multiply("Reveal Scale", p.C.CardPlayValueRevealPenalty)
+        v.merge(rv)  # MergePrependReason "Reveal Penalty "
+        return v
+
+
+@port("ability.play.original.power_play_agent")
+class PowerPlayAgentAbility(AgentAbility):
+    """``ability.play.original.power_play_agent`` (spec §2.3)."""
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``PowerPlayAgentAbility.ValueForPlayer``."""
+
+        v = super().value_for_player(p, with_entities)
+        space = collect_first(with_entities, Kind.SPACE)
+        if space is not None:
+            influence = _faction_influence(space)
+            base = 0.0
+            for faction, n in influence:
+                base += p.gain_influence_value(faction, n, -1, False).sum
+            plus = 0.0
+            for faction, n in influence:
+                plus += p.gain_influence_value(faction, n + 1, -1, False).sum
+            v.add("Power Play Bonus Influence", plus - base)
+        return v
+
+
+@port("ability.play.reveal")
+class RevealAbility(Ability):
+    """``PlayAbilities.RevealAbility``: the generic reveal box (spec §3).
+
+    Derives from ``AbilityDefinition`` directly (not ``PlayAbility``).
+    """
+
+    timing: ClassVar[Timing] = Timing.REVEAL
+    #: ``ValueAttributes`` (+0x88, constructor).
+    VALUE_ATTRIBUTES: ClassVar[tuple[Attr, ...]] = (
+        Attr.WATER,
+        Attr.SPICE,
+        Attr.SOLARI,
+        Attr.PERSUASION,
+        Attr.STRENGTH,
+        Attr.SPECIMEN,
+        Attr.TROOPS,
+    )
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``RevealAbility.ValueForPlayer`` (spec §3.1)."""
+
+        v = Summer()
+        for attr in self.VALUE_ATTRIBUTES:
+            n = self.owner.int_attr(attr.value)
+            if n > 0:
+                v.add("Reveal " + attr.value, p.resource_value(attr, n, False))
+        abilities = abilities_of(self.owner)
+        deferred = 0.0
+        for d in abilities:  # (timing == Reveal)
+            if isinstance(d, DeferredAbility) and d.timing == Timing.REVEAL:
+                deferred += d.value_for_player(p, ()).sum
+        v.add("Reveal Deferred", deferred)
+        triggered = 0.0
+        for t in abilities:
+            if isinstance(t, TriggeredAbility) and t.timing == Timing.REVEAL:
+                triggered += t.value_for_player(p, ()).sum
+        v.add("Reveal Triggered", triggered)
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Activated abilities: AcquireAbility and the DeferredAbility family
+# ---------------------------------------------------------------------------
+
+
+@port("ability.activated.activated")
+class ActivatedAbility(Ability):
+    """``ActivatedAbilities.ActivatedAbility`` (abstract)."""
+
+
+@port("ability.activated.acquire")
+class AcquireAbility(ActivatedAbility):
+    """``ActivatedAbilities.AcquireAbility``: buying a card (spec §4)."""
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``AcquireAbility.Evaluate`` (spec §4.1).
+
+        The Tleilaxu lines (immortality.md §3.5 and its Errata; only for a Tleilaxu
+        card, ``EntityType == Tleilaxu``): in the final round the value is *replaced* by
+        ``GetAcquireEffectsValue`` (a fresh summer merged with it); otherwise the
+        acquire ability's own ``SpecimenCost`` attribute is added
+        (``SpecimenCost(this)`` reads the ability, which never carries one: 0) and,
+        while some Tleilaxu Row card costs more specimens than P holds and is worth more
+        than this value + ``AcquireTleilaxuReserveThreshold``, the
+        ``AcquireTleilaxuReservePenalty`` "Save Up Specimens".
+
+        The destination picker (``ChooseOne`` or
+        ``ChooseAcquireTleilaxuLocation``: option 0 top of deck, 1
+        hand/discard) is expected never to appear in Uprising (spec §4.2,
+        UNTRACED); a request whose first target info carries custom
+        ``options`` is treated as that picker (judgement).
+        """
+
+        card = self.owner
+        acquire = p.acquire_value(card)
+        if card.attr("EntityType") == "Tleilaxu":
+            acquire = self._tleilaxu_acquire_value(p, acquire)
+        value = acquire.sum
+        if request.infos and request.infos[0].options:
+            if _in_combat_phase(p):
+                value = 1.0 if value <= 0 else value  # ``cmplesd``
+            option = 1 if _is_tsmf(card) else 0
+            return Answer(value, ((option,),), f"Acquire {card.ref}")
+        return Answer(value, (), f"Acquire {card.ref}")
+
+    def _tleilaxu_acquire_value(self, p: Profile, acquire: Summer) -> Summer:
+        """The Tleilaxu block of ``AcquireAbility.Evaluate``.
+
+        The two row tests are ``SpecimenCost(row card) > GetSpecimens().Count`` and
+        ``row.AcquireValue(P).Sum > acquireValue.Sum +
+        AcquireTleilaxuReserveThreshold``, both against the value after "Specimen
+        Cost".
+        ``Playmat.TleilaxuRow`` holds Reclaimed Forces and the dealt cards (this card
+        included).
+        """
+
+        if p.is_final_round():
+            replaced = Summer()
+            replaced.merge(p.acquire_effects_value(self.owner))
+            return replaced
+        acquire.add("Specimen Cost", 0.0)  # the ability's own SpecimenCost: 0
+        specimens = p.ctx.specimens()
+        threshold = acquire.sum + p.C.AcquireTleilaxuReserveThreshold
+        if any(
+            row.int_attr("SpecimenCost") > specimens
+            and p.acquire_value(row).sum > threshold
+            for row in p.tleilaxu_row_cards()
+        ):
+            acquire.add("Save Up Specimens", p.C.AcquireTleilaxuReservePenalty)
+        return acquire
+
+
+@port("ability.activated.deferred")
+class DeferredAbility(ActivatedAbility):
+    """``ActivatedAbilities.DeferredAbility`` (abstract; spec §5)."""
+
+    #: ``AlwaysRunImmediately``.
+    always_run_immediately: ClassVar[bool] = False
+    #: ``ContextuallyDeferred``.
+    contextually_deferred: ClassVar[bool] = False
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``SelectionMode(ctx)``: abstract in the app."""
+
+        raise NotImplementedError(f"{type(self).__name__}.selection_mode")
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``DeferredAbility.CanRunImmediately``."""
+
+        return self.always_run_immediately
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``AbilityExtensions.MeetsCost`` with this class's ``Cost``.
+
+        Only the costs the AI hooks read are modelled; the engine owns
+        legality otherwise.
+        """
+
+        return True
+
+    def defer_value(self, p: Profile) -> int:
+        """The owner's ``DeferValue`` (1 if Explicit, else 0 when absent)."""
+
+        default = 1 if self.selection_mode(p) == SelectionMode.EXPLICIT else 0
+        return self.owner.int_attr("DeferValue", default)
+
+    def possible_conflict_vp(self, p: Profile, double_cost: bool) -> int:
+        """``DeferredAbility.GetPossibleConflictVP``: 0."""
+
+        return 0
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``DeferredAbility.Evaluate`` (spec §5.1).
+
+        ``UpdateSelectionTargets((double)DeferValue, src, null)``.
+        """
+
+        return Answer(float(self.defer_value(p)), (), f"{type(self).__name__} defer")
+
+
+# -- draws --
+
+
+@port("ability.activated.draw")
+class DrawAbility(DeferredAbility):
+    """``ActivatedAbilities.DrawAbility`` (spec §7); E = DeferValue."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+    contextually_deferred: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``DrawAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``DrawAbility.CanRunImmediately``."""
+
+        return _runs_unless_threshold(p)
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``DrawAbility.Cost`` = ``HasDrawableCard``."""
+
+        return _has_drawable_card(p)
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``DrawAbility.ValueForPlayer`` (count not read)."""
+
+        v = Summer()
+        if self.meets_cost(p):
+            v.add("Draw Value", p.card_draw_value())
+            v.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        return v
+
+
+@port("ability.activated.uprising.spacing_guild_discard_draw")
+class SpacingGuildDiscardDrawAbility(DrawAbility):
+    """``Uprising.SpacingGuildDiscardDrawAbility`` (Guild Envoy, Space-Time
+    Folding)."""
+
+    def has_run_token(self, p: Profile) -> bool:
+        """``P.CustomAbilityIDs`` holds this ability's id with run tokens left.
+
+        UNTRACED (our engine has no such grant): the card's discard rider
+        grants it only while resolving; never held at valuation. A card port
+        that models the grant overrides this.
+        """
+
+        return False
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``SpacingGuildDiscardDrawAbility.Cost``: the granted
+        ``CustomAbilityIDs`` entry and ``AbilityRunTokens``; no
+        ``HasDrawableCard``."""
+
+        return self.has_run_token(p)
+
+
+@port(
+    "ability.activated.uprising.bene_gesserit_influence_draw"
+)
+class BeneGesseritInfluenceDrawAbility(DrawAbility):
+    """``Uprising.BeneGesseritInfluenceDrawAbility`` (Hidden Missive, Prepare
+    the Way)."""
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost``: ``HasFactionInfluence.AtLeast(BG, 2)`` and
+        ``HasDrawableCard``."""
+
+        return p.ctx.me.influence.bene_gesserit >= 2 and _has_drawable_card(p)
+
+
+class _CargoRunnerContractsDrawAbility(DrawAbility):
+    """Shared body of the two Cargo Runner draws (not an app class: both app
+    classes derive from ``DrawAbility`` directly)."""
+
+    CONTRACTS: ClassVar[int] = 0  # literal of each Cost
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``HasAtLeastContractsCompleted(n)`` and ``HasDrawableCard``."""
+
+        completed = len(p.ctx.me.completed_contract_ids)
+        return completed >= self.CONTRACTS and _has_drawable_card(p)
+
+
+@port(
+    "ability.activated.uprising.cargo_runner2_contracts_draw"
+)
+class CargoRunner2ContractsDrawAbility(_CargoRunnerContractsDrawAbility):
+    """``Uprising.CargoRunner2ContractsDrawAbility`` (Cargo Runner)."""
+
+    CONTRACTS: ClassVar[int] = 2
+
+
+@port(
+    "ability.activated.uprising.cargo_runner4_contracts_draw"
+)
+class CargoRunner4ContractsDrawAbility(_CargoRunnerContractsDrawAbility):
+    """``Uprising.CargoRunner4ContractsDrawAbility`` (Cargo Runner)."""
+
+    CONTRACTS: ClassVar[int] = 4
+
+
+def bg_played_pile_value(
+    p: Profile, pile: Pile, card: Entity, played: Callable[[], float], label: str
+) -> Summer:
+    """The "BGP" synergy pattern (``imperium-b.md`` §0.5) with term ``played()``.
+
+    Shared by ``BeneGesseritDrawAbility`` and the card classes that use the same pattern
+    (Southern Elders agent, Bene Gesserit Trash, Weirding Woman). PlayArea: no BG card
+    in play, the candidate is BG and P has >= 2 agents left -> ``played()`` under
+    ``label``. Deck: the candidate is BG and not climax ->
+    ``SynergyBeneGesseritWithBondInDeck``.
+    """
+
+    s = Summer()
+    if pile is Pile.PLAY_AREA:
+        if (
+            not any("BeneGesserit" in card_factions(c) for c in _cards_in_play(p))
+            and "BeneGesserit" in card_factions(card)
+            and p.ctx.me.agents_available >= 2
+        ):
+            s.add(label, played())
+            return s
+    if (
+        pile is Pile.DECK
+        and "BeneGesserit" in card_factions(card)
+        and not p.is_climax()
+    ):
+        s.add("Bene Gesserit in Deck", p.C.SynergyBeneGesseritWithBondInDeck)
+    return s
+
+
+@port("ability.activated.bene_gesserit_draw")
+class BeneGesseritDrawAbility(DrawAbility):
+    """``ActivatedAbilities.BeneGesseritDrawAbility`` (In High Places, Tread in
+    Darkness); overrides V and P."""
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost``: ``HasPlayedFactionCard(BG, owner)`` then
+        ``HasDrawableCard``.
+
+        UNTRACED argument roles (``imperium-a.md``): read as another BG card
+        than the owner in play.
+        """
+
+        other_bg = any(
+            "BeneGesserit" in card_factions(c)
+            for c in _cards_in_play(p)
+            if c.ref != self.owner.ref
+        )
+        return other_bg and _has_drawable_card(p)
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``BeneGesseritDrawAbility.ValueForPlayer``.
+
+        ``AllCardsInPlay.Any(BG)`` (owner not excluded) then the
+        MeetsCost-gated ``DrawAbility`` value, else empty.
+        """
+
+        if any("BeneGesserit" in card_factions(c) for c in _cards_in_play(p)):
+            return super().value_for_player(p, ())
+        return Summer()
+
+    def value_in_pile_for_other_play(
+        self, p: Profile, pile: Pile, card: Entity
+    ) -> Summer:
+        """``BeneGesseritDrawAbility.ValueInPileForOtherPlay``.
+
+        Pattern BGP with ``X = 0.75 * (CardDrawValue + GetBuyGains(
+        PossiblePersuasionGain()))`` (f64 literal 0.75), label "No Bene
+        Gesserit in Play".
+        """
+
+        def played() -> float:
+            return 0.75 * (
+                p.card_draw_value() + p.buy_gains(p.possible_persuasion_gain())
+            )
+
+        return bg_played_pile_value(p, pile, card, played, "No Bene Gesserit in Play")
+
+
+# -- influence --
+
+
+@port("ability.space.gain_influence")
+class GainInfluenceAbility(DeferredAbility):
+    """``SpaceAbilities.GainInfluenceAbility``: a faction space's influence
+    (spec §8); E = DeferValue of the space."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor stores AbilityTiming 1
+    contextually_deferred: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``GainInfluenceAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``GainInfluenceAbility.CanRunImmediately``."""
+
+        return _runs_unless_threshold(p)
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GainInfluenceAbility.ValueForPlayer`` (no MeetsCost).
+
+        ``AdditionalSpaceInfluence`` (a player bool) is never set in Uprising.
+        """
+
+        v = Summer()
+        for faction, n in _faction_influence(self.owner):
+            if n <= 0:
+                continue
+            amount = n + 0  # + 1 with AdditionalSpaceInfluence
+            v.add(
+                f"Gain {faction} Influence",
+                p.gain_influence_value(faction, amount, -1, False).sum,
+            )
+        return v
+
+
+@port("ability.activated.gain_any_influence")
+class GainAnyInfluenceAbility(DeferredAbility):
+    """``ActivatedAbilities.GainAnyInfluenceAbility`` (abstract; spec §9)."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``GainAnyInfluenceAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GainAnyInfluenceAbility.ValueForPlayer``."""
+
+        v = Summer()
+        v.add("Gain Any Influence", gain_any_influence_value(p, 1).sum)
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``GainAnyInfluenceAbility.Evaluate``.
+
+        Faction tracks in target order (``request.infos[0]`` TRACK entities,
+        ref = our faction id; the app's track order is UNTRACED), no
+        shuffle: ``GetGainInfluenceValue(f, 1) + 100`` ("Static Boost"),
+        first strict maximum. The House Hagal branch is unreachable.
+        """
+
+        stored: Answer | None = None
+        for track in _targets(request, Kind.TRACK):
+            s = Summer()
+            s.merge(p.gain_influence_value(track.ref, 1, -1, False))
+            s.add("Static Boost", 100.0)
+            if stored is None or s.sum > stored.value:
+                stored = Answer(
+                    s.sum, ((track.ref,),), f"Gain Any Influence {track.ref}"
+                )
+        if stored is None:
+            return Answer(0.0, None, "Gain Any Influence no track")
+        return stored
+
+
+@port("ability.activated.gain_any_influence_agent")
+class GainAnyInfluenceAgentAbility(GainAnyInfluenceAbility):
+    """``GainAnyInfluenceAgentAbility`` (Interstellar Trade, Shipping)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+
+
+@port("ability.activated.gain_any_influence_reveal")
+class GainAnyInfluenceRevealAbility(GainAnyInfluenceAbility):
+    """``GainAnyInfluenceRevealAbility`` (no Uprising user)."""
+
+    timing: ClassVar[Timing] = Timing.REVEAL  # constructor
+
+
+@port("ability.activated.gain_any_influence_custom")
+class GainAnyInfluenceCustomAbility(GainAnyInfluenceAbility):
+    """``GainAnyInfluenceCustomAbility`` (abstract; ``Cost`` =
+    ``HasCustomAbility`` and ``CanGainInfluence``; timing None)."""
+
+
+@port("ability.activated.gain_any_influence_conflict")
+class GainAnyInfluenceConflictAbility(GainAnyInfluenceCustomAbility):
+    """``GainAnyInfluenceConflictAbility`` (Skirmish H 1st, Spice Freighters
+    1st)."""
+
+    timing: ClassVar[Timing] = Timing.COMBAT_RESOLUTION  # constructor
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``GainAnyInfluenceConflictAbility.CanRunImmediately``."""
+
+        return True
+
+
+# -- intrigue --
+
+
+@port("ability.activated.gain_intrigue")
+class GainIntrigueAbility(DeferredAbility):
+    """``ActivatedAbilities.GainIntrigueAbility`` (abstract; spec §10)."""
+
+    always_run_immediately: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``GainIntrigueAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GainIntrigueAbility.ValueForPlayer`` (one card)."""
+
+        v = Summer()
+        if self.meets_cost(p):  # Cost = NoCostAction
+            v.add("Gain Intrigue", p.intrigue_value())
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``GainIntrigueAbility.Evaluate``: 100."""
+
+        return Answer(100.0, (), "GainIntrigueAbility | 100")
+
+
+@port("ability.activated.agent_gain_intrigue")
+class AgentGainIntrigueAbility(GainIntrigueAbility):
+    """``AgentGainIntrigueAbility`` (Assembly Hall, Sardaukar, Secrets)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT
+
+
+@port("ability.activated.reveal_gain_intrigue")
+class RevealGainIntrigueAbility(GainIntrigueAbility):
+    """``RevealGainIntrigueAbility`` (Treacherous Maneuver)."""
+
+    timing: ClassVar[Timing] = Timing.REVEAL
+
+
+@port("ability.activated.gain_intrigue_custom")
+class GainIntrigueCustomAbility(GainIntrigueAbility):
+    """``GainIntrigueCustomAbility`` (Cost = NoCost and ``HasCustomAbility``;
+    timing None)."""
+
+    always_run_immediately: ClassVar[bool] = False
+
+    def has_custom_ability(self, p: Profile) -> bool:
+        """``HasCustomAbility(this)``: ``P`` holds this ability's custom grant.
+
+        Judgement (unreachable today): no Uprising or CHOAM archetype lists
+        this class (``Irulan`` and ``Muad'Dib`` derive from
+        ``GainIntrigueAbility`` directly), so no frame of ours grants it; never
+        held, like ``SpacingGuildDiscardDrawAbility.has_run_token``. With
+        Immortality the playmat holds it (spec immortality.md §1.4), but no
+        research space or card of this game grants its id (§3.4, UNTRACED
+        #14). A port that models the grant overrides this.
+        """
+
+        return False
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``GainIntrigueCustomAbility.Cost`` =
+        ``NoCostAction.Then(HasCustomAbility(this))`` (generic-abilities §10).
+
+        This gates the inherited ``GainIntrigueAbility.ValueForPlayer``
+, so V is 0 without the grant.
+        """
+
+        return self.has_custom_ability(p)
+
+
+@port("ability.activated.uprising.high_council_gain_intrigue")
+class HighCouncilGainIntrigueAbility(GainIntrigueAbility):
+    """``Uprising.HighCouncilGainIntrigueAbility`` (High Council repeat
+    visit)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` = ``HighCouncilUprisingSpaceAbility.
+        MakeRepeatedVisitCost``: ``!CanTakeHighCouncilSeat`` then
+        ``IsRepeatHighCouncilUse`` ≈ P holds the seat and did not gain it this
+        turn ([I], ``board.md`` §1.4.10). Ours: the seat is held and the own
+        open Agent turn at the High Council is not the first visit (its board
+        icons hold no ``high_council`` seat icon).
+        """
+
+        if not p.ctx.me.high_council:
+            return False
+        context = p.ctx.own_frame_context("agent_effects")
+        if context is not None and context.get("space_id") == "high_council":
+            icons = str(context.get("board_icons", "")).split(",")
+            if "high_council" in icons:
+                return False  # the seat was taken by this visit
+        return True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``HighCouncilGainIntrigueAbility.SelectionMode``:
+        ``2 | (Cost can be paid ? 1 : 0)`` (Implicit or Explicit; the
+        identity is [I])."""
+
+        return SelectionMode(2 | (1 if self.meets_cost(p) else 0))
+
+
+# -- deploy --
+
+
+@port("ability.activated.deploy_units")
+class DeployUnitsAbility(DeferredAbility):
+    """``ActivatedAbilities.DeployUnitsAbility`` (spec §11)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``DeployUnitsAbility.SelectionMode``: Optional."""
+
+        return SelectionMode.OPTIONAL
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``DeployUnitsAbility.ValueForPlayer``.
+
+        Shaddam Corrino IV gets no deploy value for a card without a signet
+        icon (quirk kept).
+        """
+
+        v = Summer()
+        card = collect_first(with_entities, Kind.CARD)
+        if card is None or signet_icons(card) > 0 or _leader_arch_id(p) != _SHADDAM:
+            v.add("Deploy Units", p.deploy_value(self.owner))
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``DeployUnitsAbility.Evaluate``.
+
+        ``request.infos[0].options``: one index per valid garrison unit;
+        ``max_select`` = the maximum (``NumberToSelect``). The response is the
+        first ``GetUnitsToDeploy`` unit indices; value 0.5 (ordering only).
+        """
+
+        if not request.infos:
+            return Answer(0.0, None, "Deploy Units no target info")
+        info = request.infos[0]
+        units = info.options
+        count = p.units_to_deploy(len(units), info.max_select)
+        chosen = units[: max(count, 0)]
+        if not chosen:
+            return Answer(0.0, None, "Deploy Units none")
+        return Answer(0.5, (tuple(chosen),), f"Deploy Units | 0.5 | {len(chosen)}")
+
+
+# -- trash --
+
+
+@port("ability.activated.trash")
+class TrashAbility(DeferredAbility):
+    """``ActivatedAbilities.TrashAbility`` (abstract; spec §12.1)."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``TrashAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``TrashAbility.ValueForPlayer`` (no MeetsCost)."""
+
+        v = Summer()
+        v.add("Trash Card", p.trash_card_value())
+        v.add("Trash Card Bonus", p.trash_mod())
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``TrashAbility.Evaluate``.
+
+        ``GetCardToTrash(targets, minTrashValue = 1.0)`` (literal); without a
+        junk card the AI "uses" the trash at 1.0 and trashes nothing
+        (response ``((),)``; the prompt's minimum is 0).
+        """
+
+        card, value = p.card_to_trash(_targets(request, Kind.CARD), 1.0)
+        if card is not None:
+            return Answer(value, ((card.ref,),), f"Trash {card.ref}")
+        return Answer(value, ((),), "Trash nothing")
+
+
+@port("ability.activated.trash_agent")
+class TrashAgentAbility(TrashAbility):
+    """``TrashAgentAbility`` (Desert Survival, Calculus of Power, Desert
+    Tactics)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+
+
+@port("ability.activated.trash_custom")
+class TrashCustomAbility(TrashAbility):
+    """``TrashCustomAbility`` (``Cost`` = ``HasTrashableCard`` and
+    ``HasCustomAbility``; timing None)."""
+
+
+@port("ability.conflict.uprising.trash_conflict_custom")
+class TrashConflictCustomAbility(TrashCustomAbility):
+    """``ability.conflict.uprising.trash_conflict_custom`` (Trade Dispute
+    1st/2nd); only the prompt archetype differs."""
+
+
+@port("ability.activated.trash_self")
+class TrashSelfAbility(DeferredAbility):
+    """``ActivatedAbilities.TrashSelfAbility`` (spec §12.2): runs by itself."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+    always_run_immediately: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``TrashSelfAbility.SelectionMode``: Implicit."""
+
+        return SelectionMode.IMPLICIT
+
+
+# -- spies --
+
+
+@port("ability.activated.uprising.place_spy")
+class PlaceSpyAbility(DeferredAbility):
+    """``Uprising.PlaceSpyAbility`` (abstract; spec §13)."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``PlaceSpyAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``PlaceSpyAbility.ValueForPlayer`` (post-independent)."""
+
+        v = Summer()
+        v.add("Place Spy Value", p.spy_value().sum)
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``PlaceSpyAbility.Evaluate``.
+
+        Answers "use" at ``SpyValue`` with an empty response: the post is
+        chosen later by the ``PlaceSpy`` action's own prompt. The app's
+        ``GetSpyAIResponses`` result only feeds a log line, so it is not
+        computed (judgement: its shuffles draw from the app's clock RNG and
+        cannot change this answer).
+        """
+
+        return Answer(p.spy_value().sum, (), "Place Spy")
+
+
+@port("ability.activated.uprising.place_spy_agent")
+class PlaceSpyAgentAbility(PlaceSpyAbility):
+    """``PlaceSpyAgentAbility`` (Bene Gesserit Operative, Espionage)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+
+
+@port("ability.activated.uprising.place_spy_reveal")
+class PlaceSpyRevealAbility(PlaceSpyAbility):
+    """``PlaceSpyRevealAbility`` (Covert Operation, Public Spectacle, Wheels
+    Within Wheels)."""
+
+    timing: ClassVar[Timing] = Timing.REVEAL  # constructor
+
+
+@port("ability.activated.uprising.place_spy_custom")
+class PlaceSpyCustomAbility(PlaceSpyAbility):
+    """``PlaceSpyCustomAbility`` (Seize Spice Refinery 1st, Test of Loyalty
+    1st; timing None)."""
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``PlaceSpyCustomAbility.CanRunImmediately``:
+        ``Playmat.RoundPhase == Combat``."""
+
+        return _in_combat_phase(p)
+
+
+@port(
+    "ability.activated.uprising.place_spy_combat_resolution"
+)
+class PlaceSpyCombatResolutionAbility(PlaceSpyAbility):
+    """``PlaceSpyCombatResolutionAbility`` (no Uprising user in the census)."""
+
+    timing: ClassVar[Timing] = Timing.COMBAT_RESOLUTION  # constructor stores 3
+
+
+# -- agent recall --
+
+
+@port("ability.activated.uprising.recall_agent")
+class RecallAgentAbility(DeferredAbility):
+    """``Uprising.RecallAgentAbility`` (Steersman, Imperial Privilege; §14)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``RecallAgentAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``RecallAgentAbility.ValueForPlayer`` (no MeetsCost)."""
+
+        v = Summer()
+        v.add("Recall Agent Value", p.recall_agent_value())
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``RecallAgentAbility.Evaluate``.
+
+        ``GetRecallAgent(agents) ?? agents.FirstOrDefault()`` (AGENT
+        entities of ``request.infos[0]``) at ``RecallAgentValue``.
+        """
+
+        agents = _targets(request, Kind.AGENT)
+        agent = p.recall_agent(agents)
+        if agent is None and agents:
+            agent = agents[0]
+        if agent is None:
+            return Answer(0.0, None, "Recall Agent no target")
+        return Answer(p.recall_agent_value(), ((agent.ref,),), f"Recall {agent.ref}")
+
+
+# -- contracts --
+
+
+def contract_value_for_player(p: Profile) -> Summer:
+    """``GainContractAbility.ContractValueForPlayer``."""
+
+    v = Summer()
+    if _contract_options(p):
+        v.add("Gain Contract Value", p.gain_contract_value().sum)
+    else:
+        v.add("Gain Contract 2 Solari", p.solari_value(2))
+    return v
+
+
+def contract_evaluate(p: Profile, request: Request, forced: bool) -> Answer:
+    """``GainContractAbility.ContractEvaluate(ctx, ability, src, forced)``
+ (also Leverage's E with ``forced = False``).
+
+    CONTRACT entities of ``request.infos[0]`` in ``GetContractOptions`` order.
+    """
+
+    targets = _targets(request, Kind.CONTRACT)
+    best, value = p.best_contract(targets, forced)
+    if best is not None:
+        return Answer(value, ((best.ref,),), f"Contract {best.ref}")
+    if not targets:
+        return Answer(p.solari_value(2), (), "No contract: 2 Solari")
+    return Answer(0.0, None, "No contract chosen")
+
+
+@port("ability.activated.uprising.gain_contract")
+class GainContractAbility(DeferredAbility):
+    """``Uprising.GainContractAbility`` (Accept Contract, Dutiful Service,
+    Priority Contracts; spec §15)."""
+
+    timing: ClassVar[Timing] = Timing.AGENT  # constructor
+    contextually_deferred: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``GainContractAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``GainContractAbility.CanRunImmediately``."""
+
+        return _runs_unless_threshold(p)
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GainContractAbility.ValueForPlayer``."""
+
+        return contract_value_for_player(p)
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``GainContractAbility.Evaluate`` (forced)."""
+
+        return contract_evaluate(p, request, True)
+
+
+@port("ability.activated.uprising.gain_contract_custom")
+class GainContractCustomAbility(DeferredAbility):
+    """``Uprising.GainContractCustomAbility`` (CHOAM Security and Trade Dispute
+    1st with CHOAM; timing None)."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``GainContractCustomAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``GainContractCustomAbility.CanRunImmediately``:
+        ``Playmat.RoundPhase == Combat``."""
+
+        return _in_combat_phase(p)
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GainContractCustomAbility.ValueForPlayer``."""
+
+        return contract_value_for_player(p)
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``GainContractCustomAbility.Evaluate`` (forced)."""
+
+        return contract_evaluate(p, request, True)
+
+
+@port(
+    "ability.activated.uprising.contract.contract"
+)
+class ContractAbility(DeferredAbility):
+    """``ContractAbilities.ContractAbility``: completing a contract (spec §16,
+    ``board.md`` §3.4-3.5). Owner = the contract (``Kind.CONTRACT``)."""
+
+    always_run_immediately: ClassVar[bool] = True
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``ContractAbility.SelectionMode``: Explicit."""
+
+        return SelectionMode.EXPLICIT
+
+    def is_immediate_contract(self) -> bool:
+        """``IsImmediateContract``: ``ContractType == Immediate``."""
+
+        return self.owner.attr("ContractType") == "Immediate"
+
+    def resource_value(self, p: Profile) -> Summer:
+        """``ContractAbility.GetResourceValue``.
+
+        Amounts of 0 add 0 (linear prices). ``NegotiateTechValue x
+        TechNegotiator`` ("Contract Negotiatiors", the app's spelling) is
+        added only for a contract that has a Negotiator (Rise of Ix's,
+        P7f-2): any other's 0 adds nothing.
+        """
+
+        v = Summer()
+        o = self.owner
+        v.add("Contract Water", p.water_value(o.int_attr("Water")))
+        v.add("Contract Solari", p.solari_value(o.int_attr("Solari")))
+        v.add("Contract Troops", p.troop_value(o.int_attr("Troops"), False))
+        negotiators = o.int_attr("TechNegotiator")
+        if negotiators:
+            v.add("Contract Negotiatiors", p.negotiate_tech_value() * negotiators)
+        if p.ctx.scouts:  # app-style Arrakeen Scouts: CHOAM Escort (§4.4)
+            v.merge(p.choam_escort_contract_value(o.ref))
+        if p.ctx.has_tech("choam_transports"):
+            # Bloodlines CHOAM Transports: a draw per completed contract
+            # (bloodlines-systems.md §9, D57; Draw2ContractAbility's draw).
+            v.add("CHOAM Transports", p.card_draw_value_with_buy_gains())
+        return v
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``ContractAbility.ValueForPlayer`` (no completed check)."""
+
+        v = Summer()
+        space = collect_first(with_entities, Kind.SPACE)
+        if self.is_immediate_contract() or (
+            space is not None
+            and any(s.ref == space.ref for s in contract_spaces(p, self.owner))
+        ):
+            v.merge(self.resource_value(p))
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``ContractAbility.Evaluate``: 100."""
+
+        return Answer(100.0, (), f"Contract {self.owner.ref} | 100")
+
+    # -- SpecificAcquireValue (board.md §3.4) ---------------------
+
+    def _round_factor(self, p: Profile) -> float:
+        return max((9.0 - p.ctx.round_number) * 0.125, 0.25)
+
+    def reward_value_mod(self, p: Profile) -> float:
+        """``RewardValueMod``."""
+
+        kind = self.owner.attr("ContractType")
+        c = p.C
+        if kind == "Space":
+            ratio = c.SpaceContractRewardValueModRatio
+        elif kind == "Harvest":
+            ratio = c.HarvestContractRewardValueModRatio
+        elif kind == "Acquire":
+            ratio = c.AcquireContractRewardValueModRatio
+        else:
+            ratio = 0.0
+        return ratio * self.resource_value(p).sum * self._round_factor(p)
+
+    def agent_icons_mod(self, p: Profile) -> float:
+        """``AgentIconsMod``.
+
+        Judgement: ``deck_agent_icons()`` is keyed by the app's AgentIcons
+        names (archetype ``IconList``/``AgentIcon`` spelling).
+        """
+
+        icons = [
+            str(s.attr("AgentIcon"))
+            for s in contract_spaces(p, self.owner)
+            if s.has("Faction")
+        ]
+        if not icons:
+            return 0.0
+        deck_icons = p.deck_agent_icons()
+        n = sum(deck_icons.get(icon, 0) for icon in icons)
+        if n > 2:
+            f = 2.0
+        elif n == 2:
+            f = 0.0
+        elif n == 1:
+            f = -2.0
+        elif n == 0:
+            f = -5.0
+        else:
+            f = 0.0
+        return f * p.C.SpaceContractAgentIconsModRatio
+
+    def resource_mod(self, p: Profile) -> float:
+        """``ResourceMod``."""
+
+        kind = self.owner.attr("ContractType")
+        if kind == "Space":
+            ratio = p.C.SpaceContractResourceModRatio
+        elif kind == "Harvest":
+            ratio = p.C.HarvestContractResourceModRatio
+        else:
+            ratio = 0.0
+        spaces = contract_spaces(p, self.owner)
+
+        def tri(level: int) -> float:
+            if level == 0:
+                return -3.0
+            return 3.0 if level > 0 else 0.0
+
+        r = 0.0
+        if any(s.ref in ("sardaukar", "heighliner") for s in spaces):
+            r = tri(p.abundance_level(Attr.SPICE))
+        if any(s.ref == "high_council" for s in spaces):
+            r += tri(p.abundance_level(Attr.SOLARI))
+        if any(s.ref == "research_station" for s in spaces):
+            r += tri(p.abundance_level(Attr.WATER))
+        if any(s.ref == "spice_refinery" for s in spaces):
+            s1 = p.solari_value(1)
+            r += -3.0 if 0.5 > s1 else (3.0 if s1 >= 0.9 else 0.0)
+        if any(s.has("BonusSpice") for s in spaces):  # maker spaces
+            s1 = p.solari_value(1)
+            r += -3.0 if 1.25 > s1 else (3.0 if s1 >= 1.8 else 0.0)
+        return ratio * r
+
+    def spy_mod(self, p: Profile) -> float:
+        """``SpyMod``."""
+
+        if any(_observing_spies(p, s.ref) > 0 for s in contract_spaces(p, self.owner)):
+            return 2.0 * p.C.SpaceContractSpyModRatio
+        return 0.0
+
+    def bonus_spice_mod(self, p: Profile) -> float:
+        """``BonusSpiceMod`` (runtime ``BonusSpice``)."""
+
+        total = sum(_space_bonus_spice(p, s) for s in contract_spaces(p, self.owner))
+        return p.C.HarvestContractBonusSpiceModRatio * 0.33 * total
+
+    def round_mod(self, p: Profile) -> float:
+        """``RoundMod``."""
+
+        arc = p.game_arc()
+        factor = 3.0 if arc == 2 else (-3.0 if arc == 0 else 0.0)
+        return factor * p.C.AcquireContractRoundModRatio
+
+    def specific_acquire_value(self, p: Profile) -> Summer:
+        """``ContractAbility.SpecificAcquireValue``.
+
+        ``ContractPlayable.AcquireValue`` (``profile.contract_acquire_value``)
+        is this hook of the contract's ``ContractAbility``.
+        """
+
+        v = Summer()
+        kind = self.owner.attr("ContractType")
+        if kind == "Immediate":
+            v.add("Immediate RewardValue", self.resource_value(p).sum)
+        elif kind == "Space":
+            v.add("RewardValueMod", self.reward_value_mod(p))
+            v.add("AgentIconsMod", self.agent_icons_mod(p))
+            v.add("ResourceMod", self.resource_mod(p))
+            v.add("SpyMod", self.spy_mod(p))
+        elif kind == "Harvest":
+            v.add("RewardValueMod", self.reward_value_mod(p))
+            v.add("ResourceMod", self.resource_mod(p))
+            v.add("BonusSpiceMod", self.bonus_spice_mod(p))
+        elif kind == "Acquire":
+            v.add("RewardValueMod", self.reward_value_mod(p))
+            seat = 3.0 if p.ctx.me.high_council else -3.0
+            v.add("HighCouncilMod", seat * p.C.AcquireContractHighCouncilModRatio)
+            v.add("RoundMod", self.round_mod(p))
+        return v
+
+
+@port(
+    "ability.activated.uprising.contract.draw2_contract"
+)
+class Draw2ContractAbility(ContractAbility):
+    """``ContractAbilities.Draw2ContractAbility`` (ContractBase_6, _12)."""
+
+    always_run_immediately: ClassVar[bool] = False
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``Draw2ContractAbility.CanRunImmediately``:
+        ``cp == null or !cp.DeferredThresholdReached()`` (no Reveal test)."""
+
+        if _no_current_player(p):
+            return True
+        return not deferred_threshold_reached(p)
+
+    def resource_value(self, p: Profile) -> Summer:
+        """``Draw2ContractAbility.GetResourceValue``.
+
+        Corrects both specs: doubles ``CardDrawValue`` and doubles the persuasion passed
+        to ``GetBuyGains``: ``+ 2 x CardDrawValue`` "Draw 2" and ``+ GetBuyGains(2 x
+        PossiblePersuasionGain())`` "Buy Gains Bonus".
+        """
+
+        v = super().resource_value(p)
+        v.add("Draw 2", p.card_draw_value() * 2.0)
+        v.add("Buy Gains Bonus", p.buy_gains(2 * p.possible_persuasion_gain()))
+        return v
+
+
+@port(
+    "ability.activated.uprising.contract.place_spy_contract"
+)
+class PlaceSpyContractAbility(ContractAbility):
+    """``ContractAbilities.PlaceSpyContractAbility`` (ContractBase_4, _9)."""
+
+    always_run_immediately: ClassVar[bool] = False  #; never auto
+
+    def resource_value(self, p: Profile) -> Summer:
+        """``PlaceSpyContractAbility.GetResourceValue``."""
+
+        v = super().resource_value(p)
+        v.add("Place Spy", p.spy_value().sum)
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``PlaceSpyContractAbility.Evaluate``: ``SpyValue`` with
+        an empty response (``GetSpyAIResponses`` discarded, not computed)."""
+
+        return Answer(p.spy_value().sum, (), "Place Spy Contract")
+
+
+# -- conflict-resolution custom rewards --
+
+
+@port("ability.activated.uprising.recall2_spies_vp")
+class Recall2SpiesVPAbility(DeferredAbility):
+    """``Uprising.Recall2SpiesVPAbility`` (Battle for Arrakeen; spec §21)."""
+
+    timing: ClassVar[Timing] = Timing.COMBAT_RESOLUTION
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``Recall2SpiesVPAbility.SelectionMode``: Optional."""
+
+        return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost``: ``HasCustomAbility`` and
+        ``HasAtLeastSpiesOnBoard(2)``.
+
+        Judgement: the custom grant is held exactly while the seat answers our
+        ``combat_reward_spy_recall`` frame (after winning the 1st-place
+        reward); at placement valuation it is not.
+        """
+
+        granted = p.ctx.decision_kind == "combat_reward_spy_recall"
+        return granted and _deployed_spies(p) >= 2
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``Recall2SpiesVPAbility.ValueForPlayer``."""
+
+        v = Summer()
+        if self.meets_cost(p):
+            v.add("Recall 2 Spies", 2 * p.recall_spy_value().sum)
+            v.add("VP", p.victory_point_value(1))
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``Recall2SpiesVPAbility.Evaluate``.
+
+        SPY entities of ``request.infos[0]``; ``GetRecallSpies(spies, 2)``.
+        """
+
+        s = Summer()
+        s.add("VP", p.victory_point_value(1))
+        spies, _ = p.recall_spies(_targets(request, Kind.SPY), 2)
+        if len(spies) != 2:
+            return Answer(0.0, None, "Recall 2 Spies: not 2")
+        s.add("Remove spies", 2 * p.recall_spy_value().sum)
+        return Answer(s.sum, (tuple(spy.ref for spy in spies),), "Recall 2 Spies -> VP")
+
+    def possible_conflict_vp(self, p: Profile, double_cost: bool) -> int:
+        """``Recall2SpiesVPAbility.GetPossibleConflictVP``:
+        ``(SpyDeployedCount >= 2) and not double_cost``."""
+
+        return 1 if (_deployed_spies(p) >= 2 and not double_cost) else 0
+
+
+@port("ability.activated.uprising.blow_wall_custom")
+class BlowWallCustomAbility(DeferredAbility):
+    """``Uprising.BlowWallCustomAbility`` (Sietch Tabr; spec §22). V = 0."""
+
+    timing: ClassVar[Timing] = Timing.AGENT
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``BlowWallCustomAbility.SelectionMode``: Optional."""
+
+        return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost``: ``HasCustomAbility`` then ``Board.HasShieldWall``.
+
+        Our Sietch Tabr destroy-wall option is part of one action; the grant is
+        taken as held whenever the AI is asked (judgement).
+        """
+
+        return p.ctx.shield_wall_present
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``BlowWallCustomAbility.Evaluate``: always 100."""
+
+        return Answer(100.0, (), "Blow Wall | 100")
+
+
+# ---------------------------------------------------------------------------
+# Space abilities
+# ---------------------------------------------------------------------------
+
+
+@port("ability.space.space")
+class SpaceAbility(Ability):
+    """``SpaceAbilities.SpaceAbility``: the generic board-space value (§6).
+
+    Owner = the space. Subclasses (High Council, Swordmaster, Espionage, …)
+    call ``super().value_for_player`` first, as the app does; the High
+    Council's two such classes make the app count this base twice (quirk).
+    """
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``SpaceAbility.ValueForPlayer`` (spec §6.1, board §1.3).
+
+        ``with_entities`` is never read.
+        """
+
+        v = Summer()
+        c = p.C
+        space = self.owner
+        leader = _leader_arch_id(p)
+        # --- printed gains and costs (space attributes) ---
+        sp = space.int_attr("Spice") + _space_bonus_spice(p, space) * c.BonusSpiceMod
+        ariana = False
+        if sp > 0 and leader == _ARIANA:
+            sp += -1.0
+            ariana = True
+        if sp > 0:
+            v.add("Space Spice", sp * p.spice_value(1))  # unit price x amount
+        water = space.int_attr("Water")
+        if water > 0:
+            v.add("Space Water", p.water_value(water))
+        solari = space.int_attr("Solari")
+        if solari > 0:
+            v.add("Space Solari", p.solari_value(solari))
+        troops = space.int_attr("Troops")
+        if troops > 0:
+            v.add("Space Troops", p.troop_value(troops, False))
+        # ``SpiceDiscount``: Navigation Chamber's −1 (NEW, absent = 0;
+        # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount below.
+        spice_cost = space.int_attr("SpiceCost") + space.int_attr("SpiceDiscount")
+        if spice_cost > 0:
+            v.add("Space Spice Cost", p.spice_value(-spice_cost))
+        water_cost = space.int_attr("WaterCost")
+        if water_cost > 0:
+            v.add("Space Water Cost", p.water_value(-water_cost))
+        # SolariDiscount: a per-turn player-turn attribute no Uprising effect
+        # sets (cleared in PlayerTurnPhase Cleanup); 0 here.
+        cost = space_solari_cost(p, space) + space.int_attr("SolariDiscount")
+        if cost > 0:
+            v.add("Space Solari Cost", p.solari_value(-cost))
+        if (cost > 0 and leader == _ILBAN) or ariana:  # ``or al, r15b``
+            v.add("Leader Ability Card Draw", p.card_draw_value())
+            v.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        if p.ctx.me.leader_id == "steersman_y_rkoon":
+            # Bloodlines Hungry for Spice (bloodlines-systems.md §9, D42; the
+            # Count Ilban precedent above).
+            hungry = p.hungry_for_spice_value(
+                space.int_attr("Spice")
+                + _space_bonus_spice(p, space)
+                + space.int_attr("PossibleSpice")
+            )
+            if hungry > 0:
+                v.add("Hungry for Spice", hungry)
+        # The Baron holding his secret Factions, with a Combat space of two
+        # or more troops (``space.IsCombatSpace``, the ``CombatSpace``
+        # attribute): ``BaronVladimirHarkonnenGetTroopsBonus`` (
+        # tests ``BaronHarkonnenSecretFactions``). Archduke Armand Ecaz
+        # (Rise of Ix) is never dealt: no term.
+        if (
+            baron_has_secret_factions(p)
+            and troops >= 2
+            and space.attr("CombatSpace", False) is True
+        ):
+            v.add(
+                "Baron Vladimir Harkonnen Gain Troops",
+                c.BaronVladimirHarkonnenGetTroopsBonus,
+            )
+        # --- Uprising block: ``S is Space && IsSetEnabled(4)`` (board.md
+        # §1.3); none of it on the original board. ---
+        if not p.ctx.uprising:
+            return v
+        for contract in _contracts_for_space(p, space):
+            completion = _first_contract_ability(contract)
+            if completion is not None:
+                v.merge(completion.value_for_player(p, (space,)))
+                v.add("Want Contract Count", float(p.want_contract_count()))
+        r = 0
+        occupied = any(seat != p.ctx.seat for seat in p.ctx.space_occupants(space.ref))
+        # ``Space.CanInfiltrateWithoutSpy(P, null, null, true)``
+        # tests the player's ``Infiltrate`` attribute (no Uprising or
+        # Immortality effect sets it), Helena Richese (base leader) and the
+        # RoI ``InfiltrationIconList`` of the hand; its Tleilaxu Infiltrator
+        # test needs both card arguments, which this call passes as null:
+        # never true here, with or without Immortality.
+        if occupied:
+            if _deployed_spies(p) < 3:
+                v.add(
+                    "Recall spy to infiltrate",
+                    -(c.SpyInfiltrateBoardSpaceValueMod * p.spy_value().sum),
+                )
+            else:
+                v.add(
+                    "Recall spy to infiltrate (3 Spies)",
+                    -c.SpaceSpyUseInfiltrate3SpiesMod,
+                )
+            r = -1
+        if _observing_spies(p, space.ref) + r > 0:
+            if (
+                p.card_draw_value_with_buy_gains() > p.spy_value().sum
+                or _deployed_spies(p) >= 3
+            ):
+                v.add("Spy Gather Intelligence", c.SpaceSpyUseIntelligenceMod)
+            elif p.ctx.me.leader_id == "gaius_helen_mohiam":
+                # Bloodlines Clandestine: Mohiam must Gather Intelligence even
+                # when the recall is unwanted (plan §11.7; the comparison the
+                # app uses to want it, added when negative).
+                forced = p.clandestine_recall_value()
+                if forced < 0.0:
+                    v.add("Clandestine Gather Intelligence", forced)
+        if (
+            leader == _LADY_JESSICA
+            and _leader_flipped(p)
+            and space.attr("Faction") in ("BeneGesserit", "Fremen")
+        ):
+            jessica = _leader(p)
+            if jessica is not None:
+                for ability in abilities_of(jessica):
+                    if app_isinstance(ability, _REVEREND_MOTHER_ABILITY):
+                        v.merge(ability.value_for_player(p, (space,)))
+                        break
+        return v
+
+
+def _contracts_for_space(p: Profile, space: Entity) -> list[Entity]:
+    """``Player.GetContractsForSpace`` (completed ones too)."""
+
+    return [
+        contract
+        for contract in _contract_area(p)
+        if any(s.ref == space.ref for s in contract_spaces(p, contract))
+    ]
+
+
+def _first_contract_ability(contract: Entity) -> ContractAbility | None:
+    """``k.Abilities.OfType<ContractAbility>().FirstOrDefault()``."""
+
+    for ability in abilities_of(contract):
+        if isinstance(ability, ContractAbility):
+            return ability
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Triggered abilities
+# ---------------------------------------------------------------------------
+
+
+@port("ability.triggered.triggered")
+class TriggeredAbility(Ability):
+    """``TriggeredAbilities.TriggeredAbility`` (abstract; never evaluated)."""
+
+
+@port(
+    "ability.triggered.uprising.activate_contract_triggered"
+)
+class ActivateContractTriggeredAbility(TriggeredAbility):
+    """``ability.triggered.uprising.activate_contract_triggered`` (spec
+    §16, §23; 16 contract archetypes): marks a face-up contract claimable when
+    its owner sends an Agent to a contract space (``board.md`` §3.1). No AI
+    hook: every member is the ``AbilityDefinition`` default."""
+
+
+@port("ability.triggered.bond")
+class BondAbility(TriggeredAbility):
+    """``TriggeredAbilities.BondAbility`` (abstract; spec §17).
+
+    Subclasses set ``bond_faction`` (``BondFaction``; app faction
+    name) and their own V. Bonds trigger only in the Reveal turn.
+    """
+
+    bond_faction: ClassVar[str | None] = None  # abstract in the app
+    should_exhaust: ClassVar[bool] = False
+
+    def value_in_pile_for_other_play(
+        self, p: Profile, pile: Pile, card: Entity
+    ) -> Summer:
+        """``BondAbility.ValueInPileForOtherPlay`` (does not call
+        the default synergy)."""
+
+        s = Summer()
+        if (
+            pile is Pile.DECK
+            and self.bond_faction == "Fremen"
+            and "Fremen" in card_factions(card)
+            and not p.is_climax()
+        ):
+            s.add("Fremen in Deck", p.C.SynergyFremenWithBondInDeck)
+        return s
+
+
+# ---------------------------------------------------------------------------
+# Conflict rewards
+# ---------------------------------------------------------------------------
+
+
+def conflict_reward(conflict: Entity, place: int) -> Entity:
+    """``ConflictExtensions.GetConflictReward``: the reward
+    archetype ``ConflictRewardArchetypes[place - 1]`` of the card."""
+
+    short = conflict.list_attr("ConflictRewardArchetypes")[place - 1]
+    return Entity(Kind.CONFLICT, conflict.ref, archetype(short), conflict.owner)
+
+
+def _custom_reward_ability(ability_id_: str, conflict: Entity) -> Ability:
+    """The ``pool.FirstOrDefault(a => a.GetAbilityID() == id)`` of
+    ``ValueForRewardsFrom``.
+
+    The pool is the playmat's custom abilities followed by the conflict's
+    abilities (lookup lambda UNTRACED). Judgement: the playmat holds one
+    instance of every custom reward class, so a lookup always finds the class;
+    its ``ValueForPlayer`` does not depend on the owner.
+    """
+
+    return ability_for(ability_id_, conflict)
+
+
+#: ``ResourceActions.ResourceNames.Keys`` that exist as ``Attr`` (Water, Spice,
+#: Solari, Strength, Persuasion; PossibleStrength and RevealStrength never
+#: appear on an Uprising reward).
+_REWARD_RESOURCES = (
+    Attr.WATER,
+    Attr.SPICE,
+    Attr.SOLARI,
+    Attr.STRENGTH,
+    Attr.PERSUASION,
+)
+
+
+def value_for_rewards_from(p: Profile, reward: Entity, conflict: Entity) -> Summer:
+    """``PlayerAIExtensions.ValueForRewardsFrom`` (spec §18)."""
+
+    v = Summer()
+    vp = reward.int_attr("VictoryPoints")
+    if vp > 0:
+        v.add("VP", p.victory_point_value(vp))
+    for attr in _REWARD_RESOURCES:
+        n = reward.int_attr(attr.value)
+        if n > 0:
+            v.add(f"{attr.value} * {n}", p.resource_value(attr, n, False))
+    for faction, n in _faction_influence(reward):  # n is not checked for > 0
+        v.add(f"{faction} * {n} ", p.gain_influence_value(faction, n, -1, False).sum)
+    troops = reward.int_attr("Troops")
+    if troops > 0:
+        v.add(f"Troop * {troops}", p.troop_value(troops, False))
+    intrigue = reward.int_attr("IntrigueCard")
+    if intrigue > 0:
+        v.add(f"Intrigue * {intrigue}", p.intrigue_value() * intrigue)
+    for custom_id in reward.list_attr("CustomAbilityIDs"):
+        ability = _custom_reward_ability(custom_id, conflict)
+        v.merge(ability.value_for_player(p, ()))
+    return v
+
+
+@port("ability.conflict.conflict")
+class ConflictAbility(Ability):
+    """``ConflictAbilities.ConflictAbility`` (abstract). Owner = the card."""
+
+    #: ``Attributes.ConflictPlace`` set by the place subclasses' ctors.
+    place: ClassVar[int | None] = None
+
+    def possible_reward_vp(self, p: Profile, double_cost: bool) -> int:
+        """``ConflictAbility.GetPossibleRewardVP``:
+        ``place == 1 ? owner.VictoryPoints : 0``."""
+
+        return self.owner.int_attr("VictoryPoints") if self.place == 1 else 0
+
+
+@port("ability.conflict.uprising.generic_conflict")
+class GenericConflictAbility(ConflictAbility):
+    """``ability.conflict.uprising.generic_conflict`` (abstract)."""
+
+    def _place(self) -> int:
+        return self.place if self.place is not None else 1  # ``cmovne``
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``GenericConflictAbility.ValueForPlayer``.
+
+        The battle icon is passed as the archetype's ``BattleIcon`` name
+        (``"None"`` when the card has none).
+        """
+
+        v = Summer()
+        conflict = self.owner
+        place = self._place()
+        v.merge(value_for_rewards_from(p, conflict_reward(conflict, place), conflict))
+        if place == 1:
+            v.merge(p.battle_icon_value(str(conflict.attr("BattleIcon", "None"))))
+        return v
+
+    def possible_reward_vp(self, p: Profile, double_cost: bool) -> int:
+        """``GenericConflictAbility.GetPossibleRewardVP``.
+
+        Reward VP plus, for each custom id of the reward, the
+        ``GetPossibleConflictVP`` of the first ``DeferredAbility`` of the
+        conflict card with that id (others: nothing).
+        """
+
+        conflict = self.owner
+        reward = conflict_reward(conflict, self._place())
+        vp = reward.int_attr("VictoryPoints")
+        card_abilities = [
+            a for a in abilities_of(conflict) if isinstance(a, DeferredAbility)
+        ]
+        for custom_id in reward.list_attr("CustomAbilityIDs"):
+            for ability in card_abilities:
+                if ability_id(ability) == custom_id:
+                    vp += ability.possible_conflict_vp(p, double_cost)
+                    break
+        return vp
+
+
+@port("ability.conflict.uprising.generic_conflict_first")
+class GenericConflictFirstAbility(GenericConflictAbility):
+    """``GenericConflictFirstAbility`` (constructor: place 1)."""
+
+    place: ClassVar[int | None] = 1
+
+
+@port("ability.conflict.uprising.generic_conflict_second")
+class GenericConflictSecondAbility(GenericConflictAbility):
+    """``GenericConflictSecondAbility`` (constructor: place 2)."""
+
+    place: ClassVar[int | None] = 2
+
+
+@port("ability.conflict.uprising.generic_conflict_third")
+class GenericConflictThirdAbility(GenericConflictAbility):
+    """``GenericConflictThirdAbility`` (constructor: place 3)."""
+
+    place: ClassVar[int | None] = 3
+
+
+@port("ability.conflict.uprising.take_control_conflict")
+class TakeControlConflictAbility(ConflictAbility):
+    """``ability.conflict.uprising.take_control_conflict`` (spec §19)."""
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``TakeControlConflictAbility.ValueForPlayer``.
+
+        Reads the **current** conflict; prices spice control with
+        ``ControlSolariValue`` (quirk kept); no test of the controller.
+        """
+
+        v = Summer()
+        current = p.ctx.current_conflict_id
+        if current is None:
+            return v
+        conflict = conflict_entity(current, p.ctx.choam)
+        for arch_id in conflict.list_attr("ReferencedArchetypeIDs"):
+            space = find_space(p, arch_id)
+            if space is None:
+                continue
+            if space.has("ControlSolari"):
+                v.add("Control Solari", p.control_solari_value())
+            elif space.has("ControlSpice"):
+                v.add("Control Spice", p.control_solari_value())
+        return v
+
+
+@port("ability.conflict.uprising.pay_attribute_to_gain_vp")
+class PayAttributeToGainVPAbility(DeferredAbility):
+    """``ability.conflict.uprising.pay_attribute_to_gain_vp`` (abstract;
+    spec §20). The constructor sets the cost and the VP."""
+
+    timing: ClassVar[Timing] = Timing.COMBAT_RESOLUTION
+    solari_cost: ClassVar[int] = 0
+    spice_cost: ClassVar[int] = 0
+    victory_points: ClassVar[int] = 1
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``PayAttributeToGainVPAbility.SelectionMode``: Optional."""
+
+        return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost``: ``HasCustomAbility`` then ``Solari >=
+        SolariCost and Spice >= SpiceCost``.
+
+        Judgement: the grant is held while the seat answers our
+        ``combat_reward_optional`` frame.
+        """
+
+        me = p.ctx.me
+        granted = p.ctx.decision_kind == "combat_reward_optional"
+        return (
+            granted
+            and me.resources.solari >= self.solari_cost
+            and me.resources.spice >= self.spice_cost
+        )
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``PayAttributeToGainVPAbility.ValueForPlayer``.
+
+        The VP counts even when the cost is unaffordable now (quirk kept).
+        """
+
+        v = Summer()
+        me = p.ctx.me
+        cost = self.solari_cost
+        if cost > 0 and me.resources.solari >= cost:
+            v.add(f"{cost} solari cost", p.solari_value(-cost))
+        cost = self.spice_cost
+        if cost > 0 and me.resources.spice >= cost:
+            v.add(f"{cost} spice cost", p.spice_value(-cost))
+        v.add("VP", p.victory_point_value(self.victory_points))
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``PayAttributeToGainVPAbility.Evaluate``: always 100."""
+
+        return Answer(100.0, (), "Pay To Gain VP | always play")
+
+    def possible_conflict_vp(self, p: Profile, double_cost: bool) -> int:
+        """``PayAttributeToGainVPAbility.GetPossibleConflictVP``:
+        ``Spice >= SpiceCost << d and Solari >= SolariCost << d``."""
+
+        me = p.ctx.me
+        shift = 1 if double_cost else 0
+        if me.resources.spice < self.spice_cost << shift:
+            return 0
+        return 1 if me.resources.solari >= self.solari_cost << shift else 0
+
+
+@port("ability.conflict.uprising.pay3_spice_to_gain1_vp")
+class Pay3SpiceToGain1VPAbility(PayAttributeToGainVPAbility):
+    """``Pay3SpiceToGain1VPAbility`` (constructor: Spice 3, 1 VP;
+    Spice Freighters)."""
+
+    spice_cost: ClassVar[int] = 3
+
+
+@port("ability.conflict.uprising.pay4_spice_to_gain1_vp")
+class Pay4SpiceToGain1VPAbility(PayAttributeToGainVPAbility):
+    """``Pay4SpiceToGain1VPAbility`` (constructor: Spice 4, 1 VP; Battle
+    for Imperial Basin)."""
+
+    spice_cost: ClassVar[int] = 4
+
+
+@port("ability.conflict.uprising.pay6_solari_to_gain1_vp")
+class Pay6SolariToGain1VPAbility(PayAttributeToGainVPAbility):
+    """``Pay6SolariToGain1VPAbility`` (constructor: Solari 6, 1 VP; Battle
+    for Spice Refinery)."""
+
+    solari_cost: ClassVar[int] = 6

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="60" height="63" viewBox="0 0 60 63">
+  <!-- Troop (green): a cube in the seat's colour. Drawn by hand for the public build. -->
+  <defs><linearGradient id="ct" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12b088"/><stop offset="1" stop-color="#00926c"/></linearGradient></defs>
+  <polygon points="30,1.5 58.5,16 58.5,47 30,61.5 1.5,47 1.5,16" fill="#d3d3d3" stroke="#9a9a9a" stroke-width="1" stroke-linejoin="round"/><polygon points="30,6.5 53.5,18.5 53.5,44.5 30,56.5 6.5,44.5 6.5,18.5" fill="#111"/><polygon points="30,8 52,19.2 30,30.4 8,19.2" fill="url(#ct)"/><polygon points="8,19.2 30,30.4 30,55 8,43.8" fill="#00926c"/><polygon points="52,19.2 30,30.4 30,55 52,43.8" fill="#004c2d"/><path d="M8.6,19.6 L30,30.4 L51.4,19.6 M30,30.4 V54.4" fill="none" stroke="#fff" stroke-width=".9" opacity=".25"/>
+</svg>

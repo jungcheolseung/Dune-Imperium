@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="163" height="108" viewBox="0 0 151 100">
+  <!-- Unload: a discard card and a trash card on a red tag. Drawn by hand for the public build. -->
+  <defs><linearGradient id="ul" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c2302a"/><stop offset="1" stop-color="#6a0e0e"/></linearGradient></defs>
+  <polygon points="6,12 128,12 146,50 128,88 6,88" fill="url(#ul)" stroke="#2a0606" stroke-width="3" stroke-linejoin="round"/><rect x="22" y="22" width="36" height="56" rx="4" fill="#1a1a1a" stroke="#f2f2f2" stroke-width="2.6"/><polygon points="36,34 44,34 44,48 50,48 40,62 30,48 36,48" fill="#fff"/><rect x="70" y="22" width="36" height="56" rx="4" fill="#1a1a1a" stroke="#f2f2f2" stroke-width="2.6"/><path d="M80,38 L96,62 M96,38 L80,62" stroke="#fff" stroke-width="5.4" stroke-linecap="round"/>
+</svg>

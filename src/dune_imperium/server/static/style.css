@@ -1,0 +1,3683 @@
+:root {
+  --bg: #f4efe6;
+  --panel: #fffdf8;
+  --ink: #2b2418;
+  --line: #d8cdb8;
+  --accent: #a4581e;
+  --accent-soft: #f3e3d2;
+  --good: #2f6b3a;
+  --bad: #a03030;
+  --glow: #ffcf5a;
+  --header-h: 44px;
+  /* Latin fonts first, then Korean ones. With no named font installed
+     (Windows has none of the old three), the generic sans-serif chose by
+     the page's lang: Malgun Gothic's Latin in Korean and Arial in English,
+     so "Dune: Imperium — Uprising" changed shape with the language. Hangul,
+     which the Latin fonts lack, still falls through to a Korean font. */
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+    "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+/* The game screen is a dark table; the setup screen keeps the light page. */
+body.in-game {
+  --bg: #111416;
+  --panel: #1b1f21;
+  --ink: #eee9df;
+  --line: #394043;
+  --accent: #d5b478;
+  --accent-soft: #302b23;
+  --glow: #ebc87e;
+  --good: #7ddc6a;
+  --bad: #ff6b5e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.45;
+}
+body.in-game { overflow: hidden; font-size: 14px; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: var(--header-h);
+  padding: 0 1.2rem;
+  background: #2b2418;
+  color: #f4efe6;
+}
+body.in-game header {
+  background: #191d1f;
+  border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 1.05rem; margin: 0; }
+/* One line in the fixed-height header (render.js renderHeaderStatus): the
+   round and phase, then the review label. When they no longer fit beside
+   the buttons, the page title gives way. The round never does. It used to
+   wrap to three lines inside the 44px header on a half-laptop window and
+   lose the round off the top (2026-09-24). The seed and ruleset badges,
+   which used to fill the room left over, are in the line's title and the
+   help since 2026-11-06. */
+#header-status {
+  flex: 1 1 auto;
+  min-width: min-content;
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+.status-core,
+.status-label { flex: none; white-space: pre; }
+header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header > button { flex: none; }
+/* The game time (clock.js), beside the status line rather than in it: a
+   tick writes this span alone. Digits of one width, so the header does not
+   shift every second; sized for h:mm:ss. */
+#game-clock {
+  flex: none;
+  min-width: 3.6em;
+  text-align: right;
+  font-size: 0.9rem;
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#connection-note {
+  flex: 0 1 auto;
+  min-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A half-laptop window (600-760px, next to a chat window) needs the room. */
+@media (max-width: 760px) {
+  header { gap: 0.5rem; padding: 0 0.6rem; }
+  header button { padding: 0.2rem 0.45rem; }
+}
+/* Narrower still, the round and the buttons need it more than the game
+   time, which the seat panels' totals add up to anyway. */
+@media (max-width: 640px) {
+  #game-clock { display: none; }
+}
+header button { padding: 0.2rem 0.7rem; }
+
+main { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+body.in-game main {
+  max-width: none;
+  height: calc(100vh - var(--header-h));
+  padding: 0;
+  /* A window narrower than the table's minimum (--table-min: the board
+     never below --board-min) scrolls the table sideways under the header
+     rather than shrinking the board further (user decision 2026-09-27). */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+body.in-game .panel { padding: 0.6rem 0.8rem; margin-bottom: 0.6rem; }
+
+h2 { margin: 0 0 0.6rem; font-size: 1.05rem; }
+h3 {
+  margin: 0.6rem 0 0.3rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 0 0.8rem;
+}
+fieldset label { display: block; margin: 0.25rem 0; }
+fieldset label:has(input:disabled) { opacity: 0.5; }
+#seat-selects label { display: flex; gap: 0.5rem; align-items: center; }
+
+/* ---------- table setup ---------- */
+
+#setup-screen { background: transparent; border: none; padding: 1rem 0; }
+.setup-intro { margin: 0.4rem 0 1.8rem; }
+.setup-intro h2 { font-size: 2.2rem; font-weight: 650; letter-spacing: -0.04em; }
+.setup-intro p { margin: 0.4rem 0 0; color: #746956; }
+#setup-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 2fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+#setup-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border-color: #ddd4c5;
+  background: var(--panel);
+  border-radius: 12px;
+}
+#setup-form legend { padding: 0 0.4rem; font-weight: 700; font-size: 1rem; }
+#seat-selects { display: grid; gap: 0.65rem; }
+#seat-selects label {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--seat-color);
+  border-radius: 7px;
+}
+#seat-selects label > span { font-size: 0.8rem; font-weight: 700; }
+#setup-form select, #setup-form input:not([type="checkbox"]):not([type="radio"]) {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+}
+#setup-form #opt-seed-row, #setup-form #opt-checkpoint-row {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+}
+#opt-seed-row input, #opt-checkpoint-row input { margin-top: 0.4rem; }
+#setup-form #opt-search-note { margin: 1rem 0 0; font-size: 0.8rem; line-height: 1.5; }
+#rule-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+#rule-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  cursor: pointer;
+}
+#rule-options label:has(input:checked) { border-color: #b9a17a; background: #f7f2e8; }
+#rule-options label:has(input:disabled) { cursor: default; }
+#rule-options label:hover:not(:has(input:disabled)) { border-color: var(--accent); }
+#rule-options input { flex: none; width: 16px; height: 16px; margin: 3px 0 0; accent-color: #826336; }
+/* The Rise of Ix part (syncIxPartsOption): one row across both columns, its
+   three choices side by side. */
+#rule-options .option-choice {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+#rule-options .option-choice[hidden] { display: none; }
+#rule-options .option-choice > p { grid-column: 1 / -1; margin: 0; font-size: 0.84rem; }
+.setup-start {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  background: #252b2d;
+  color: #eee9df;
+  border-radius: 10px;
+}
+#setup-summary { margin: 0; font-size: 0.9rem; }
+#setup-form #create-game {
+  padding: 0.65rem 2rem;
+  background: #d5b478;
+  border-color: #d5b478;
+  color: #211d15;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#setup-form #create-game:hover { background: #ebcd97; }
+#setup-screen #game-list-wrap, #setup-screen #save-list-wrap {
+  margin-top: 1.5rem;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+@media (max-width: 900px) {
+  #setup-form { grid-template-columns: minmax(0, 1fr); }
+  #seat-selects { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 550px) {
+  #rule-options, #seat-selects, #rule-options .option-choice { grid-template-columns: minmax(0, 1fr); }
+  .setup-start { align-items: stretch; flex-direction: column; }
+}
+
+button {
+  font: inherit;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+body.in-game button:hover:not(:disabled) { color: var(--ink); }
+button:disabled { opacity: 0.5; cursor: wait; }
+:where(body.in-game) button {
+  border-color: var(--line);
+  background: #24292b;
+  border-radius: 6px;
+}
+:where(body.in-game) button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #383329;
+  color: var(--ink);
+}
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.error { color: var(--bad); font-weight: 600; }
+.muted { opacity: 0.65; }
+.clickable { cursor: pointer; }
+
+/* ---------- icons ---------- */
+
+.icon {
+  height: 1.25em;
+  width: auto;
+  vertical-align: -0.3em;
+  margin: 0 0.05em;
+}
+.agent-piece-icon { fill: currentColor; }
+.icon-text {
+  display: inline-block;
+  font-size: 0.72em;
+  padding: 0 0.3em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  vertical-align: 0.1em;
+  opacity: 0.85;
+}
+.amount { white-space: nowrap; font-weight: 700; }
+.amount .icon { margin-left: 0.05em; }
+.cost { margin-right: 0.2em; }
+.option-line .icon { height: 1.4em; }
+.stats { display: flex; flex-wrap: wrap; gap: 0.15rem 0.7rem; align-items: center; }
+.stat { white-space: nowrap; }
+.stat .icon { height: 1.35em; margin-right: 0.1em; }
+/* A count that opens its card list (the hand strip's deck and discard pile):
+   a keyboard-reachable control, not a plain number. */
+.stat.clickable:hover { color: var(--accent); }
+.stat.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* ---------- table layout ---------- */
+
+/* The board has a floor: the centre column never gives it less than
+   --board-min (with the shared-card column beside it, that plus
+   --market-min), and a window too narrow for the three columns at their
+   floors scrolls sideways (body.in-game main) instead. --table-min is that
+   floor summed. The hand belongs to the board column; the other columns
+   can use the full height of the table.
+
+   The player can resize the seat, action and shared-card columns
+   (layout.js, user request 2026-10-11): it sets --seats-user,
+   --actions-user and --market-user here, and a width never set keeps the
+   default below. The floor sums whatever widths are in force, so a wide
+   side column pushes the table into the sideways scroll, never the board
+   under its floor. */
+#game-screen {
+  --board-min: 480px;
+  --market-min: 190px;
+  --seats-width: var(--seats-user, 210px);
+  --actions-width: var(--actions-user, 340px);
+  /* The shared-card column's share of the centre's floor. Unsized, the
+     column fits its content up to --market-min (#center). */
+  --market-room: var(--market-user, var(--market-min));
+  --table-min: calc(
+    var(--seats-width) + var(--board-min) + var(--market-room)
+    + var(--actions-width) + 2.5rem
+  );
+  display: grid;
+  /* The column is the window's width down to the table's floor; its
+     min-content would have taken whatever the widest row happened to hold. */
+  grid-template-columns: minmax(var(--table-min), 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+#table {
+  position: relative;
+  display: grid;
+  /* Spend extra desktop width on the board, keeping the reading column
+     steady. The board still has its 480px floor on a narrow window. */
+  grid-template-columns:
+    var(--seats-width)
+    minmax(calc(var(--board-min) + var(--market-room) + 0.5rem), 1fr)
+    var(--actions-width);
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.5rem;
+}
+/* The handles between the columns (layout.js). Each lies over the gap
+   beside the column it resizes, positioned in that column's grid area so
+   it follows the column's edge without taking a grid cell; a 6px strip to
+   grab, its 2px line drawn on hover, focus and while dragging. */
+.col-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+.col-splitter:hover::after,
+.col-splitter:focus-visible::after,
+.col-splitter.dragging::after { background: var(--accent); }
+.col-splitter:focus-visible { outline: none; }
+/* Both lines named: for a positioned child an `auto` end line is the
+   container's padding edge, not the next line. */
+#split-seats { grid-area: 1 / 1 / 2 / 2; right: calc(-0.25rem - 3px); }
+#split-actions { grid-area: 1 / 3 / 2 / 4; left: calc(-0.25rem - 3px); }
+#split-market { grid-area: 1 / 2 / -1 / 3; left: calc(-0.25rem - 3px); }
+/* Every shared-card column folded gives its room back to the board
+   (columns.py), so there is no width left to set. */
+#center:has(> #market.all-folded) > #split-market { display: none; }
+body.column-resizing, body.column-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+#seats {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* Decisions and history have independent scrolling at every width. A
+   compact history stays visible without pushing the turn controls away. */
+#side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, clamp(120px, 23vh, 240px));
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: hidden;
+}
+#side.log-expanded { grid-template-rows: minmax(160px, 1fr) minmax(0, 55%); }
+#side:has(#action-log[hidden]) { grid-template-rows: minmax(0, 1fr); }
+#side-log:has(#action-log[hidden]) { display: none; }
+#side-main, #side-log {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+#side-log { display: flex; flex-direction: column; overflow: hidden; }
+#side-log #action-log {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
+}
+/* fitActionLog uses only the board's spare horizontal room. The action
+   column keeps its width; history gets a full-height column beside it. */
+@media (min-width: 1341px) {
+  #table.log-beside {
+    grid-template-columns:
+      var(--seats-width)
+      minmax(calc(var(--board-min) + var(--market-room) + 0.5rem), 1fr)
+      calc(var(--actions-width) + var(--history-width) + 0.5rem);
+  }
+  #table.log-beside #side {
+    grid-template-columns: var(--actions-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  #table.log-beside .log-size-toggle { display: none; }
+}
+/* The hand sits directly below the board. Shared cards and expansion
+   boards span both rows beside them, keeping the height that used to be
+   reserved by the full-width hand. Narrow screens stack all three zones.
+   The shared-card column fits its content until the player sets its width
+   (--market-user, layout.js). */
+#center {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--market-user, fit-content(190px));
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "board market" "hand market";
+  gap: 0.5rem;
+  min-height: 0;
+  min-width: 0;
+}
+#center:has(#private-zone[hidden]) {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "board market";
+}
+/* Every column folded fits the headings again, even at a width the player
+   set: folding them (`c`) is how the board gets that room back. */
+@media (min-width: 1341px) {
+  #center:has(> #market.all-folded) {
+    grid-template-columns: minmax(0, 1fr) fit-content(190px);
+  }
+}
+#board {
+  grid-area: board;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* A log turn card's space or card on the table (hover). */
+.spotlight {
+  outline: 3px solid #7fd7ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 18px 4px rgba(127, 215, 255, 0.7), inset 0 0 18px rgba(127, 215, 255, 0.3);
+  animation: spotlight-pulse 1.2s ease-in-out infinite;
+  z-index: 3;
+}
+@keyframes spotlight-pulse {
+  0%, 100% { box-shadow: 0 0 12px 3px rgba(127, 215, 255, 0.55), inset 0 0 14px rgba(127, 215, 255, 0.25); }
+  50% { box-shadow: 0 0 24px 7px rgba(127, 215, 255, 0.85), inset 0 0 22px rgba(127, 215, 255, 0.4); }
+}
+
+/* Board scan with the live overlay: the stage keeps the scan's aspect
+   ratio, every child is positioned in percent of it. */
+.board-stage {
+  position: relative;
+  aspect-ratio: 6012 / 6005;
+  max-height: 100%;
+  max-width: 100%;
+  flex: none;
+}
+.board-map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  user-select: none;
+}
+/* A space's hotspot is the box of the white frame printed around its
+   picture; the frame's outline (.space-frame) carries every highlight, so
+   all spaces light up the same printed shape and nothing beside it. The
+   stroke runs along the white line and keeps its width at any scale. */
+.hotspot {
+  position: absolute;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+/* Not the generic button:hover fill, which would paint the whole box. */
+.hotspot:hover:not(:disabled) { background: transparent; }
+.hotspot:focus-visible { outline: none; }
+.space-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.space-frame polygon {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.15s, fill 0.15s;
+}
+.hotspot:hover .space-frame polygon,
+.hotspot:focus-visible .space-frame polygon { stroke: rgba(255, 255, 255, 0.7); fill: rgba(255, 255, 255, 0.05); }
+.hotspot.legal .space-frame { animation: frame-pulse 1.6s ease-in-out infinite; }
+.hotspot.legal .space-frame polygon { stroke: var(--glow); fill: rgba(255, 207, 90, 0.1); }
+.hotspot.legal:hover .space-frame polygon { fill: rgba(255, 207, 90, 0.22); }
+/* A hand card that can be grafted to the picked one: a dashed glow and a
+   plus sign, because a click adds it to the pick instead of swapping. */
+.vcard.partner {
+  border-style: dashed;
+  border-color: var(--glow);
+  box-shadow: 0 0 10px 2px rgba(255, 207, 90, 0.5);
+}
+.vcard.partner::after {
+  content: "＋";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 50%;
+  background: var(--glow);
+  color: #1a140c;
+  font-weight: 800;
+  line-height: 1.3em;
+  text-align: center;
+}
+/* A card or a space the pick could be swapped for: a quiet version of the
+   legal glow. */
+.vcard.alternative { border-color: rgba(255, 207, 90, 0.55); box-shadow: 0 0 6px 1px rgba(255, 207, 90, 0.3); }
+.hotspot.alternative .space-frame polygon { stroke: rgba(255, 207, 90, 0.6); stroke-dasharray: 5 3; }
+/* The space of a staged Agent turn's pick. */
+.hotspot.picked .space-frame {
+  animation: none;
+  filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 8px rgba(255, 207, 90, 0.9));
+}
+.hotspot.picked .space-frame polygon { stroke: #fff; stroke-width: 2.5px; fill: rgba(255, 207, 90, 0.25); }
+.hotspot.unimplemented { opacity: 0.35; cursor: not-allowed; }
+@keyframes frame-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 207, 90, 0.7)) drop-shadow(0 0 5px rgba(255, 207, 90, 0.45)); }
+  50% { filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.95)) drop-shadow(0 0 10px rgba(255, 207, 90, 0.75)); }
+}
+/* The log's spotlight (.spotlight above) follows the frame on a space too. */
+.hotspot.spotlight { outline: none; box-shadow: none; animation: none; }
+.hotspot.spotlight .space-frame { animation: frame-spotlight 1.2s ease-in-out infinite; }
+.hotspot.spotlight .space-frame polygon {
+  stroke: #7fd7ff;
+  stroke-width: 3px;
+  stroke-dasharray: none;
+  fill: rgba(127, 215, 255, 0.18);
+}
+/* The space an Agent card cue names, in the playing seat's colour
+   (effects.js applyCueSpace). */
+.hotspot.cue-space .space-frame { animation: frame-cue 0.9s ease-in-out infinite alternate; }
+.hotspot.cue-space .space-frame polygon {
+  stroke: color-mix(in srgb, var(--cue-color, #fff), #fff 35%);
+  stroke-width: 3px;
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--cue-color, #fff) 22%, transparent);
+}
+@keyframes frame-cue {
+  from { filter: drop-shadow(0 0 3px var(--cue-color, #fff)); }
+  to { filter: drop-shadow(0 0 6px var(--cue-color, #fff)) drop-shadow(0 0 14px var(--cue-color, #fff)); }
+}
+@keyframes frame-spotlight {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(127, 215, 255, 0.8)) drop-shadow(0 0 7px rgba(127, 215, 255, 0.5)); }
+  50% { filter: drop-shadow(0 0 4px rgba(127, 215, 255, 1)) drop-shadow(0 0 12px rgba(127, 215, 255, 0.85)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hotspot.legal .space-frame { animation: none; filter: drop-shadow(0 0 3px rgba(255, 207, 90, 0.85)); }
+  .hotspot.spotlight .space-frame { animation: none; filter: drop-shadow(0 0 4px rgba(127, 215, 255, 0.9)); }
+  .hotspot.cue-space .space-frame { animation: none; filter: drop-shadow(0 0 5px var(--cue-color, #fff)); }
+}
+/* Agents stand on the space's picture, in the middle of its frame, sized
+   to the frame so they scale with the board; up to four share a space
+   (Infiltrate) and shrink to stay inside it. */
+.agent-tokens {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3%;
+}
+.agent-token {
+  height: 72%;
+  aspect-ratio: 52 / 81;
+  flex: none;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+.agent-tokens[data-count="3"] .agent-token { height: 60%; }
+.agent-tokens[data-count="4"] .agent-token { height: 46%; }
+/* A piece drawn from the app's picture (pieceImage) keeps the picture's
+   proportions inside the box the layout gives it; its glossy edge needs no
+   drawn ring, only the shadow every piece on the scan casts. */
+img.pictured {
+  object-fit: contain;
+  box-shadow: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+img.control-marker.pictured { object-fit: fill; }
+/* The app's cube picture draws a light outline around the cube: the cube
+   body, not the outline, takes the printed square. */
+img.track-cube.pictured { transform: translate(-50%, -50%) scale(1.15); }
+img.seat-disc.pictured { border-radius: 50%; }
+:is(.conflict-unit, .garrison-unit, .bt-specimen)[data-kind="troop"].pictured {
+  box-shadow: none;
+}
+/* The layers of a seat's piece (seatPiece): the icon's light rim inside
+   the outline, the dark edge, and a Spy's lighter top face. */
+.piece-rim { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 5; }
+.spy-token .piece-rim { stroke-width: 6; }
+.piece-edge {
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.piece-top {
+  fill: rgba(255, 255, 255, 0.35);
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.control-flag, .seat-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6em;
+  height: 1.6em;
+  border-radius: 50%;
+  border: 2px solid #111;
+  color: #111;
+  font-weight: 800;
+  font-size: 0.85em;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+/* A just-placed Agent flies in from its seat panel (renderBoard FLIP) or,
+   without an origin, pops in. */
+.agent-token.flying {
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  z-index: 3;
+}
+.agent-token.placed { animation: token-pop 0.3s ease-out; }
+@keyframes token-pop {
+  from { transform: scale(0.3); }
+  to { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-token.flying { transition: none; }
+  .agent-token.placed { animation: none; }
+}
+.control-flag {
+  position: absolute;
+  left: 8%;
+  bottom: 4%;
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 3px;
+  font-size: 0.75em;
+}
+.maker-bonus {
+  position: absolute;
+  right: 4%;
+  bottom: 6%;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  padding: 0 0.3em;
+  color: #fff;
+}
+/* A Control marker on the flag printed under its space: the pennant's own
+   box (set inline, percent of the stage), flat in the seat's colour with
+   the same dark edge as the cubes and discs. */
+.control-marker {
+  position: absolute;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.control-marker polygon {
+  stroke: #111;
+  stroke-width: 1px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+/* Bonus spice on a Maker space: a flat-topped spice hexagon exactly over the
+   printed one (its box is set inline), with the amount in the board's own
+   numeral style. The light rim is a second hexagon under the orange one. */
+.bonus-spice {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: #f3e9dc;
+  container-type: size;
+}
+.bonus-spice::before {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: #e0571f;
+}
+.bonus-spice-count {
+  position: relative;
+  color: #fff;
+  font-weight: 800;
+  font-size: 78cqh;
+  line-height: 1;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
+.bonus-spice-count.wide { font-size: 58cqh; letter-spacing: -0.04em; }
+/* Spies stand on their post's disc, as wide as it (the row's height is
+   set inline); up to four seats share a post and shrink a little. */
+/* The post's box is the Spy that stands on the disc (its height is set
+   inline); Spies sharing the post stand on top of it, as the cylinders are
+   stacked on the table. */
+/* Rise of Ix's two observation posts on Uprising, which its boards do not
+   print [Main p. 18]: a disc the size of the printed ones, in their grey
+   ring with a dark face (board.js renderBoardStage). */
+.drawn-post {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  z-index: 1;
+  border: 2px solid rgba(214, 214, 214, 0.85);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(214, 214, 214, 0.9) 0 18%, rgba(28, 30, 32, 0.92) 22%);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+.spy-post-hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  z-index: 2;
+  padding: 0;
+  border: 2px solid var(--glow);
+  border-radius: 50%;
+  background: rgba(255, 207, 90, 0.15);
+  cursor: pointer;
+  animation: frame-pulse 1.6s ease-in-out infinite;
+}
+.spy-post-hotspot:hover:not(:disabled), .spy-post-hotspot:focus-visible {
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.3);
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spy-post-hotspot { animation: none; filter: drop-shadow(0 0 3px var(--glow)); }
+}
+/* The post a held choice names (turn.js chooseAction). */
+.spy-post-hotspot.picked {
+  animation: none;
+  border-color: #fff;
+  background: rgba(255, 207, 90, 0.6);
+  box-shadow: 0 0 12px 3px rgba(255, 207, 90, 0.7);
+}
+.spy-post {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 56 / 80;
+  pointer-events: auto;
+}
+/* Deep Cover can select an occupied post; its stacked pieces must let the
+   click reach the destination ring beneath them. */
+.spy-post.selectable { pointer-events: none; }
+/* Each Spy the size of the disc. One on a shared post stands on the one
+   below, its base on that one's top face: the faces' centres are 48 of the
+   icon's 80 units apart (PIECE_SHAPES.spy), so 60 % of a Spy up a level. */
+.spy-token {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--level, 0) * 60%);
+  height: 100%;
+  aspect-ratio: 56 / 80;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+/* An Influence cube: flat in the seat's colour, square-cornered, exactly
+   the square the board prints for it (the width, a percent of the stage,
+   is set inline). The dark edge is a shadow ring outside the box, not a
+   border, so the coloured face itself has the printed size. */
+.track-cube {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* The ring an Alliance token left behind, in its holder's colour: the size
+   of the printed dashed ring (the width is set inline; 2.6em without it). */
+.alliance-ring {
+  position: absolute;
+  box-sizing: border-box;
+  width: 2.6em;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 3px solid;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+/* An Alliance token: the round picture on its Faction's ring (width set
+   inline, percent of the stage), or inline on its holder's seat panel. */
+.alliance-token {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #111, 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+.alliance-token img { display: block; width: 100%; height: 100%; }
+.alliance-token.drawn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #8a6d2a;
+}
+.alliance-token.drawn .icon { width: 70%; height: auto; }
+/* A Maker Hooks token in its garrison's slot (placed and turned inline). */
+.maker-hooks-token {
+  position: absolute;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.maker-hooks-token.drawn {
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: none;
+}
+.maker-hooks-token.drawn .icon { width: 90%; height: auto; }
+.track-token {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 1.5em;
+  height: 1.5em;
+  font-size: 0.8em;
+}
+/* The player disc (seatDisc): the one common round token — Score marker,
+   Councilor token, the Bene Tleilax board's research and track tokens.
+   Flat in the seat's colour, no number: the same colour, edge and shadow
+   as the Influence cubes (.track-cube), the edge likewise outside the box
+   so that the coloured face is the printed spot's size. On a board scan
+   its centre is placed and its width, a percent of the stage, is set
+   inline. */
+.seat-disc {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.board-stage .seat-disc, .bt-stage .seat-disc, .popover-leader-stage .seat-disc {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+/* A Score disc past 12 counts on from 0 and carries its lap, "+13", in the
+   board's own numeral style (.bonus-spice-count): a box as large as the
+   disc laid over its centre (the disc may be a picture, which cannot hold
+   it), above the discs that share its cell. The one number on a board
+   token, at the user's request (2026-10-10). The text stays on the disc's
+   face, inside the app picture's bevel and dark rim (about 0.78 of its
+   width): at most three quarters of the disc wide (board_tokens.py [3h]),
+   so the figures are 40cqh and a weight lighter than that style (700, not
+   800) and the "+" is 0.7 of them. */
+.vp-lap {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  pointer-events: none;
+  z-index: 1;
+}
+.vp-lap-text {
+  color: #fff;
+  font-weight: 700;
+  font-size: 40cqh;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
+.vp-lap-plus { font-size: 0.7em; }
+/* The strength token's "+20" face: inverted colours and the printed +20. */
+.strength-token { position: absolute; }
+.strength-token.flipped {
+  background: #111 !important;
+  color: #fff;
+  border-color: #fff;
+}
+.strength-plus {
+  position: absolute;
+  top: -0.9em;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6em;
+  line-height: 1;
+  padding: 0 0.25em;
+  border-radius: 3px;
+  background: var(--glow);
+  color: #1a140c;
+  white-space: nowrap;
+}
+/* The pictured Combat marker (catalog.strength_tokens): a square token
+   face sized by the stage (width set inline), so it fills its cell of the
+   scan at any zoom. The thin rim is the seat's UI colour. */
+.strength-token.pictured {
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  border: 1px solid;
+  border-radius: 14%;
+  overflow: hidden;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+.strength-token.pictured img { display: block; width: 100%; height: 100%; }
+.strength-token.pictured:hover { z-index: 4; }
+/* A seat's units in its quadrant of the Conflict field (board.js
+   conflictUnits) and in its garrison ring (garrisonUnits): the box is the
+   printed quadrant or the ring's, and each piece is placed and sized inline
+   in percent of it. The pieces never take a click; the box's name (title)
+   gives the exact counts. */
+.conflict-units, .garrison-units, .bt-specimen-group { position: absolute; }
+:is(.conflict-unit, .garrison-unit, .bt-specimen) {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+}
+/* A troop is the seat's cube, exactly like an Influence cube (.track-cube):
+   flat colour, the dark edge a ring outside the box. */
+:is(.conflict-unit, .garrison-unit, .bt-specimen)[data-kind="troop"] {
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* The seat's Agent figure (seatPiece), as on a space (.agent-token). */
+.conflict-unit[data-kind="agent"] {
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+/* The neutral figures: their own pictures with the dark hairline every
+   piece on the scan gets (.commander-piece), no seat colour. */
+:is(.conflict-unit, .garrison-unit)[data-kind="commander"],
+.conflict-unit[data-kind="sandworm"] {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+}
+/* Without the pictures: a Commander as its drawn mark on a space
+   (.commander-piece.drawn), a worm as a drawn arch, in the plastic's grey. */
+:is(.conflict-unit, .garrison-unit)[data-kind="commander"].drawn {
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  filter: none;
+}
+.conflict-unit[data-kind="sandworm"].drawn { overflow: visible; filter: none; }
+.conflict-unit[data-kind="sandworm"].drawn path {
+  fill: #b9b4ae;
+  stroke: #111;
+  stroke-width: 1.2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+/* Cards in their printed slots: width is set inline as a percent of the
+   stage, so they scale with the scan like the hotspots do. */
+.vcard.slot-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+.vcard.slot-card.legal { z-index: 2; }
+.conflict-history-trigger.slot-card { position: absolute; transform: translate(-50%, -50%); font-size: 0.72rem; padding: 0.3rem; }
+/* The face-down Conflict deck drawn as a card back with the count. */
+.slot-deck {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15em;
+  border-radius: 6px;
+  border: 2px solid #6b2a2a;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 4px, transparent 4px 10px),
+    linear-gradient(160deg, #3a1d1d, #1c0f0f);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), inset 0 0 0 3px rgba(0, 0, 0, 0.35);
+  color: #f3e6d0;
+  font-weight: 800;
+  cursor: default;
+}
+.slot-deck .icon { width: 1.6em; height: 1.6em; }
+.slot-deck-count { font-size: 1.1em; line-height: 1; }
+/* Pieces laid on the scan (boardPiece): the Shield Wall token, and the
+   tiles the scan has no print for (a Leader's space, Immortality's
+   Research Station overlay). They lie under the hotspots. */
+.shield-wall-token, .board-tile {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+.shield-wall-token { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7)); }
+.board-tile { border-radius: 3px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75); }
+
+/* ---------- card strips ---------- */
+
+#market {
+  grid-area: market;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  /* A width the player set is the column's, narrower than --market-min too. */
+  min-width: var(--market-user, var(--market-min));
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 0 0.2rem 0 0.5rem;
+  border-left: 1px solid var(--line);
+}
+#market .strip { flex: none; }
+#market .strip-cards { flex-wrap: wrap; overflow: visible; }
+.strip h3 { margin: 0 0 0.2rem; }
+/* A shared-card column folds away from its own heading. Collapsed it keeps
+   the heading and its count, so the column still says what is in it. */
+.strip-toggle {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.strip-toggle:hover { color: var(--accent, #f4c542); }
+.strip-toggle:focus-visible { outline: 2px solid var(--accent, #f4c542); outline-offset: 2px; }
+.strip.collapsed > *:not(h3) { display: none; }
+.strip.collapsed { flex: none; }
+/* Every column folded: let the whole shared-card column give its width back
+   to the board, and keep the headings on one line so it can be narrow. */
+/* A seat's card piles as icons (panels.js pileStat): the hand as two
+   fanned card backs, the deck as one, at a stat icon's height. */
+.pile-mark { display: inline-flex; align-items: center; }
+.pile-mark-back {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.45);
+}
+.pile-mark.hand .pile-mark-back + .pile-mark-back {
+  margin-left: -0.55em;
+  transform: rotate(8deg);
+}
+/* The battle icons held face up (panels.js heldBattleIcons), and the
+   seat's details button at the line's end. */
+.battle-line { display: flex; align-items: center; }
+.battle-icons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: inherit; }
+.pile-viewer .vcard.face-down img { filter: grayscale(0.7) brightness(0.75); }
+/* The components' real sizes, in millimetres (play feedback 2026-10-26:
+   "실물 보드게임에서 각각의 실제 크기"). Measured on a Korean copy
+   (blog.naver.com/namju004/222319423812): a big card (Imperium, Reserve,
+   starting) 63.5 x 88.2 and a small card (Intrigue, Conflict, Objective)
+   44.2 x 67.4. The board scan prints the Conflict card's slot at exactly
+   44.2 x 67.3 at 11.42 px a millimetre, and at that scale a Contract
+   token's slot is 55 x 35 (display/board_layout.py; the Research Station
+   tile matched on the print comes to 82 x 44.6). Not measured yet, so
+   estimated: a Tech tile 70 x 46 and a Skill token 44 x 44. The seat panel
+   draws a millimetre as --thumb-mm, the seat's details as --mm. */
+.seat { --thumb-mm: 0.7px; }
+.pile-viewer { --mm: 1.2px; }
+/* A seat's Skill and Tech tiles and open Contracts as small pictures
+   (panels.js tileThumb), each at its real height. */
+.tile-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; }
+.tile-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.tile-thumb.skills { height: calc(44 * var(--thumb-mm)); }
+.tile-thumb.tech { height: calc(46 * var(--thumb-mm)); }
+.tile-thumb.contracts { height: calc(35 * var(--thumb-mm)); }
+.tile-thumb {
+  display: block;
+  width: auto;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.25);
+}
+.tile-thumb.flipped { filter: grayscale(0.9) brightness(0.55); }
+/* An open Contract's picture holds CHOAM Escort's goods over its left. */
+.contract-thumb { position: relative; display: inline-block; }
+.contract-thumb .scouts-tray { position: absolute; top: 2px; left: 2px; font-size: 0.7rem; }
+/* The battle line's details button (panels.js seatDetailsContent). */
+.seat-details {
+  flex: none;
+  margin-left: auto;
+  padding: 0 0.4em;
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* The seat's details at the components' real widths (the sizes above);
+   the picture's own aspect gives the height. */
+.pile-viewer .vcard.real-card { width: calc(63.5 * var(--mm)); }
+.pile-viewer .vcard.real-small-card { width: calc(44.2 * var(--mm)); }
+.pile-viewer .vcard.real-contract { width: calc(55 * var(--mm)); }
+.pile-viewer .vcard.real-tech { width: calc(70 * var(--mm)); }
+.pile-viewer .vcard.real-skill { width: calc(44 * var(--mm)); }
+
+/* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the Leader
+   picture gives way (the name keeps its hover card) and the name and badges
+   keep one line. The seats once folded their card lines to fit four in the
+   column (171 -> 111px a seat at 1366x768); since 2026-10-26 the lines
+   always show (play feedback) and the column scrolls when they do not fit. */
+@media (max-height: 960px) {
+  #seats .seat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.2rem;
+    padding: 0.3rem 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+  #seats .seat > * { grid-column: 1 / -1; }
+  #seats .seat > .seat-head { grid-column: 1; grid-row: 1; }
+  #seats .leader-thumb { display: none; }
+  #seats .seat .who { flex-wrap: nowrap; }
+  #seats .seat .who-name { flex: 1 1 auto; }
+  #seats .seat .badge { white-space: nowrap; }
+  #seats .seat .stats, #seats .seat .battle-line { margin-top: 0.05rem; gap: 0.05rem 0.45rem; }
+}
+
+.bt-open {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  margin: 0.2rem 0 0;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  text-align: center;
+}
+.bt-open:hover { border-color: #c9a227; }
+.bt-open:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
+
+/* Read by screen readers, not drawn (the live region in index.html). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The help panel: the icon legend, the seat marks, the shortcuts. */
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+#help[hidden] { display: none; }
+#help-body {
+  background: var(--panel, #14110c);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  width: min(720px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+#help-body h2 {
+  margin: 0 0 0.4rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+#help-body h3 { margin: 0.8rem 0 0.3rem; font-size: 0.9rem; }
+/* (mark, meaning) pairs, as many to a row as fit. auto-fill needs fixed
+   tracks, hence the fixed mark column. */
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 4.4rem minmax(160px, 1fr));
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+}
+.help-grid > .help-mark { display: inline-flex; justify-content: center; white-space: nowrap; }
+.help-mark .icon { height: 1.5em; }
+.help-game-settings { margin: 0; }
+.help-turn { margin: 0; padding-left: 1.2rem; }
+.help-turn li { margin: 0.15rem 0; }
+/* The rulings notice: one folded list per group (help.js helpRulings). */
+.help-rulings-intro { margin: 0 0 0.4rem; }
+.help-rulings { margin: 0.25rem 0; }
+.help-rulings > summary { cursor: pointer; font-weight: 600; }
+.help-rulings dl { margin: 0.3rem 0 0.5rem; }
+.help-rulings dt { margin-top: 0.45rem; font-weight: 600; }
+.help-rulings dd { margin: 0.1rem 0 0 1rem; }
+.help-ruling-tag {
+  font-weight: normal;
+  font-size: 0.8em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 0.3em;
+}
+.help-ruling-sources { display: block; margin-top: 0.1rem; font-size: 0.9em; }
+kbd {
+  font: inherit;
+  font-size: 0.8em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 0.35em;
+}
+.help-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.help-close:focus-visible { outline: 2px solid var(--accent, #f4c542); outline-offset: 2px; }
+
+/* The board opened at a size you can read: the stage is percentage-based, so
+   a wider container is the whole change. */
+#bt-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+#bt-zoom[hidden] { display: none; }
+#bt-zoom-body {
+  background: var(--panel, #14110c);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem;
+  max-width: 94vw;
+  max-height: 94vh;
+  overflow: auto;
+}
+#bt-zoom-body h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+#bt-zoom-body .bt-stage { width: min(88vw, 1000px); }
+.bt-zoom-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.bt-zoom-close:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
+
+#market.all-folded { min-width: 0; }
+#market.all-folded .strip-toggle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9rem;
+}
+.strip-cards {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 3px;
+}
+.strip-cards.wrap { flex-wrap: wrap; }
+
+.vcard {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #2a2419;
+  width: 76px;
+  overflow: hidden;
+  line-height: 1.2;
+}
+/* A card's picture fills it; a redrawn face's icons keep their own sizes. */
+.vcard img:not(.card-face img) { display: block; width: 100%; height: auto; }
+/* A card's picture holds its place before the file comes (the pictures load
+   lazily): the face's proportions until then, the file's own after (auto).
+   Without it a card out of view was 4 px tall and grew as it scrolled in,
+   under a press: the press fell on the strip and the release on the card,
+   and the click was lost (2026-10-31). Imperium, Tleilaxu and starting
+   cards 695 x 970; Intrigue and Conflict cards 0.658; Contracts 1.573;
+   Leaders 1.431; Tech tiles 1.527 (the app's faces). */
+.vcard > img { aspect-ratio: auto 695 / 970; }
+.vcard.intrigue > img, .vcard.conflict > img { aspect-ratio: auto 658 / 1000; }
+.vcard.contract > img { aspect-ratio: auto 1573 / 1000; }
+.vcard.leader > img { aspect-ratio: auto 1431 / 1000; }
+.vcard.tile > img { aspect-ratio: auto 1527 / 1000; }
+.vcard.leader, .vcard.contract { width: 132px; }
+.vcard.conflict, .vcard.intrigue { width: 68px; }
+.vcard.small { width: 60px; }
+.hand-cards .vcard { width: 110px; }
+.vcard.textcard {
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.vcard-name { font-weight: 700; }
+.vcard-meta { opacity: 0.7; }
+.vcard:hover:not(:disabled) { background: #2a2419; border-color: rgba(255, 255, 255, 0.6); color: inherit; }
+.vcard.legal {
+  border-color: var(--glow);
+  box-shadow: 0 0 0 1px rgba(235, 200, 126, 0.15);
+}
+.vcard.legal:hover { transform: translateY(-3px); }
+/* The card of a staged Agent turn's pick: lifted out of the hand. */
+.vcard.picked, .vcard.picked:hover {
+  transform: translateY(-10px);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--glow), 0 0 18px 4px rgba(255, 207, 90, 0.85);
+}
+.vcard.taken { opacity: 0.4; }
+/* A card the seat's decision offers but it cannot take now (render.js
+   unavailableRef): dimmed, the reason in its title. */
+.vcard.blocked { opacity: 0.5; filter: grayscale(0.6); }
+.vcard-badge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 0.7rem;
+  border-radius: 5px;
+  padding: 0 0.35em;
+}
+/* Why the log names a card (panels.js turnCard, render.js logTargets):
+   a small mark across the top of the picture, apart from the corner count
+   other cards carry. */
+.vcard-badge.log-reason {
+  top: 2px;
+  bottom: auto;
+  left: 2px;
+  right: 2px;
+  font-size: 0.62rem;
+  line-height: 1.25;
+  text-align: center;
+  /* Two marks may take two lines rather than lose the second word. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.turn-cards-more { align-self: center; font-size: 0.8rem; }
+/* A Tech stack's size, drawn like a face-down deck's count (piles.css
+   .deck-pile-count): a stack of different tiles, not copies of one. */
+.vcard-badge.stack-count {
+  min-width: 1.6em;
+  box-sizing: border-box;
+  padding: 0.1em 0.3em;
+  border: 1px solid rgba(243, 230, 208, 0.7);
+  border-radius: 999px;
+  background: #1a140c;
+  color: #f3e6d0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- own hand ---------- */
+
+#private-zone {
+  grid-area: hand;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  background: #181c1e;
+  padding: 0.45rem 0.8rem 0.5rem;
+}
+.hand-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.8rem;
+  align-items: center;
+  margin-bottom: 0.2rem;
+}
+.hand-counts { display: inline-flex; gap: 0.8rem; }
+/* The row keeps one hand card's height (110px wide, a 695x970 face, its
+   2px border and the strip's 3px padding) even when the hand is empty or
+   holds only the smaller Intrigue cards. The board above is square and
+   takes the height left over, so a shorter row grew it, wider too, on a
+   Reveal turn with nothing left in hand (user, 2026-10-11). */
+.hand-zones {
+  display: flex;
+  gap: 1.2rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  min-height: calc((110px - 4px) * 970 / 695 + 10px);
+}
+.hand-cards { flex: 0 1 auto; min-width: 0; }
+.intrigue-cards { flex: 0 1 auto; min-width: 80px; border-left: 1px solid var(--line); padding-left: 0.8rem; }
+/* The player's own hand and Intrigue cards in an order of their own
+   (layout.js, user request 2026-10-11): a card dragged along its row shows
+   where it will land; the order lives in this browser only. */
+.strip-cards.reorderable { position: relative; }
+.vcard.dragging { opacity: 0.45; }
+.hand-drop-marker {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  pointer-events: none;
+}
+body.hand-dragging, body.hand-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.hand-order-reset {
+  all: unset;
+  cursor: pointer;
+  margin-left: auto;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  opacity: 0.8;
+}
+.hand-order-reset:hover { opacity: 1; color: var(--accent); }
+.hand-order-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---------- seats ---------- */
+
+.seat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 7px;
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+}
+.seat.active { border-color: var(--accent); background: #282820; }
+.seat-head { display: flex; gap: 0.5rem; align-items: center; }
+.leader-thumb { width: 74px; border-radius: 5px; cursor: pointer; flex: none; }
+.seat .who { font-weight: 700; display: flex; flex-wrap: wrap; gap: 0.1rem 0.3rem; align-items: center; flex: 1; min-width: 0; }
+.seat .who-name { flex: 1 0 100%; display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
+.seat .leader-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Keep numbered player badges round even beside a long Leader name. */
+.seat-mark {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.seat .badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  border-radius: 6px;
+  padding: 0 0.35rem;
+  background: var(--accent);
+  color: #1a140c;
+}
+.seat .badge.ai { background: var(--line); color: var(--ink); }
+/* The player's own "let the AI play" / "play myself" button on its seat's
+   battle line, before the details button (panels.js seatHandsButton). */
+.seat .seat-hands {
+  flex: none;
+  margin-left: auto;
+  padding: 0 0.4em;
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.seat .seat-hands + .seat-details { margin-left: 0.3rem; }
+/* A search seat working on its answer (summary.thinking): its badge says
+   "thinking" in the badge's own place and size. */
+.seat .badge.ai.thinking { background: var(--accent-soft); color: var(--accent); }
+/* The seat's first four rows -- counts, pieces, piles and battle icons --
+   read as one table: one text size, one icon height, one row height and
+   one gap between rows (play feedback 2026-10-26: "첫 네 줄 글자크기나
+   위아래 줄간격, 통일됐으면 좋겠어 ... 숫자 글자가 크기도 다르잖아"). */
+.seat .stats, .seat .battle-line {
+  min-height: 1.5em;
+  margin-top: 0.15rem;
+  gap: 0.15rem 0.55rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.seat .stat { display: inline-flex; align-items: center; gap: 0.15em; }
+.seat .stat .icon, .seat .pile-mark-back { height: 1.2em; width: auto; margin: 0; }
+/* The seat's time holding control (clock.js), last in the pieces row; the
+   seat whose clock moves now shows it in the accent colour. */
+.seat-clock {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.seat-clock.running { opacity: 1; color: var(--accent); font-weight: 700; }
+
+.cardline { margin: 0.1rem 0; }
+.tag {
+  display: inline-block;
+  background: var(--accent-soft);
+  border-radius: 5px;
+  padding: 0 0.3rem;
+  margin: 0 0.15rem 0.15rem 0;
+  font-size: 0.8rem;
+}
+.tag.clickable:hover { background: var(--accent); color: #1a140c; }
+/* An in-play card the open Agent turn played (panels.js inPlayChip): an
+   outline and a small "this turn" mark, so it reads apart from an earlier
+   copy of the same card; a dashed mark while its Agent box still waits. */
+.tag.this-turn { box-shadow: inset 0 0 0 1px var(--accent); }
+.this-turn-mark {
+  display: inline-block;
+  margin-left: 0.3em;
+  padding: 0 0.3em;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent);
+  vertical-align: 1px;
+}
+.tag.box-pending .this-turn-mark { border-style: dashed; cursor: help; }
+.tag.clickable:hover .this-turn-mark { color: inherit; border-color: currentColor; }
+
+/* ---------- decision panel ---------- */
+
+#decision-banner {
+  border-top: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: hidden;
+}
+#decision-info { flex: none; }
+#decision-info .prompt { font-weight: 700; font-size: 1rem; }
+/* The running seat's spell follows the prompt on its line (clock.js). */
+#decision-info .prompt:has(+ .clock-spell) { display: inline; }
+#decision-info .clock-spell {
+  margin-left: 0.3em;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#decision-info .clock-spell::before { content: "· "; }
+#standings .clock-totals {
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+#decision-info .meta { font-size: 0.8rem; opacity: 0.75; }
+/* ITEM 5: the most recently resolved Conflict, one muted line above the
+   prompt (render.js's combatResultLine) -- no badge, no animation. */
+#decision-info .combat-result { font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.35rem; }
+/* Feedback item 8: the Arrakeen Scouts item a decision belongs to, under
+   the prompt (panels.js scoutsDecisionHeader). */
+#decision-info .scouts-decision-item {
+  margin: 0.3rem 0 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid var(--accent);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+#decision-info .scouts-decision-title { font-weight: 700; }
+#decision-info .scouts-decision-item .scouts-line { margin-left: 0.8em; opacity: 0.85; }
+
+#actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 2px 3px 4px;
+}
+#decision-info .turn-end-row button {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #211d15;
+  font-weight: 700;
+}
+#decision-info .turn-end-row button:hover:not(:disabled) { background: #ebcd97; }
+#actions button { text-align: left; max-width: 100%; }
+
+/* The staged Agent turn (renderActionPanel): what has been picked, a hint
+   for the next step, then the turn's other actions and the list toggle. */
+.pick-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.pick-steps .icon { height: 0.9em; opacity: 0.7; }
+#actions .pick-step {
+  padding: 0.25rem 0.55rem;
+  border-style: dashed;
+  background: transparent;
+  text-align: left;
+}
+#actions .pick-step:disabled { opacity: 1; cursor: default; }
+#actions .pick-step:disabled strong { color: var(--glow); }
+#actions .pick-step.done {
+  border-style: solid;
+  border-color: var(--glow);
+  background: var(--accent-soft);
+}
+.pick-hint { font-size: 0.9em; }
+.pick-others {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.85em;
+}
+.pick-others::before, .pick-others::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+/* A card choice listing the seat's own piles (render.js zoneHeading): a
+   muted label with a rule above it over each run of rows in one pile, and a
+   bare rule before the rows that follow them (a decline). */
+#actions .zone-heading {
+  margin-top: 0.35rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+#actions .zone-divider {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+#actions > .zone-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* An Agent turn's rows by the card whose box they are (render.js
+   appendDecisionItems): the card's name over its rows behind an accent
+   rule, then the turn's other rows under a quieter one. A box held back by
+   the other box's bundled selection says so under its name. */
+#actions .agent-box-heading {
+  margin-top: 0.45rem;
+  padding: 0.05rem 0 0.05rem 0.45rem;
+  border-left: 3px solid var(--accent);
+  font-size: 0.85em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+#actions > .agent-box-heading:first-child { margin-top: 0; }
+#actions .agent-box-heading.agent-box-others {
+  border-left-color: var(--line);
+  opacity: 0.8;
+}
+#actions .agent-box-note {
+  padding-left: 0.6rem;
+  font-size: 0.82em;
+  font-style: italic;
+}
+/* A box row's card under its header: read by screen readers, not drawn
+   (as .visually-hidden), but shown again on a row focusActions lifts out
+   of its group. */
+#actions .box-row-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+#actions .action-item.action-match .box-row-title {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+/* Controlled's choice: the deck's top card it is about, above its buttons
+   (panels.js deckTopChoicePicture), a little smaller than a hand card. */
+.deck-top-choice { display: flex; flex: none; padding: 2px 0; }
+.vcard.deck-top-choice-card { width: 92px; }
+.vcard.deck-top-choice-card .vcard-badge { white-space: nowrap; }
+.pick-option { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
+.pick-option .icon { height: 1.1em; }
+.pick-graft, .pick-partner { font-weight: 600; }
+/* Navigation Chamber's cut: the printed cost struck through, then the paid one. */
+.pick-option .cost-printed { text-decoration: line-through; opacity: 0.6; }
+.pick-discount { font-weight: 600; }
+#actions .action-list-toggle {
+  align-self: flex-end;
+  margin-top: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 0.8em;
+  text-decoration: underline;
+}
+#actions .action-list-toggle:hover { opacity: 1; }
+/* What a step makes of the seat's combat strength (strengthPreview). */
+.strength-preview {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.strength-preview .icon { height: 1em; }
+/* What revealing the hand right now would give (revealPreview): on the
+   Reveal button and beside the hand. */
+.reveal-preview {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.reveal-preview .icon { height: 1em; }
+.hand-reveal-note {
+  margin-left: 0.8em;
+  font-size: 0.85em;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.hand-reveal-note .reveal-preview { margin-left: 0.2em; }
+/* A count family as one row (countRow): what, how many, and the button
+   that does it. */
+.action-item.count-row {
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.count-label { font-weight: 600; }
+/* Critical Moment's amounts already called (render.js calledAmountsNote). */
+.scouts-called-note { flex-basis: 100%; font-size: 0.85em; }
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+#actions .stepper button, .force-stepper .stepper button {
+  min-width: 1.9em;
+  padding: 0.15rem 0.3rem;
+  text-align: center;
+  font-weight: 800;
+}
+.stepper-value {
+  min-width: 1.6em;
+  text-align: center;
+  font-size: 1.1em;
+}
+#actions .count-confirm { flex: 1; }
+/* The same rows on the board (board.js forceStepper), in the plain desert
+   above the Conflict: the band (placed inline, percent of the stage) takes
+   no pointer, and the rows stand on its bottom edge, the one nearest the
+   Conflict. Every length inside is in em, so the rows shrink as a whole
+   when fitForceStepper sets a smaller font size to fit the band. */
+.force-stepper-band {
+  position: absolute;
+  pointer-events: none;
+}
+.force-stepper {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 5;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  padding: 0.25em 0.4em;
+  background: rgba(10, 8, 6, 0.9);
+  border: 2px solid;
+  border-radius: 8px;
+  font-size: 0.85em;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.force-stepper .action-item.count-row { flex-wrap: nowrap; gap: 0.35em; }
+.force-stepper .stepper { gap: 0.15em; }
+.force-stepper button { padding: 0.1em 0.45em; }
+.force-stepper .stepper button { padding: 0.15em 0.3em; }
+/* The Reveal shop (renderRevealPanel). */
+.reveal-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.9rem;
+}
+.reveal-persuasion { font-size: 1.15em; font-weight: 700; }
+.reveal-persuasion .icon { height: 1.2em; }
+.reveal-bought { font-size: 0.9em; }
+.acquire-cost { float: right; margin-left: 0.6em; font-weight: 700; }
+.acquire-cost .icon { height: 1.05em; }
+/* The option chooser borrows the card popover next to the picked space. */
+#card-popover .action-item { margin-top: 0.3rem; }
+#card-popover .action-item > button:first-child { flex: 1; text-align: left; }
+
+.action-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  align-items: flex-start;
+  max-width: 100%;
+  border-radius: 8px;
+}
+.action-item > button:first-child { flex: 1; }
+/* Focus on one object: its actions come first, lit like a legal hotspot;
+   the others fade. */
+.action-item.action-match > button:first-child {
+  background: var(--glow);
+  border-color: var(--glow);
+  color: #1a140c;
+  box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.55);
+}
+.action-item.action-match > button:first-child:hover:not(:disabled) {
+  background: #ffe08a;
+  color: #1a140c;
+}
+.action-item.action-dim { opacity: 0.4; }
+.action-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid var(--glow);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-weight: 700;
+}
+.action-focus button { padding: 0.1rem 0.5rem; font-size: 0.85em; }
+.action-info {
+  padding: 0.35rem 0.45rem;
+  border-color: var(--line);
+  background: transparent;
+}
+.action-detail {
+  flex-basis: 100%;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+}
+.detail-card { width: 120px; border-radius: 6px; margin-top: 0.3rem; }
+
+.undo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.undo-row button { background: transparent; border-color: var(--bad); color: var(--bad); }
+.undo-row button:hover:not(:disabled) { background: var(--bad); color: #fff; }
+
+.confirm-row { margin-top: 0.5rem; }
+.confirm-row button { border-color: var(--good); color: var(--good); background: transparent; font-weight: 700; }
+.confirm-row button:hover:not(:disabled) { background: var(--good); color: #111; }
+
+.action-item.irreversible > button:first-child { border-style: dashed; }
+/* A choice held for the turn-end press (turn.js chooseAction): lit like a
+   picked step of the staged Agent turn until the press sends it. */
+.action-item.held-choice > button:first-child {
+  background: var(--glow);
+  border-color: var(--glow);
+  color: #1a140c;
+  box-shadow: 0 0 12px 2px rgba(255, 207, 90, 0.55);
+}
+.held-hint { margin-top: 0.3rem; }
+.shortfall-badge {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: #ffb347;
+  border: 1px solid #ffb347;
+}
+/* A step that loses an unused effect of the seat's own card (render.js
+   appendForfeitNotes, server forfeits.py): its own line under the row's
+   words, in the "cannot undo" red, read before the click (user request
+   2026-10-31). */
+.action-item.forfeits > button:first-child { border-color: var(--bad); }
+.forfeit-note {
+  display: block;
+  margin-top: 0.3em;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.82em;
+  font-weight: 700;
+  text-align: left;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+}
+.forfeit-note .icon { height: 1.1em; vertical-align: middle; }
+/* What the turn-end press leaves behind (render.js appendTurnEndNotes): a
+   line each under the button, and the Reveal turn's under its row's words,
+   in the shortfall badge's amber (the game screen is always dark). */
+.turn-end-note {
+  display: block;
+  margin-top: 0.3em;
+  line-height: 1.35;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-align: left;
+  color: #ffb347;
+}
+.turn-end-note .icon { height: 1.1em; vertical-align: middle; }
+.irreversible-badge {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  vertical-align: middle;
+}
+/* An Arrakeen Scouts line, or any other choice, the seat cannot take now
+   (render.js appendScoutsLines, appendUnavailableRows): shaped like an
+   action row, dashed and dimmed, with no pointer and the reason as a
+   badge. Not button:disabled, which means "busy" here (cursor: wait). */
+.scouts-line-item.unavailable,
+.unavailable-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.4rem;
+  max-width: 100%;
+  padding: 0.35rem 0.8rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.unavailable-badge {
+  display: inline-block;
+  padding: 0 0.35em;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  vertical-align: middle;
+}
+.unavailable-badge .icon { height: 1.1em; }
+/* Under a High Council step: what its seat would let the seat join. */
+.subcommittee-preview {
+  flex-basis: 100%;
+  padding: 0.1rem 0.6rem 0.2rem;
+  font-size: 0.82rem;
+}
+
+#review-bar { border-left: 6px solid var(--good); }
+.review-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+#review-slider { flex: 1; min-width: 140px; }
+/* Playback (the cursor walking by itself): its own row under the step
+   controls, the play button wide enough that its label can change. */
+.review-playback { margin-top: 0.4rem; }
+#review-play { min-width: 7.5em; font-weight: 600; }
+#review-status { margin-top: 0.4rem; font-size: 0.85rem; opacity: 0.8; }
+
+#game-list button, #save-list button { margin-left: 0.3rem; }
+#game-list li, #save-list li { margin: 0.25rem 0; }
+
+/* Delete button (screens.js loadSaveList): armed by a first click, it
+   reads "정말 삭제?"/"Delete for good?" in the warning colour until a second
+   click deletes or it reverts. */
+.save-delete.armed {
+  border-color: var(--bad);
+  color: var(--bad);
+  font-weight: 700;
+}
+.save-delete.armed:hover:not(:disabled) { background: var(--bad); color: #fff; }
+
+#standings table { border-collapse: collapse; width: 100%; }
+#standings th, #standings td {
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+}
+#standings .winner { color: var(--good); font-weight: 700; }
+/* A finished game's course (panels.js winOddsChart): recessive grid and
+   axes, 2px seat lines (the winner's 3px), points ringed in the panel. */
+.win-odds-section { margin-top: 0.8rem; }
+.win-odds-section h3 { margin: 0 0 0.2rem; font-size: 1rem; }
+.win-odds-note { margin: 0 0 0.4rem; font-size: 0.8rem; }
+.win-odds-chart { position: relative; max-width: 520px; }
+.win-odds-chart.compact { max-width: 420px; flex: 1; }
+.win-odds-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.win-odds-chart .grid { stroke: var(--line); stroke-width: 1; }
+.win-odds-chart .grid.even { stroke-dasharray: 3 3; stroke-width: 1.2; }
+.win-odds-chart .axis { fill: var(--ink); opacity: 0.7; font-size: 10px; }
+.win-odds-chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.win-odds-chart .series.winner { stroke-width: 3; }
+.win-odds-chart .point { stroke: var(--panel); stroke-width: 1.5; }
+.win-odds-chart .badge { stroke: var(--panel); stroke-width: 1.5; }
+.win-odds-chart .badge-text { fill: #fff; font-size: 9px; font-weight: 700; }
+.win-odds-chart .cursor { stroke: var(--accent); stroke-width: 1.5; }
+.win-odds-chart .crosshair { stroke: var(--ink); stroke-width: 1; opacity: 0.5; }
+.win-odds-chart .hit { fill: transparent; cursor: default; }
+.win-odds-chart .hit:focus { outline: none; }
+.win-odds-tip {
+  position: absolute; top: 0; transform: translateX(-50%);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  padding: 0.15rem 0.4rem; font-size: 0.75rem; white-space: nowrap; pointer-events: none;
+}
+.win-odds-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; margin-top: 0.3rem; font-size: 0.8rem; }
+.win-odds-legend > span { display: inline-flex; align-items: center; gap: 0.3em; }
+.win-odds-swatch { display: inline-block; width: 1.2em; height: 3px; border-radius: 2px; }
+#review-odds { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+#review-odds[hidden] { display: none; }
+.win-odds-bar-title { font-size: 0.8rem; opacity: 0.8; white-space: nowrap; }
+#standings button { margin-top: 0.6rem; }
+
+/* ---------- popover ---------- */
+
+.popover {
+  position: fixed;
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.popover.hover { pointer-events: none; }
+.popover-title { font-weight: 700; margin-bottom: 0.2rem; }
+.popover-note { font-size: 0.75rem; opacity: 0.75; margin-bottom: 0.3rem; }
+/* The pile viewer (panels.js openPileViewer): a discard pile or the deck
+   list, open until its ×, Escape or its opener closes it. Above the board,
+   the card-use cues and the phase banner; below the Bene Tleilax zoom, the
+   help and the card popover, which shows a card from it enlarged on top.
+   The title row stays put and the cards scroll under it, so a long pile
+   never runs off the window. */
+#pile-viewer {
+  z-index: 38;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  overflow: hidden;
+  padding: 0;
+}
+#pile-viewer[hidden] { display: none; }
+.pile-viewer-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.2rem 0.9rem;
+}
+.pile-viewer-head .popover-title { margin: 0.2rem 0 0; min-width: 0; overflow-wrap: anywhere; }
+.pile-viewer-close { flex: none; padding: 0 0.4rem; font-size: 1.2rem; line-height: 1.3; }
+.pile-viewer-body { min-height: 0; overflow-y: auto; padding: 0 0.9rem 0.7rem; }
+.pile-viewer-body > .popover-title { margin-top: 0.4rem; }
+/* The deck list's top card, when a card effect shows it (panels.js
+   deckListContent): its own entry, outlined, its "Top" / "맨 위" badge on one
+   line on the list's 60px cards. The outline sits inside the strip's 3px
+   padding. */
+.vcard.deck-top { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vcard.deck-top .vcard-badge { white-space: nowrap; }
+/* A seat's Victory Point ledger in the pile viewer (panels.js
+   vpLedgerContent): one row per step that moved its points, round, change
+   and points after it in fixed columns, the cause beside them in the log's
+   own words. A row whose step is in the log finds it there on a click. */
+.vp-ledger {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.vp-row-main {
+  display: grid;
+  grid-template-columns: 2.2em 2.1em 2.6em minmax(0, 1fr);
+  gap: 0.1rem 0.4rem;
+  align-items: baseline;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.vp-row-main[role="button"] { cursor: pointer; }
+.vp-row-main[role="button"]:hover { border-color: var(--accent); }
+.vp-row-main[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vp-round { font-size: 0.75rem; opacity: 0.7; white-space: nowrap; }
+.vp-delta { font-weight: 800; text-align: right; white-space: nowrap; }
+.vp-delta.gain { color: var(--good); }
+.vp-delta.loss { color: var(--bad); }
+.vp-total { opacity: 0.8; white-space: nowrap; }
+.vp-cause { min-width: 0; font-size: 0.78rem; word-break: keep-all; overflow-wrap: anywhere; }
+/* The head reads as one line of text that wraps, like a log line: the
+   seat mark and the icons sit in it. */
+.vp-cause-head .seat-mark,
+.vp-cause-head .neutral-mark { vertical-align: middle; margin-right: 0.25rem; }
+.vp-cause-head strong { margin-right: 0.3rem; }
+.vp-cause-step.after { font-size: 0.72rem; opacity: 0.7; }
+.vp-cause .icon { height: 1.2em; }
+.vp-cause .logevent { margin-left: 0.2rem; }
+/* The composition above the rows (panels.js vpComposition): a source,
+   its points and what they came from, the items wrapping in their own
+   column; the total under a rule. */
+.vp-composition {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.82rem;
+}
+.vp-composition th,
+.vp-composition td {
+  padding: 0.18rem 0.3rem;
+  vertical-align: baseline;
+  border-bottom: 1px solid var(--line);
+}
+.vp-composition th { text-align: left; font-weight: 600; white-space: nowrap; }
+.vp-part-points { font-weight: 800; text-align: right; white-space: nowrap; }
+.vp-part-items { width: 100%; font-size: 0.76rem; opacity: 0.85; word-break: keep-all; overflow-wrap: anywhere; }
+.vp-part-item-points { opacity: 0.75; }
+.vp-composition tfoot th,
+.vp-composition tfoot td { border-bottom: 0; border-top: 2px solid var(--line); }
+.conflict-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.conflict-history-close { padding: 0 0.4rem; font-size: 1.2rem; }
+.conflict-history-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-top: 0.5rem; }
+.conflict-history-item { min-width: 0; text-align: center; }
+.conflict-history-round { font-weight: 700; margin-bottom: 0.3rem; }
+.conflict-history-current { color: var(--accent); }
+.conflict-history-item .vcard.conflict { width: 100%; max-width: 132px; }
+.conflict-history-item.current .vcard { border-color: var(--accent); }
+.conflict-history-name { margin-top: 0.3rem; overflow-wrap: anywhere; word-break: keep-all; }
+.conflict-history-back { margin-bottom: 0.5rem; }
+.popover .meta { font-size: 0.8rem; opacity: 0.85; margin-bottom: 0.3rem; }
+.popover-line { margin: 0.15rem 0; }
+/* A Leader's printed Korean text (render.js effectNode) carries literal
+   "\n" for a printed line/column break with no punctuation (Staban's and
+   Liet's case lists, Esmar's two columns, Steersman's two boxes,
+   display/leaders_ko.py) -- phrase() emits it as a plain text node, so the
+   line must keep it as a visible break itself (2026-09-25 fix review: with
+   no white-space rule the browser collapsed it to a single run). */
+.effect-text-ko { white-space: pre-line; }
+.popover > img { width: 100%; border-radius: 8px; margin-top: 0.5rem; }
+/* A seat's own leader popover: the image becomes a stage the token from
+   `leaderTokenBox` (core.js) lies on, sized and placed in percent of it
+   like the board's own tokens (`.board-stage .seat-disc`). */
+.popover-leader-stage { position: relative; margin-top: 0.5rem; }
+.popover-leader-stage > img { display: block; width: 100%; border-radius: 8px; }
+.leader-token { z-index: 1; }
+/* Steersman Y'rkoon's Navigation-card row (core.js `leaderNavigationRow`),
+   above the leader image rather than over it: its own `aspectRatio` (set
+   inline, matching `NAVIGATION_CARD_WIDTH`) gives it a height to lay its
+   cards in, each centred at its slot's measured x like a card in its
+   printed board slot (`.vcard.slot-card`). */
+.popover-navigation-row { position: relative; margin-top: 0.5rem; }
+.popover-navigation-row .leader-nav-card {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* `.vcard.flipped img` (below) already mutes a face-down-but-owner-visible
+   card's picture. No back art exists for a Navigation card: a plain
+   card-shaped box in the page's own
+   palette, no text — like `.commander-piece.drawn` without a rulebook
+   figure to draw. Flat fill, not a gradient (`.vcard`'s own background;
+   user convention, `ui-token-style.md`: flat colour, no gradients). */
+.nav-card-back {
+  aspect-ratio: 573 / 880;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* The face-down badge (`.vcard-badge`, board.js `visualCard`) at the
+   ~55px-wide Navigation-slot scale: English "Face down" wraps to two lines
+   at the badge's usual 0.7rem there, covering most of the card. Smaller and
+   non-wrapping keeps it to the one line Korean "뒷면" already fits on. */
+.leader-nav-card .vcard-badge {
+  font-size: 0.55rem;
+  white-space: nowrap;
+  padding: 0 0.25em;
+}
+/* Kota Odax of Ix's kept Secret Project tile (core.js
+   `leaderSecretProjectBox`), below the leader image: the card has no
+   printed frame for it ("Place one face down here"), so this is a plain
+   block, left-aligned by default, not positioned like the Navigation
+   row's per-slot boxes above. */
+.popover-secret-project-row { margin-top: 0.5rem; }
+/* The face-down tile: a landscape placeholder (737x479) at the width
+   `.vcard.tile` draws its own face at, flat-filled like `.nav-card-back`.
+   Where the assets have the app's Tech back, piles.js showTechBack puts
+   it inside and piles.css drops this fill and border. */
+.tile-back {
+  display: block;
+  width: 118px;
+  aspect-ratio: 737 / 479;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2419;
+}
+/* Shaddam Corrino IV's set-aside Sardaukar contracts (core.js
+   `leaderSardaukarRow`), below the leader image, face up side by side. */
+.popover-sardaukar-row { display: flex; gap: 0.35rem; margin-top: 0.5rem; }
+
+/* ---------- text board fallback ---------- */
+
+.space-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.space-row:last-child { border-bottom: none; }
+.space-row.legal { background: var(--accent-soft); }
+.space-row.picked { box-shadow: inset 3px 0 0 var(--glow); font-weight: 600; }
+.space-status { color: var(--accent); font-weight: 600; }
+.badge-unimpl {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  padding: 0 0.35rem;
+  margin-left: 0.3rem;
+  background: var(--bad);
+  color: #fff;
+}
+
+/* ---------- action log ---------- */
+
+#action-log .log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-right: 0.2rem;
+}
+/* One seat's consecutive steps as a card: seat colour on the left edge,
+   the Leader in the head, the steps as lines, the cards involved on the
+   right; the ones since the player last acted glow. */
+.turn-card {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+.turn-card.fresh {
+  border-color: var(--glow);
+  background: rgba(213, 180, 120, 0.06);
+}
+.turn-card.undone { opacity: 0.55; }
+.turn-card.undo-marker { color: var(--accent); font-weight: 600; }
+.turn-card.seat-change-marker { color: var(--accent); font-weight: 600; opacity: 0.8; }
+/* The game's own doings between the seats' turns. */
+.turn-card.neutral {
+  border-left-style: dashed;
+  border-left-color: var(--line);
+  background: rgba(0, 0, 0, 0.08);
+}
+.turn-card.neutral .turn-head strong { opacity: 0.85; font-size: 0.85rem; letter-spacing: 0.04em; }
+.turn-card.neutral .logevent { margin-left: 0.3rem; }
+.neutral-mark { opacity: 0.6; }
+/* A folded chain of Combat/Endgame Intrigue passes (ITEM 8h): the seats
+   that passed, inline in the card's one .turn-head line, instead of a full
+   turn card each. .pass-seat.undone shares .turn-line.undone's rule below. */
+.turn-card.passes .pass-seat { display: inline-flex; align-items: center; gap: 0.25rem; }
+.turn-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
+.turn-head strong { font-size: 0.95rem; }
+.turn-where { margin-left: auto; font-weight: 700; white-space: nowrap; }
+.turn-where .icon { height: 1.2em; }
+.turn-body { display: flex; gap: 0.5rem; align-items: flex-start; }
+.turn-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.turn-line-head { display: flex; gap: 0.35rem; align-items: baseline; }
+.turn-action { flex: 1; min-width: 0; }
+.turn-line, .logevent { word-break: keep-all; overflow-wrap: anywhere; }
+.turn-action .term-text, .logevent .term-text {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+.log-term-group { white-space: nowrap; }
+/* A card named in the log (core.js cardNameNode): its picture on hover,
+   pinned by a click. A faint dotted underline says so; the words and their
+   wrapping are the line's own. */
+.card-name {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 2px;
+}
+.card-name:hover { color: var(--accent); text-decoration-color: currentColor; }
+.turn-head .card-name { text-decoration: none; }
+.turn-line .icon { height: 1.25em; }
+.turn-index { font-size: 0.7rem; opacity: 0.5; flex: none; }
+.turn-line.quiet { opacity: 0.5; font-size: 0.75rem; }
+.turn-line.chance { opacity: 0.6; font-size: 0.75rem; font-style: italic; }
+.turn-line.undone, .turn-card.passes .pass-seat.undone { opacity: 0.55; text-decoration: line-through; }
+.turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
+.turn-cards .vcard.small { width: 54px; }
+.turn-cards.many { display: grid; grid-template-columns: repeat(2, 54px); }
+.turn-cards.many .turn-cards-more { grid-column: 1 / -1; }
+.logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
+/* The step a Victory Point ledger row asked for (panels.js findLogEntry). */
+.log-target {
+  outline: 2px solid var(--glow);
+  outline-offset: 1px;
+  border-radius: 4px;
+  background: rgba(235, 200, 126, 0.14);
+  opacity: 1;
+}
+
+.log-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.log-heading h2 { margin: 0; font-size: 0.85rem; }
+.log-size-toggle { padding: 0.2rem 0.45rem; font-size: 0.75rem; }
+/* Below the width at which the shared-card column beside the board would
+   crowd the board, retain the compact table layout and its horizontal
+   scrolling floor (the 2026-09-27 narrow-window convention). */
+@media (max-width: 1340px) {
+  /* The side columns keep a width the player set; unset, they are narrower
+     here. The shared cards stack under the board, so their width (and the
+     handle that sets it) has no part in this layout. */
+  #game-screen {
+    --seats-width: var(--seats-user, 200px);
+    --actions-width: var(--actions-user, 300px);
+    --table-min: calc(
+      var(--seats-width) + var(--board-min) + var(--actions-width) + 2rem
+    );
+  }
+  #table {
+    grid-template-columns:
+      var(--seats-width) minmax(var(--board-min), 1fr) var(--actions-width);
+  }
+  #split-market { display: none; }
+  /* Split the room above the hand between board and market. Content-sized
+     market rows previously consumed the entire board row with all the
+     expansions on; both rows keep their independent scrolling instead. */
+  #center {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr) auto;
+    grid-template-areas: "board" "market" "hand";
+  }
+  #center:has(#private-zone[hidden]) {
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-areas: "board" "market";
+  }
+  #market {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 0.2rem 1rem;
+    padding: 0.3rem 0.2rem 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+  #market .strip-cards { flex-wrap: nowrap; overflow-x: auto; }
+  /* The Bene Tleilax board is as wide here as in the column beside the
+     board. A strip in this row sizes to its content, which left the scan's
+     `width: 100%` nothing to be a percent of, and the picture came out at
+     its own 5551 px (2026-09-27). */
+  #market .bene-tleilax { width: calc(var(--market-min) - 0.7rem); }
+}
+
+/* Bloodlines: Skill tiles (portrait, small) and Tech tiles (landscape). */
+.vcard.skill { width: 64px; }
+.vcard.tile { width: 118px; }
+.vcard.flipped img { filter: grayscale(0.9) brightness(0.55); }
+.strip-cards .stack-empty {
+  width: 118px;
+  min-height: 70px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
+/* A Sardaukar Commander on its space (board.js commanderPiece): the rulebook
+   figure set by its base on the frame's top-right corner. The dark hairline
+   is the edge every piece on the scan gets (Agents, Spies, cubes). */
+.commander-piece {
+  position: absolute;
+  width: auto;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+}
+/* The Voice on a board space (board.js voiceBarredMark): a row of chips in
+   the barred seats' colours at the frame's top-right, apart from any
+   Control marker (OQ-116). */
+.voice-barred {
+  position: absolute;
+  top: 4%;
+  right: 4%;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.voice-barred-seat {
+  width: 0.55em;
+  height: 0.55em;
+  box-shadow: 0 0 0 1px #111;
+}
+/* The original game's Mentat on its own space (board.js mentatOnSpace):
+   a light figure over the silhouette the space prints, centred on it, with
+   the hairline edge of every piece on the scan. */
+.mentat-piece {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+}
+.mentat-piece path {
+  fill: #c8bdb9;
+  stroke: #111;
+  stroke-width: 1;
+}
+/* Without the picture: a mark of the figure's size in the plastic's grey. */
+.commander-piece.drawn {
+  aspect-ratio: 130 / 195;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  color: #111;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+/* A seat's Commanders in its supply (panels.js commanderStatIcon): the same
+   figure, at a stat icon's height, with the same hairline; without the
+   picture, the drawn mark scaled down to that height. */
+.commander-stat-icon { filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)); }
+.commander-stat-icon.drawn {
+  display: inline-flex;
+  box-sizing: border-box;
+  /* 1.2em of the stat's text (.seat .stat .icon), divided by this mark's
+     own smaller letter; the stat centres it and spaces it. */
+  height: calc(1.2em / 0.7);
+  aspect-ratio: 130 / 195;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #111;
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  color: #111;
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 1;
+  filter: none;
+}
+
+/* Immortality: the Bene Tleilax board panel (research hexes as a grid, the
+   Tleilaxu track as a row) and the Tleilaxu Row's fixed card. */
+.bene-tleilax .research-grid {
+  display: grid;
+  gap: 3px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 3px;
+}
+.bene-tleilax .hex {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.2rem 0.3rem;
+  min-height: 2.6rem;
+  font-size: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: rgba(127, 127, 127, 0.08);
+}
+.bene-tleilax .hex.marker { background: rgba(244, 197, 66, 0.18); border-color: #c9a227; }
+.bene-tleilax .hex.start { background: rgba(47, 179, 255, 0.15); }
+.bene-tleilax .hex-label { opacity: 0.85; line-height: 1.15; }
+.bene-tleilax .hex-tokens { display: flex; gap: 2px; flex-wrap: wrap; min-height: 1.1rem; }
+.bene-tleilax .rtoken { display: inline-block; width: 1rem; }
+.bene-tleilax .tleilaxu-track { display: flex; gap: 3px; overflow-x: auto; padding: 3px; }
+.bene-tleilax .track-cell {
+  flex: 1 0 4.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.vcard.reclaimed { outline: 1px dashed var(--line); }
+
+/* The Bene Tleilax board scan with tokens drawn over it. */
+.bt-stage { position: relative; width: 100%; }
+.bt-map { display: block; width: 100%; height: auto; border-radius: 6px; user-select: none; }
+.bt-hex, .bt-track-cell { position: absolute; }
+.bt-hex:hover, .bt-track-cell:hover { outline: 2px solid var(--glow); border-radius: 8px; }
+.bt-token { pointer-events: none; }
+.bt-specimens-summary { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; margin-top: 0.6rem; }
+.bt-specimens-count { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; }
+.bt-specimen-swatch { width: 0.7rem; height: 0.7rem; flex: none; box-shadow: 0 0 0 1px #111; }
+
+/* Arrakeen Scouts mission pieces (board.js renderScoutsBoardPieces): each
+   piece's footprint is set inline in percent of its stage and centred on
+   its place; the amounts scale with the piece (container units). Seat
+   pieces are flat in the seat's colour with the Influence cube's edge, a
+   ring outside the box; the bank's goods are the tokens the board prints. */
+.scouts-piece {
+  position: absolute;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  user-select: none;
+}
+.scouts-piece.inline {
+  position: relative;
+  transform: none;
+  display: inline-flex;
+  vertical-align: middle;
+  width: 1.3em;
+  height: 1.3em;
+  margin-left: 0.2em;
+}
+.scouts-count {
+  position: relative;
+  font-weight: 800;
+  line-height: 1;
+  font-size: 72cqh;
+}
+.scouts-count.wide { font-size: 54cqh; letter-spacing: -0.04em; }
+.scouts-cube {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.scouts-piece.inline .scouts-cube { position: relative; }
+/* Armed Escort's parked dreadnought (stage P7f-2): the seat's figure filling
+   the piece, a count on it when several stand together. */
+.scouts-dreadnought {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+/* A garrison Sardaukar Commander parked in place of a troop (OQ-166): the
+   neutral figure filling the piece, ringed in its seat's colour. */
+.scouts-commander {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 1.5px var(--scouts-seat, #111))
+    drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9));
+}
+.scouts-commander.drawn {
+  border: 2px solid var(--scouts-seat, #111);
+  border-radius: 45% 45% 18% 18%;
+  background: #c8bdb9;
+  box-sizing: border-box;
+}
+.scouts-dreadnought + .scouts-count {
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 1px 2px #000;
+}
+/* Spice: the board's spice hexagon (the bonus spice's .bonus-spice), its
+   light rim and orange face drawn by the two pseudo-elements so the piece
+   itself can cast the shadow that lifts it off the print. */
+.scouts-spice { filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.9)); }
+.scouts-spice::before, .scouts-spice::after {
+  content: "";
+  position: absolute;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.scouts-spice::before { inset: 0; background: #f3e9dc; }
+.scouts-spice::after { inset: 7%; background: #e0571f; }
+.scouts-spice .scouts-count { z-index: 1; }
+.scouts-spice .scouts-count { color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
+/* Solari: the board's grey coin with a ring inside its rim and a dark
+   numeral. */
+.scouts-solari {
+  border-radius: 50%;
+  background: #cbc5cf;
+  box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.scouts-solari::before {
+  content: "";
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  border: max(1px, 3cqh) solid #4a4550;
+}
+.scouts-solari .scouts-count { color: #1b1a1c; }
+/* Water: a drop per water, the board's blue drop. */
+.scouts-drop {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-drop path {
+  fill: #5796f2;
+  stroke: #111;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+/* A Control marker: the pennant of .control-marker. */
+.scouts-pennant {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-pennant polygon {
+  stroke: #111;
+  stroke-width: 1px;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+.scouts-maker_hooks img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.scouts-maker_hooks.drawn .icon { width: 90%; height: auto; }
+/* A face-down pile: a card back with its count, never the card. */
+.scouts-intrigue, .scouts-contract {
+  gap: 5%;
+  border: 1px solid #d8cdb8;
+  border-radius: 8%;
+  background: #2a2419;
+  box-shadow: 0 0 0 1px #111, 0 2px 5px rgba(0, 0, 0, 0.85);
+  color: #f3e9dc;
+}
+.scouts-intrigue { flex-direction: column; }
+.scouts-intrigue .icon, .scouts-contract .icon { width: auto; height: 42cqmin; }
+.scouts-intrigue .scouts-count, .scouts-contract .scouts-count { font-size: 40cqmin; }
+/* Goods on a seat's Contract chip and on Reclaimed Forces. */
+.scouts-tray { display: inline-flex; gap: 0.15em; vertical-align: middle; }
+/* On a card: over the art in the middle of its left edge, clear of the
+   printed cost and Agent icons at the top and of the count badge below. */
+.vcard .scouts-tray { position: absolute; top: 40%; left: 3px; font-size: 0.9rem; }
+.vcard .scouts-tray .scouts-piece.inline { margin-left: 0; }
+
+
+/* ---------- remote play: lobby, presence, host block (M14 slice 4) ---------- */
+
+/* `hidden` is only the browser's own `display: none`, which any author rule
+   that sets `display` (`fieldset label` does) silently overrides: the Seed
+   row stayed on screen for a remote host. */
+[hidden] { display: none !important; }
+
+#lobby-screen label, #landing-screen p { display: block; margin: 0.5rem 0; }
+#lobby-name { margin-left: 0.4rem; width: 14rem; }
+#lobby-seats, .host-seats { list-style: none; padding: 0; margin: 0.6rem 0; }
+.lobby-seat, .host-seats li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.lobby-seat-label { min-width: 9rem; font-weight: 600; }
+/* A waiting room's join / start row and its note (screens.js
+   renderWaitingRoom). */
+.waiting-room-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin-top: 0.6rem; }
+.waiting-room-actions .muted { margin: 0; flex-basis: 100%; }
+.lobby-seat button, .host-seats button { margin-left: auto; }
+#lobby-host { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.6rem; }
+#lobby-host h3, #host-panel-body h3 { font-size: 0.95rem; margin: 0.3rem 0; }
+
+.presence {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex: none;
+}
+.presence.on { background: var(--good); }
+.presence.off { background: transparent; border: 1px solid var(--bad); }
+.who .presence { margin-left: 0.3rem; }
+
+.room-link { display: flex; gap: 0.4rem; }
+.room-link-value { flex: 1; min-width: 0; font-family: monospace; }
+.room-base { display: block; margin-top: 0.4rem; font-size: 0.85em; }
+.room-base input { width: 100%; box-sizing: border-box; }
+#host-panel > summary { cursor: pointer; font-weight: 600; }
+.host-saves { margin-top: 0.6rem; border-top: 1px solid var(--line); padding-top: 0.4rem; }
+.host-saves p { margin: 0.2rem 0; font-size: 0.85em; }
+.host-save-list { list-style: none; padding: 0; margin: 0.3rem 0; font-size: 0.9em; }
+.host-save-list li { padding: 0.15rem 0; }
+.host-save-actions { display: flex; gap: 0.4rem; }
+.badge.autosave,
+.badge.base-game {
+  margin-right: 0.35rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  font-size: 0.8em;
+}
+#connection-note {
+  color: var(--bad);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+/* A pile shown as one line (the Intrigue discard): a click lists its cards. */
+.pile-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  width: 100%;
+  padding: 0.35em 0.6em;
+  border: 1px solid var(--line, #4a3d2a);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85em;
+  text-align: left;
+  cursor: pointer;
+}
+.pile-button:hover { border-color: var(--glow, #ffcf5a); }
+.pile-button .icon { height: 1.3em; width: auto; }
+
+/* Arrakeen Scouts panel (panels.js renderScouts). */
+.scouts-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.scouts-auction-currency {
+  margin: 0.35em 0;
+  font-weight: 600;
+}
+.stepper-value:has(.scouts-currency) { white-space: nowrap; }
+#scouts-panel h3 {
+  margin: 0.5em 0 0.2em;
+  font-size: 0.95em;
+}
+#scouts-panel .scouts-row {
+  margin: 0.15em 0;
+}
+#scouts-panel .scouts-line {
+  margin-left: 1em;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+#scouts-panel .scouts-own {
+  font-weight: 600;
+}
+#scouts-panel .scouts-market-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+#scouts-panel .scouts-market-cards .scouts-row {
+  width: 110px;
+  max-width: 100%;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+#scouts-panel .scouts-market-cards .vcard {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.25rem;
+}
+
+/* Card-use cues float over the board without intercepting table clicks. */
+#play-effects {
+  position: fixed;
+  z-index: 35;
+  width: min(300px, calc(100vw - 24px));
+  pointer-events: none;
+}
+.play-effect {
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.65rem;
+  border: 1px solid var(--play-color);
+  border-left: 4px solid var(--play-color);
+  border-radius: 12px;
+  background: rgba(20, 24, 26, 0.96);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 18px color-mix(in srgb, var(--play-color) 25%, transparent);
+  animation: card-play-arrive 260ms ease-out both;
+}
+.play-effect-art { flex: 0 0 108px; align-self: flex-start; }
+.play-effect-art img:not(.card-face img) { display: block; width: 100%; border-radius: 6px; }
+.play-effect-art.textcard {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+}
+.play-effect-words { min-width: 0; align-self: center; overflow-wrap: anywhere; }
+/* The seat colours are the app's deep player colours, made for fills and
+   outlines; as text on this dark card the name takes the same hue lifted
+   toward white so that blue stays readable. */
+.play-effect-player {
+  color: color-mix(in srgb, var(--play-color), #fff 45%);
+  font-size: 0.8rem;
+  margin-bottom: 0.45rem;
+}
+.play-effect-type { opacity: 0.7; font-size: 0.75rem; margin-bottom: 0.25rem; }
+.play-effect-words strong { display: block; font-size: 0.95rem; }
+.play-effect-space { font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8; }
+/* A Reveal: the seat's revealed hand fanned out, then its totals. */
+.play-effect.reveal { flex-direction: column; gap: 0.5rem; }
+.reveal-fan {
+  --card-width: clamp(34px, calc(250px / var(--fan-count)), 70px);
+  display: flex;
+  justify-content: center;
+  padding: 0.3rem 0.4rem 0.2rem;
+}
+.reveal-card {
+  flex: none;
+  width: var(--card-width);
+  margin: 0 calc(var(--card-width) * -0.12);
+  transform: rotate(calc(var(--fan-at) * 4deg)) translateY(calc(var(--fan-at) * var(--fan-at) * 1.5px));
+  transform-origin: 50% 120%;
+  animation: reveal-card-in 380ms ease-out both;
+  animation-delay: calc((var(--fan-at) + 3) * 40ms);
+}
+.reveal-card img:not(.card-face img) { display: block; width: 100%; border-radius: 4px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6); }
+.reveal-card.textcard {
+  min-height: calc(var(--card-width) * 1.4);
+  display: grid;
+  place-items: center;
+  padding: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #23282b;
+  font-size: 0.6rem;
+  text-align: center;
+}
+.reveal-totals { text-align: center; font-size: 1.05rem; font-weight: 700; }
+.reveal-totals .icon { height: 1.2em; vertical-align: -0.25em; }
+@keyframes reveal-card-in {
+  from { opacity: 0; transform: rotate(0) translateY(18px) scale(0.85); }
+}
+@keyframes card-play-arrive {
+  from { opacity: 0; transform: translateY(16px) scale(0.92) rotate(-2deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .play-effect, .reveal-card { animation: none; }
+}
+
+/* A change of a seat's Victory Points or resources rising over the number
+   on its seat panel (effects.js renderStatFloats). */
+#stat-floats { position: fixed; inset: 0; z-index: 34; pointer-events: none; }
+.stat-float {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  font-size: 1rem;
+  font-weight: 800;
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.85);
+  animation: stat-float 1.6s ease-out forwards;
+}
+.stat-float.gain { color: #9cf29c; }
+.stat-float.loss { color: #ff958a; }
+@keyframes stat-float {
+  0% { opacity: 0; transform: translate(-50%, -60%) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, -100%) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -230%) scale(1); }
+}
+@keyframes stat-fade {
+  0%, 100% { opacity: 0; }
+  15%, 70% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-float { animation-name: stat-fade; }
+}
+
+/* Phase and turn banners (effects.js): a wide band over the board for a
+   round start, Combat, a Scouts item, the Endgame and a turn start. Above
+   the board and the card-use cues, below the zoom, help and popovers; it
+   never takes a click. JS sets the width and position from the board. */
+#phase-banner {
+  position: fixed;
+  z-index: 36;
+  pointer-events: none;
+}
+#phase-banner * { pointer-events: none; }
+.phase-banner {
+  --banner-color: #d9ab55;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  padding: 0.9rem 1.6rem;
+  overflow: hidden;
+  border-top: 2px solid var(--banner-color);
+  border-bottom: 2px solid var(--banner-color);
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse at center, color-mix(in srgb, var(--banner-color) 22%, transparent), transparent 70%),
+    linear-gradient(90deg, rgba(14, 16, 18, 0.72), rgba(14, 16, 18, 0.95) 18%, rgba(14, 16, 18, 0.95) 82%, rgba(14, 16, 18, 0.72));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 28px color-mix(in srgb, var(--banner-color) 35%, transparent);
+  color: #f6f1e7;
+  text-align: center;
+  animation: phase-banner-show var(--banner-ms, 1600ms) ease-out both;
+}
+.phase-banner.round { --banner-color: #d9ab55; }
+.phase-banner.combat { --banner-color: #e2483d; }
+.phase-banner.scouts { --banner-color: #a98bff; }
+.phase-banner.endgame { --banner-color: #ef8a3a; }
+/* The Combat result board: the band's look with the standing below the
+   title. It alone takes a click, which closes it. */
+.phase-banner.result { --banner-color: #e2483d; cursor: pointer; }
+#phase-banner .phase-banner.result,
+#phase-banner .phase-banner.result *,
+#phase-banner .phase-banner.final,
+#phase-banner .phase-banner.final * { pointer-events: auto; }
+.phase-banner.result .phase-banner-words,
+.phase-banner.final .phase-banner-words { text-align: left; }
+/* The final standings when the game ends, in the winner's gold. */
+.phase-banner.final { --banner-color: #e7c35c; cursor: pointer; }
+/* A summoned sandworm in the summoning seat's colour, the Shield Wall's
+   fall in the wall's steel blue; the term's icon stands for the art. */
+.phase-banner.sandworm { --banner-color: color-mix(in srgb, var(--seat-color, #d8a35a), #e3b15c 45%); }
+.phase-banner.shield_wall { --banner-color: #6fb3e0; }
+.phase-banner-icon .icon,
+.phase-banner-icon .icon-text { display: block; height: 4.6rem; width: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6)); }
+.phase-result-rows { display: grid; gap: 0.2rem; margin-top: 0.55rem; }
+.phase-result-row {
+  display: grid;
+  grid-template-columns: 4.6rem 0.8rem minmax(0, 1fr) 6.6rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  font-size: 1.05rem;
+}
+.phase-result-row.mine {
+  background: color-mix(in srgb, var(--seat-color) 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seat-color), #fff 35%);
+  font-weight: 700;
+}
+.phase-result-row.unranked { opacity: 0.65; }
+.phase-result-rank { color: var(--banner-color); font-weight: 700; white-space: nowrap; }
+.phase-result-chip {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  background: var(--seat-color);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.phase-result-player { min-width: 0; overflow-wrap: anywhere; }
+.phase-result-player small { opacity: 0.75; font-weight: 400; white-space: nowrap; }
+.phase-result-strength { white-space: nowrap; text-align: right; }
+.phase-result-strength .icon { height: 1.1em; vertical-align: -0.2em; }
+.phase-result-double { color: #ffcf7a; }
+.phase-result-hint { margin-top: 0.4rem; font-size: 0.75rem; opacity: 0.6; }
+/* A light sweeping across the band once, as it arrives. */
+.phase-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--banner-color) 30%, transparent) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: phase-banner-sweep calc(var(--banner-ms, 1600ms) * 0.6) ease-out both;
+  animation-delay: inherit;
+}
+.phase-banner-art { flex: none; position: relative; }
+/* No picture: the card's redrawn face at the picture's height. */
+.phase-banner-art > .card-face { height: 6.5rem; width: auto; border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); }
+.phase-banner-art img:not(.card-face img) {
+  display: block;
+  height: 6.5rem;
+  width: auto;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--banner-color) 60%, transparent), 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.phase-banner-words { position: relative; min-width: 0; overflow-wrap: anywhere; }
+.phase-banner-kicker {
+  color: var(--banner-color);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.phase-banner-title {
+  display: block;
+  font-size: 2.4rem;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--banner-color) 70%, transparent), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+.phase-banner.mine .phase-banner-title { font-size: 2.7rem; color: #fff; }
+.phase-banner.mine {
+  border-width: 3px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 44px color-mix(in srgb, var(--banner-color) 60%, transparent);
+}
+.phase-banner-subtitle { margin-top: 0.2rem; font-size: 1.05rem; opacity: 0.9; }
+@keyframes phase-banner-show {
+  0% { opacity: 0; transform: translateY(-14px) scaleX(0.8); }
+  14% { opacity: 1; transform: translateY(0) scaleX(1); }
+  82% { opacity: 1; transform: translateY(0) scaleX(1); }
+  100% { opacity: 0; transform: translateY(6px) scaleX(1); }
+}
+@keyframes phase-banner-fade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes phase-banner-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@media (max-width: 700px) {
+  .phase-banner { gap: 0.7rem; padding: 0.7rem 0.9rem; }
+  .phase-banner-art img:not(.card-face img) { height: 4.5rem; }
+  .phase-banner-art > .card-face { height: 4.5rem; }
+  .phase-banner-title, .phase-banner.mine .phase-banner-title { font-size: 1.8rem; }
+  .phase-result-row { grid-template-columns: 3.4rem 0.7rem minmax(0, 1fr) 5.2rem; font-size: 0.9rem; gap: 0.4rem; }
+  .phase-banner-subtitle { font-size: 0.9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phase-banner { animation-name: phase-banner-fade; }
+  .phase-banner::before { display: none; }
+}
+
+/* Rise of Ix's CHOAM overlay pieces on the original board (board.js). */
+.board-overlay {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* An original + Rise of Ix table: the main board and the Ix board side by
+   side at the print's scale (board.js renderBoardStage). The pair keeps its
+   proportions the way a lone stage does (its aspect-ratio is set inline);
+   --ix-share is the Ix board's part of the width. */
+.board-table {
+  display: flex;
+  align-items: flex-start;
+  flex: none;
+  max-width: 100%;
+  max-height: 100%;
+}
+.board-table > .board-stage {
+  max-width: none;
+  max-height: none;
+  width: calc(100% * (1 - var(--ix-share)));
+}
+.board-table > .ix-stage {
+  width: calc(100% * var(--ix-share));
+  aspect-ratio: 2100 / 2132;
+}
+/* Tessia Vernius' drawn Snooper token on an Influence strip
+   (board.js drawnSnooper), under the cubes. */
+.snooper-token {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.snooper-token circle:first-of-type { fill: #1d2430; stroke: #c9b37a; stroke-width: 2; }
+.snooper-token .snooper-eye { fill: #d9d2bd; }
+.snooper-token .snooper-pupil { fill: #1d2430; stroke: none; }
+/* Rise of Ix's drawn dreadnought (board.js drawnDreadnought): the hull in
+   the seat's colour, its outline and deck line dark like every piece's. */
+.dreadnought-piece { overflow: visible; }
+.dreadnought-piece path {
+  stroke: #111;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.control-dreadnought {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+/* A seat's Negotiators on the Ix board's shield: one cube in its spot with
+   the count over it when there are more. */
+.negotiator-pile {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 4.2%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.negotiator-cube {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12%;
+}
+.negotiator-count {
+  grid-area: 1 / 1;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-shadow: 0 0 2px #000, 0 0 4px #000;
+}
+
+/* ---------------------------------------------------------------------
+   Redrawn card faces (card_faces.js, docs/own-pictures-plan.md stage 1).
+   Every size inside is a fraction of the card (container units: cqh of
+   its height, cqw of its width), measured off the printed faces, so the
+   hand's 76 px card and the popover draw the same face. Imperium and
+   Tleilaxu cards: 63.5 x 88 mm; head 0-14 %, Agent icons in the old art
+   area 14-54.5 %, Agent box 54.5-78 %, Reveal 78-100 % (sized for the
+   longest printed text of all cards). */
+.card-face {
+  container-type: size;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  /* Its own corners in percent: container units on the container itself
+     resolve against the page, not the card. */
+  border-radius: 3.6% / 2.6%;
+  color: #f4ead2;
+  word-break: keep-all;
+  text-align: left;
+  line-height: 1.3;
+  font-weight: 400;
+}
+.card-face * { box-sizing: border-box; }
+.card-face b { font-weight: 800; }
+.card-face.cf-imp { aspect-ratio: 63.5 / 88; background: linear-gradient(#2a2520, #1c1915); }
+.vcard.faced { background: transparent; }
+.vcard.faced .card-face { border-radius: 6px; }
+.popover-face { width: 280px; margin: 6px auto 2px; }
+.reveal-card.faced, .play-effect-art.faced { background: transparent; padding: 0; }
+
+/* Icons in printed text: about 1.7 times the letters, centred on the line. */
+.cf-ic { height: 1.7em; vertical-align: middle; }
+/* A down arrow between two rows gets room above and below it. */
+.cf-ic.cf-down { margin: 0.3em 0; }
+.cf-ic.cf-flipic { height: 1.5em; }
+.cf-line.big .cf-ic.cf-flipic { height: 0.9em; }
+/* Genetic markers: one or two red diamonds side by side. */
+.cf-dna { display: inline-flex; gap: 0.06em; vertical-align: middle; }
+.cf-dna .cf-ic { height: 1.45em; }
+.cf-ic.cf-arrow { height: 0.95em; filter: drop-shadow(0 0 0.06em #000) drop-shadow(0 0 0.06em #000); }
+/* An icon without a picture yet is its word, at the text's size even in a big row. */
+.cf-word { font-weight: 700; font-size: 2.7cqh; line-height: 1.2; }
+.cf-res { display: inline-grid; place-items: center; vertical-align: middle; font-weight: 800; line-height: 1; }
+.cf-res:not(.cf-pz) > b { font-size: 0.85em; }
+/* Persuasion keeps the cost diamond's proportions at every size (--pz, the
+   side): rim 6.4 %, outer line 3.2 %, corner 7.3 %, number 0.76 of the side,
+   so a Reveal box's diamond matches the cost's (user 2026-11-11). */
+.cf-pz { --pz: 1.15em; width: var(--pz); height: var(--pz); margin: 0 0.3em; transform: rotate(45deg);
+  border-radius: calc(var(--pz) * 0.073); background: linear-gradient(135deg, #5aa2dc, #2d65a6);
+  border: calc(var(--pz) * 0.064) solid #f4f8ff; box-shadow: 0 0 0 calc(var(--pz) * 0.032) #1d3b63; color: #fff; }
+.cf-pz > b { transform: rotate(-45deg); font-size: calc(var(--pz) * 0.76); }
+/* Solari and spice as tall as the other icons' drawn shapes (print: the
+   hexagon no taller than a troop cube, the coin a little smaller). */
+.cf-sol { width: 1.42em; height: 1.42em; border-radius: 50%; color: #222;
+  background: radial-gradient(circle at 35% 30%, #fbfbfb, #bdbdbd 60%, #8e8e8e); border: 0.07em solid #555; }
+.cf-sol > b { font-size: 0.95em; }
+.cf-spi { width: 1.6em; height: 1.45em; color: #fff; text-shadow: 0 1px 1px #6a2a08;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); background: linear-gradient(#f39a4a, #d9601f 55%, #b9461a); }
+.cf-line { min-height: 0.4em; }
+/* A line with "—OR—" / "—AND—" in it: its two sides as columns, the word between. */
+.cf-line.cf-split { display: flex; align-items: center; justify-content: center; gap: 0.35em; }
+/* The columns of a split row (OR/AND, condition, cost → reward) share the
+   width evenly, none wider than its content (a short one hands its room to
+   the long one) nor narrower than its longest word or icon: one long side
+   cannot squeeze the other into a word a line. */
+.cf-split > .cf-part, .cf-cond > .cf-part, .cf-arrowrow > .cf-part { flex: 1 1 0; min-width: min-content; max-width: max-content; }
+.cf-split > .cf-sep { flex: none; font-weight: 800; font-size: 0.8em; white-space: nowrap; }
+/* A big row of many icons a little smaller, so it keeps to one row. */
+.cf-line.big.many { font-size: calc(var(--cf-big, 2em) * 0.74); }
+/* A badge condition ("{BG} 2 Influence:") on one line at the left, its
+   effects wrapping in their own column beside it. */
+.cf-line.cf-cond { display: flex; align-items: center; justify-content: center; gap: 0.3em; }
+.cf-cond > .cf-condhead { flex: none; white-space: nowrap; }
+/* Command: "Command" over "(◆6+)", one label, as print stacks it. */
+.cf-cmdlabel { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.cf-cmdcost { font-size: 0.85em; display: inline-flex; align-items: center; }
+.cf-cmdcost .cf-pz { --pz: 1.3em; margin: 0.2em 0.22em; }
+.cf-cmdcolon { flex: none; }
+/* "cost → reward": the cost's column, the arrow, the reward's column; each
+   wraps on its own, centred as print sets them. */
+.cf-line.cf-arrowrow { display: flex; align-items: center; justify-content: center; gap: 0.25em; }
+.cf-arrowrow > .cf-ic.cf-arrow { flex: none; }
+/* A line of icons alone: one centred group at the printed size (--cf-big). */
+.cf-line.big { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.12em; font-size: var(--cf-big, 2em); line-height: 1.2; }
+.cf-line.big .cf-ic { height: 1em; }
+.cf-line.big .cf-ic.cf-arrow { height: 0.45em; margin: 0 0.1em; }
+/* A down arrow on its own row: larger, with room above and below (print). */
+.cf-line.big .cf-ic.cf-down { height: 0.55em; margin: 0.32em 0.1em; }
+/* Text that already sets blank lines round its arrow keeps their spacing alone. */
+.cf-line:empty + .cf-line.big > .cf-ic.cf-down { margin: 0 0.1em; }
+.cf-line.big .cf-pz { --pz: 0.62em; }
+.cf-line.big .cf-sol { width: 0.88em; height: 0.88em; }
+.cf-line.big .cf-spi { width: 0.98em; height: 0.9em; }
+.cf-line.big .cf-res:not(.cf-pz) > b { font-size: 0.56em; }
+
+/* The name, and the Faction ribbon under it: a long name takes two lines
+   and pushes the ribbon down instead of running into it. */
+/* The top half: the name on its own band (a second line makes the band
+   taller), the Faction ribbons under it, then the Agent icons in the room
+   left above the Agent box. */
+.cf-imp .cf-upper { position: absolute; left: 0; right: 0; top: 0; height: 54.5cqh; display: flex; flex-direction: column; }
+.cf-imp .cf-head { flex: none; display: flex; flex-direction: column; align-items: stretch; }
+.cf-imp .cf-name { padding: 2.2cqh 24cqw 1.8cqh 5cqw; font-weight: 800; font-size: 5.4cqh; line-height: 1.1;
+  background: linear-gradient(90deg, #3d352b, #29241e 70%); border-bottom: 0.35cqh solid #6e5e44; }
+.cf-imp .cf-name .cf-ring, .cf-tech .cf-tname .cf-ring { display: inline-block; vertical-align: 0.05em; margin-right: 0.3em;
+  width: 0.62em; height: 0.62em; border-radius: 50%; border: 0.13em solid #d8322c; }
+/* The Tech Module's mark: a ring of gold dots round a dot. */
+.card-face .cf-ring.cf-techmark { border: 0.12em dotted #e8c84a; background: radial-gradient(circle, #e8c84a 0 26%, transparent 28%); }
+.cf-nobr { white-space: nowrap; }
+.cf-tle .cf-name { background: linear-gradient(100deg, #3b2160, #5a2f7c 60%, #2f1c4d); border-bottom-color: #9a6ac0; }
+.cf-imp .cf-ribbon { height: 3.2cqh; width: max-content; padding: 0.3cqh 4.5cqw 0 4cqw; white-space: nowrap;
+  display: grid; align-items: center; font-size: 2.2cqh; line-height: 1; font-weight: 700; color: #fff; background: var(--cf-faction);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 2.2cqh) 100%, 0 100%); }
+.cf-imp .cf-ribbon > span { grid-area: 1 / 1; }
+.cf-imp .cf-ribbon > .off { visibility: hidden; }
+.cf-imp .cf-ribbons { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35cqh; }
+/* The cost diamond and the acquire tab under it share one centre (print: x 89 %). */
+.cf-imp .cf-cost { position: absolute; left: 89cqw; top: 9.6cqh; width: 11cqh; height: 11cqh; transform: translate(-50%, -50%) rotate(45deg);
+  border-radius: 0.8cqh; background: linear-gradient(135deg, #5aa2dc, #2d65a6); border: 0.7cqh solid #f4f8ff; box-shadow: 0 0 0 0.35cqh #1d3b63;
+  display: grid; place-items: center; z-index: 2; }
+.cf-imp .cf-cost b { transform: rotate(-45deg); color: #fff; font-size: 8.4cqh; line-height: 1; }
+/* Foldspace: a red diamond with a white swirl where the cost would be. */
+.cf-imp .cf-cost.cf-cost-foldspace { background: linear-gradient(135deg, #e0343a, #9a1418); }
+.cf-imp .cf-cost-foldspace i { width: 62%; height: 62%; border-radius: 50%; border: 0.9cqh solid #fff; border-right-color: transparent;
+  background: radial-gradient(circle, #fff 0 22%, transparent 24%); transform: rotate(-20deg); }
+/* The starting deck's chevron before the name. */
+.cf-imp .cf-name .cf-startmark { display: inline-block; width: 0.42em; height: 0.5em; margin-right: 0.3em; vertical-align: 0.08em;
+  background: #e8e4dc; clip-path: polygon(0 0, 45% 0, 100% 50%, 45% 100%, 0 100%, 52% 50%); }
+.cf-imp .cf-tab { position: absolute; left: 89cqw; top: 15.5cqh; width: 10cqw; transform: translateX(-50%); padding: 1.6cqh 0 1.4cqh;
+  border-radius: 0 0 1.2cqh 1.2cqh; background: linear-gradient(#2d65a6, #3f7fc0); border: 0.35cqh solid #9cc3ea; border-top: none;
+  display: flex; flex-direction: column; align-items: center; gap: 0.6cqh; z-index: 1; font-size: 2.6cqh; }
+.cf-imp .cf-tab .cf-ic { height: 6.5cqh; }
+.cf-imp .cf-tab .cf-res { font-size: 4.4cqh; }
+/* Print's chevron, from the cost down to the bonus (Tech strips too). */
+.cf-chev { flex: none; display: block; width: 6.5cqw; height: 3.4cqh; background: #9fd0f4;
+  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 34%, 50% 100%, 0 34%); }
+.cf-imp .cf-tabopt { display: flex; flex-direction: column; align-items: center; gap: 0.6cqh; }
+.cf-imp .cf-tabopt.pair { flex-direction: row; align-items: flex-start; gap: 0; }
+.cf-imp .cf-tabopt.pair > .cf-ic + .cf-ic { margin-left: -2.2cqw; margin-top: 2.6cqh; }
+.cf-imp .cf-tabor { font-size: 2.3cqh; font-weight: 800; color: #f0e8ff; line-height: 1; white-space: nowrap; }
+/* A Tleilaxu card's tab hangs under its specimens, on the Tleilaxu purple. */
+.cf-tle .cf-tab { top: 13.6cqh; width: 17cqw; padding: 1.4cqh 0 1.6cqh; border-radius: 0 0 2cqh 2cqh;
+  background: linear-gradient(#5a2f7c, #3b2160); border-color: #b48ad8; border-top: none; }
+.cf-tle .cf-tab .cf-ic { height: 7cqh; }
+/* Up to four Agent icons in a row; Foldspace's five take two rows. */
+.cf-imp .cf-icons { flex: 1; min-height: 0; margin: 0 6cqw; display: flex; flex-wrap: wrap;
+  justify-content: center; align-content: center; align-items: center; gap: 2cqh 3.5cqw; font-size: 3cqh; }
+/* An acquire tab hangs under the cost: the icons keep clear of it. */
+.cf-imp.has-tab .cf-icons { margin: 0 17.5cqw; }
+.cf-imp .cf-icons .cf-ic { height: 11cqh; filter: drop-shadow(0 0.3cqh 0.3cqh #0008); }
+.cf-imp .cf-lower { position: absolute; left: 0; right: 0; top: 54.5cqh; bottom: 0; display: flex; flex-direction: column; }
+.cf-imp .cf-agent { flex: none; height: 23.5cqh; margin: 0 4cqw; padding: 1.6cqh 3cqw; border-radius: 0.8cqh; position: relative;
+  background: linear-gradient(#efe4cb, #ddcfae); border: 0.3cqh solid #fff6dc; color: #2a2418;
+  display: flex; flex-direction: column; justify-content: center; text-align: center; font-size: 3.1cqh; line-height: 1.35; --cf-big: 5.6cqh; }
+.cf-imp .cf-agent .solo .cf-line.big { font-size: 9cqh; }
+/* A card's own trigger ("When this card is trashed: …") in print's red band
+   at the foot of the art, right on top of the Agent box. */
+.cf-imp .cf-static { flex: none; margin: 0 4cqw; padding: 1.9cqh 3cqw 1.7cqh; border-radius: 0.8cqh 0.8cqh 0 0;
+  background: linear-gradient(#5e0e12, #8e1c22 55%, #6e1418); border: 0.3cqh solid #b8484c; border-bottom: none;
+  color: #fbeee6; text-align: center; font-size: 3.3cqh; line-height: 1.3; --cf-big: 5.6cqh; }
+.cf-imp .cf-reveal { flex: 1; min-height: 0; padding: 1.2cqh 5cqw 1.6cqh; color: #eef0ff; text-align: center; font-size: 3.1cqh; line-height: 1.3;
+  display: flex; flex-direction: column; justify-content: center; gap: 1.2cqh;
+  background: linear-gradient(#2a2f55, #1b1e38); position: relative; }
+.cf-imp .cf-reveal .cf-line + .cf-line { margin-top: 1.1cqh; }
+/* Unload prints as a tag fixed at the Reveal box's left edge. */
+.cf-imp .cf-reveal.unloads { padding-left: 25cqw; box-shadow: inset 0 0 0 0.4cqh #d23a3f; }
+.cf-imp .cf-unload { position: absolute; left: 0; top: 0; bottom: 0; width: 22cqw; display: grid; place-items: center;
+  padding-right: 4cqw; line-height: 0; background: linear-gradient(90deg, #5e0f13, #9c1f25 55%, #c8343a);
+  clip-path: polygon(0 0, calc(100% - 4cqw) 0, calc(100% - 4cqw) 36%, 100% 50%, calc(100% - 4cqw) 64%, calc(100% - 4cqw) 100%, 0 100%); }
+.cf-imp .cf-unload img { width: 15cqw; }
+/* Print sets Persuasion and swords at one height; numbers alone print larger. */
+.cf-imp .cf-stats { --cf-big: 7.5cqh; }
+.cf-imp .cf-stats.only { --cf-big: 10cqh; }
+.cf-imp .cf-stats .cf-line.big .cf-pz { --pz: 0.68em; margin: 0 0.3em; }
+.cf-imp .cf-stats .cf-line.big .cf-ic { height: 0.95em; }
+.cf-tle .cf-specimens { --cf-cube: 6.4cqw; position: absolute; right: 4cqw; top: 1.4cqh; width: 13.6cqw; height: 12cqh; }
+.cf-tle .cf-specimens img { position: absolute; width: var(--cf-cube); filter: drop-shadow(0 0.3cqh 0.3cqh #0009); }
+/* Only a grafting card has the green Agent box and its 접합 tab (top left):
+   the Tleilaxu cards and the Imperium cards that graft (Immortality's Bene
+   Tleilax Researcher, Dissecting Kit, Planned Coupling, ...) alike. */
+.cf-imp .cf-agent.grafts { background: linear-gradient(#d3e3ca, #b8d0ae); border-color: #e9f4e2; padding-top: 4.4cqh; }
+.cf-imp .cf-graft { position: absolute; left: 0; top: 0; padding: 0.5cqh 5cqw 0.6cqh 3cqw; font-size: 2.9cqh; font-weight: 800; color: #1f3a1a;
+  background: #a9c79c; border-radius: 0.8cqh 0 0 0; clip-path: polygon(0 0, 100% 0, calc(100% - 2cqh) 100%, 0 100%); }
+
+/* Intrigue cards, 44.2 x 68 mm: head 12 %, foot 8.5 %, the parts between
+   them on their timing's colour, "—OR—" bands of 6 % between parts. */
+.card-face.cf-int { aspect-ratio: 44.2 / 68; background: #1d1a17; display: flex; flex-direction: column; }
+.cf-int .cf-ihead { flex: none; height: 12cqh; display: flex; align-items: center; justify-content: center; gap: 1cqh;
+  padding: 0 3cqw; font-weight: 800; font-size: 5.2cqh; line-height: 1.15; text-align: center; }
+.cf-int .cf-ring { display: inline-block; vertical-align: 0.05em; margin-right: 0.3em; width: 0.62em; height: 0.62em;
+  border-radius: 50%; border: 0.13em solid #d8322c; }
+/* Line spacing and padding are set so Grand Conspiracy's four-line list
+   fits at the type size every card uses. */
+.cf-int .cf-half { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; padding: 0.5cqh 11cqw;
+  text-align: center; font-size: 5cqh; line-height: 1.2; --cf-big: 11cqh; }
+.cf-int .cf-half.cf-plot { background: linear-gradient(#d9c294, #c9ad7c); color: #2a2418; }
+.cf-int .cf-half.cf-combat { background: linear-gradient(#8f2b2b, #6f1f21); color: #fbeee6; }
+.cf-int .cf-half.cf-endgame { background: linear-gradient(#34474f, #26353c); color: #e6f0f4; }
+/* A row of icons alone may use the part's side padding (War Chest's coin,
+   arrow and four swords), and wraps only past that. */
+.cf-int .cf-half .cf-line.big { margin: 0 -8cqw; }
+/* One icon alone in a part prints large (Favored Subject's Faction, a
+   Navigation card's icons). */
+.cf-int .cf-half.few .cf-line.big.one { font-size: 15cqh; }
+.cf-int .cf-or { flex: none; height: 6cqh; display: flex; align-items: center; justify-content: center;
+  font-size: 5cqh; font-weight: 800; color: #fff; background: #c0393b; }
+.cf-int .cf-foot { flex: none; height: 8.5cqh; display: flex; align-items: center; justify-content: center; gap: 0.3em;
+  font-weight: 800; font-size: 4.6cqh; }
+/* A Navigation card (Bloodlines, Steersman Y'rkoon): no name or timing on
+   print, its parts on burnt orange, "—OR—" on a brighter band. */
+.cf-int.cf-nav { background: radial-gradient(120% 90% at 50% 40%, #b8461e, #7a2410 75%); }
+.cf-int .cf-half.cf-navigation { background: transparent; color: #fff4ea; }
+.cf-nav .cf-or { background: #e0622a; }
+.cf-t-plot { color: #f2e6c8; }
+.cf-t-combat { color: #ec5b50; }
+.cf-t-endgame { color: #8fb7d8; }
+.cf-int .cf-word { font-size: 3.8cqh; }
+
+/* Conflict cards, 44.2 x 68 mm: the name upright along the left edge, the
+   battle icon's gold corner, three reward boxes. */
+.card-face.cf-conflict { aspect-ratio: 44.2 / 68; background: linear-gradient(#5d1518, #3d0e10); color: #fbeee6; }
+.cf-conflict .cf-ctitle { position: absolute; left: 1cqw; bottom: 3cqh; width: 9cqw; writing-mode: vertical-rl;
+  text-orientation: sideways; transform: rotate(180deg); font-weight: 800; font-size: 5.6cqh; line-height: 1; white-space: nowrap; }
+.cf-conflict .cf-battle { position: absolute; right: 0; top: 0; width: 26cqw; height: 9cqh; display: grid; place-items: center; z-index: 1;
+  background: linear-gradient(135deg, #f0d24a, #b88a12); clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%); }
+.cf-conflict .cf-battle .cf-ic { height: 7cqh; }
+/* The battle icon's corner in its printed colour. */
+.cf-conflict .cf-battle.cf-b-crysknife { background: linear-gradient(135deg, #8aa84a, #4d6a1e); }
+.cf-conflict .cf-battle.cf-b-desert_mouse { background: linear-gradient(135deg, #b07a3a, #6a4418); }
+.cf-conflict .cf-battle.cf-b-ornithopter { background: linear-gradient(135deg, #4a9ac0, #1e5a76); }
+.cf-conflict .cf-battle.cf-b-wild { background: linear-gradient(135deg, #e8c42a, #8c6a06); }
+.cf-conflict.cf-orange { background: linear-gradient(#a8621f, #7a420f); }
+.cf-conflict.cf-orange .cf-reward { background: #c4802f; }
+.cf-conflict .cf-noworm { position: absolute; right: 7cqw; bottom: 3cqh; width: 8cqh; height: 8cqh; font-size: 6cqh;
+  display: grid; place-items: center; border-radius: 1cqh; background: #2a1a10; }
+.cf-conflict .cf-noworm .cf-ic { height: 1em; }
+.cf-conflict .cf-noworm::after { content: ""; position: absolute; left: -10%; right: -10%; top: 45%; height: 0.12em;
+  background: #e0302a; transform: rotate(-35deg); border-radius: 0.06em; }
+.cf-conflict .cf-rewards { position: absolute; left: 13cqw; right: 6cqw; top: 2cqh; bottom: 2cqh; display: flex; flex-direction: column; gap: 3cqh; }
+.cf-conflict .cf-reward { flex: 1; position: relative; padding: 6cqh 3cqw 1.5cqh; border-radius: 1.4cqh; background: #8f2629;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  font-size: 4.4cqh; line-height: 1.25; --cf-big: 12.5cqh; }
+.cf-conflict .cf-reward .cf-line.big { margin: 0 -2cqw; }
+.cf-conflict .cf-place { position: absolute; left: 4cqw; top: 1cqh; font-weight: 900; font-size: 6.4cqh; line-height: 1; }
+.cf-conflict .cf-place sup { font-size: 3.2cqh; }
+.cf-conflict .cf-word { font-size: 3.6cqh; }
+
+/* Contract tiles, 55 x 35 mm: the name, the condition frame (a tinted
+   frame with an Agent standing in it and the space's icon on it), the
+   reward large at the right. */
+.card-face.cf-contract { aspect-ratio: 55 / 35; background: linear-gradient(135deg, var(--cf-tile), color-mix(in srgb, var(--cf-tile) 70%, #000)); color: #fbeee6; }
+.cf-contract .cf-khead { position: absolute; left: 6cqw; top: 5cqh; right: 4cqw; font-weight: 800; font-size: 12cqh; line-height: 1.05; }
+.cf-contract .cf-ksub { display: block; font-size: 0.55em; font-weight: 700; opacity: 0.9; }
+.cf-contract .cf-send { position: absolute; left: 7cqw; top: 28cqh; width: 26cqw; height: 64cqh; border-radius: 1.5cqh 1.5cqh 4cqh 4cqh;
+  background: radial-gradient(#ffffff22 0.6px, transparent 1px) 0 0 / 7px 7px, linear-gradient(var(--cf-frame), color-mix(in srgb, var(--cf-frame) 60%, #000));
+  border: 1cqh solid #d8d0c4; box-shadow: 0 0 0 0.4cqh #1a0c0d; }
+.cf-contract .cf-who { position: absolute; left: 50%; bottom: 5cqh; width: 11cqw; height: 34cqh; transform: translateX(-50%); background: #a9a39d;
+  clip-path: polygon(38% 0, 62% 0, 70% 18%, 62% 32%, 80% 45%, 92% 100%, 8% 100%, 20% 45%, 38% 32%, 30% 18%); }
+.cf-contract .cf-on { position: absolute; left: -4cqw; top: -7cqh; font-size: 20cqh; --cf-big: 20cqh; }
+.cf-contract .cf-on .cf-line.big { justify-content: flex-start; gap: 0.05em; flex-wrap: nowrap; }
+.cf-contract .cf-prize { position: absolute; left: 38cqw; right: 3cqw; top: 26cqh; bottom: 6cqh; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; text-align: center; font-size: 7cqh; line-height: 1.2; --cf-big: 30cqh; }
+.cf-contract .cf-word { font-size: 6cqh; }
+.cf-contract.cf-noframe .cf-prize { left: 6cqw; right: 6cqw; }
+.tile-thumb.faced { display: inline-block; vertical-align: middle; cursor: pointer; }
+.tile-thumb.faced.contracts { width: calc(55 * var(--thumb-mm)); }
+/* A Skill tile is a trapezoid 44 mm tall and about 51 mm across its top. */
+.tile-thumb.faced.skills { width: calc(51 * var(--thumb-mm)); }
+.tile-thumb.faced.flipped { filter: grayscale(0.9) brightness(0.55); }
+
+/* "Flip this tile": a dark tile edged in gold with a white turning arrow. */
+.cf-flip { display: inline-block; position: relative; width: 1.5em; height: 1.05em; vertical-align: middle; margin: 0 0.15em;
+  border-radius: 0.12em; background: linear-gradient(135deg, #3a3a3a, #111); border: 0.09em solid #d8b44a; }
+.cf-flip::after { content: "↩"; position: absolute; left: -0.4em; bottom: -0.5em; color: #fff; font-weight: 900; font-size: 0.9em;
+  text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.cf-line.big .cf-flip { width: 1.05em; height: 0.75em; }
+
+/* Tech tiles, 70 x 46 mm: gold name band, orange cost hexagon over the
+   acquire strip, the body on olive. */
+/* A Sardaukar Commander Skill tile: square, its name in white capitals on a
+   dark red band, its printed lines bold and centred on pale grey. */
+.card-face.cf-skill { aspect-ratio: 737 / 634; color: #1e1a1a; background: linear-gradient(#f0eeee, #dedbdb);
+  clip-path: polygon(1.6% 0, 98.4% 0, 100% 1.9%, 91.9% 98.1%, 90.4% 100%, 9.6% 100%, 8.1% 98.1%, 0 1.9%); }
+.cf-skill .cf-sname { position: absolute; left: 0; right: 0; top: 0; height: 21cqh; display: grid; place-items: center; padding: 0 4cqw;
+  background: linear-gradient(90deg, #3a0a0e, #7a1218 45%, #3a0a0e); color: #fff; font-weight: 800; font-size: 9cqh;
+  letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; }
+.cf-skill .cf-body { position: absolute; left: 10cqw; right: 10cqw; top: 23cqh; bottom: 4cqh; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; text-align: center; font-weight: 800; font-size: 8cqh; line-height: 1.2; --cf-big: 17cqh; }
+.cf-skill .cf-line.big { font-size: var(--cf-big); }
+/* A lone resource prints large, as the tile does (Charismatic, Driven). */
+.cf-skill .cf-line.big .cf-pz { --pz: 0.95em; margin: 0.12em 0; }
+.cf-skill .cf-line.big .cf-spi { width: 1.5em; height: 1.38em; }
+.cf-skill .cf-line.big .cf-res:not(.cf-pz) > b { font-size: 0.8em; }
+.cf-skill .cf-line.big .cf-ic.cf-arrow { height: 0.7em; }
+.cf-skill .cf-word { font-size: 8cqh; }
+/* An Objective card: the battle icon's colour, the icon large, a dark band
+   with the printed line. */
+.card-face.cf-objective { aspect-ratio: 44.2 / 68; color: #fff; background: linear-gradient(160deg, var(--cf-o1), var(--cf-o2)); }
+.cf-objective.cf-o-crysknife { --cf-o1: #8cc04a; --cf-o2: #44721a; }
+.cf-objective.cf-o-desert_mouse { --cf-o1: #f0bc3a; --cf-o2: #b07a10; }
+.cf-objective.cf-o-ornithopter { --cf-o1: #48b8e4; --cf-o2: #1a6e98; }
+.cf-objective.cf-o-wild { --cf-o1: #f0cc28; --cf-o2: #8c6a06; }
+.cf-objective .cf-ocorner { position: absolute; right: 0; top: 0; width: 26cqw; height: 13cqh; display: grid; place-items: center;
+  background: #0006; clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%); }
+.cf-objective .cf-ocorner .cf-ic { height: 9cqh; }
+.cf-objective .cf-oplayers { position: absolute; left: 5cqw; top: 3cqh; font-weight: 800; font-size: 6cqh; line-height: 1; }
+.cf-objective .cf-obig { position: absolute; left: 14cqw; right: 14cqw; top: 18cqh; height: 44cqh; width: 72cqw; object-fit: contain;
+  opacity: 0.85; filter: drop-shadow(0 0.4cqh 0.6cqh #0006); }
+.cf-objective .cf-ofirst { position: absolute; left: 50%; top: 62cqh; width: 15cqw; transform: translateX(-50%); }
+.cf-objective .cf-otext { position: absolute; left: 0; right: 0; bottom: 0; height: 24cqh; display: grid; place-items: center;
+  padding: 0 7cqw; text-align: center; font-weight: 800; font-size: 5cqh; line-height: 1.25; background: linear-gradient(#262420e6, #141210f2); }
+.card-face.cf-tech { aspect-ratio: 70 / 46; color: #f6f1dc; background: radial-gradient(120% 90% at 70% 60%, #4f6a2a, #2f4416 70%); }
+/* Bloodlines prints its Tech tiles on grey-green. */
+.card-face.cf-tech.cf-bl { background: radial-gradient(120% 90% at 70% 60%, #6c7064, #464a40 70%); }
+.cf-tech .cf-tname { position: absolute; left: 0; right: 0; top: 0; height: 15cqh; padding-left: 21cqw; display: flex; align-items: center;
+  font-weight: 800; font-size: 9cqh; line-height: 1; color: #3a2a08; background: linear-gradient(90deg, #e9c55a, #d9a92e 70%, #c99a28); }
+/* A long Tech name (Self-Destroying Messages) set smaller, on one line. */
+.cf-tech .cf-tname.long { font-size: 7cqh; white-space: nowrap; }
+.cf-tech .cf-hex { position: absolute; left: 0; top: 0; width: 19cqw; height: 28cqh; display: grid; place-items: center; font-size: 23cqh;
+  font-weight: 900; color: #fff; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); background: linear-gradient(#f08a3a, #c9531c); }
+.cf-tech .cf-strip { position: absolute; left: 4cqw; top: 27cqh; width: 11cqw; padding: 1.5cqh 0 2.5cqh; display: flex; flex-direction: column;
+  align-items: center; gap: 1cqh; background: linear-gradient(#e2752c, #c45a1d); border-radius: 0 0 2cqh 2cqh; font-size: 4cqh; text-align: center; --cf-big: 10.5cqh; }
+.cf-tech .cf-strip .cf-chev { width: 8cqw; height: 6.5cqh; background: #ffd27a; margin-bottom: 0.5cqh; }
+.cf-tech .cf-strip .cf-line.big { margin: 0 -1cqw; }
+.cf-tech .cf-body { position: absolute; left: 19cqw; right: 4cqw; top: 16cqh; bottom: 4cqh; display: flex; flex-direction: column;
+  justify-content: center; text-align: center; font-size: 8.8cqh; line-height: 1.25; --cf-big: 19cqh; }
+.cf-tech .cf-word { font-size: 7cqh; }
+/* A short Tech body's lone icon prints very large (Windtraps' water,
+   Mini-mic Film's Persuasion): about a third of the tile. */
+.cf-tech .cf-body.few .cf-line.big.one { font-size: 30cqh; }
+.cf-tech .cf-body.some .cf-line.big.one { font-size: 25cqh; }
+/* Minimic Film's lone Persuasion diamond fills most of the body. */
+.cf-tech .cf-body.few .cf-line.big.one .cf-pz { --pz: 0.85em; margin: 0.2em 0; }
+.tile-thumb.faced.tech { width: calc(70 * var(--thumb-mm)); }
+
+/* Pictures only faces draw: the Foldspace card (Ilesa Ecaz), a Spy with
+   Deep Cover (a gold Spy behind a grey one). */
+.cf-foldspace { display: inline-block; vertical-align: middle; width: 1.05em; height: 1.5em; border-radius: 0.14em; border: 0.08em solid #f1d6d6;
+  background: radial-gradient(circle, #ffd7d0 0 8%, #c9262c 9% 26%, #ffd7d0 27% 33%, #c9262c 34% 60%, #8f1519 61%); }
+.cf-line.big .cf-foldspace { width: 0.7em; height: 1em; }
+.cf-deepspy { display: inline-flex; vertical-align: middle; }
+.cf-deepspy > .cf-ic:first-child { filter: sepia(1) saturate(5) hue-rotate(-12deg) brightness(1.05); margin-right: -0.6em; transform: translate(-0.1em, -0.15em); }
+/* The grey Spy stands in front of the gold one, as print stacks them. */
+.cf-deepspy > .cf-ic:last-child { position: relative; }
+
+/* Leader cards at the printed card's proportions (1460 x 1020): the name
+   with its complexity pips, the House line, the track print draws in the
+   art, the tan ability box and the dark Signet Ring box along the bottom
+   (their slanted meeting edge as print). The art itself is left out. */
+.card-face.cf-leader { aspect-ratio: 1460 / 1020; border-radius: 3.2% / 4.6%; color: #f2ede2;
+  background: repeating-radial-gradient(ellipse at 74% 30%, #0000 0 2.6%, #ffffff0b 2.6% 2.8%),
+    radial-gradient(140% 100% at 70% 25%, #3a3833, #1b1a19 70%); }
+.cf-leader .cf-lname { position: absolute; left: 3.5cqw; right: 3cqw; top: 3.4cqh; display: flex; align-items: center; gap: 1.6cqh;
+  font-weight: 700; font-size: 6cqh; line-height: 1.1; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.cf-leader .cf-lnametext { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cf-leader .cf-pips { display: inline-flex; gap: 0.7cqh; flex: none; }
+.cf-leader .cf-pips i { width: 3.6cqh; height: 3.4cqh; background: #ececec; clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%); }
+.cf-leader .cf-lmark { width: 4.4cqh; height: 4.4cqh; border-radius: 50%; flex: none; box-sizing: border-box; }
+.cf-leader .cf-lmark-choam { border: 0.9cqh solid #d0333b; }
+.cf-leader .cf-lmark-tech { border: 0.8cqh dotted #d8b44a; background: radial-gradient(circle, #d8b44a 0 28%, transparent 30%); }
+.cf-leader .cf-house { position: absolute; left: 3.5cqw; right: 3cqw; top: 11.6cqh; padding-top: 0.8cqh; border-top: 0.25cqh solid #5c574e;
+  font-size: 3.1cqh; letter-spacing: 0.16em; text-transform: uppercase; color: #bdb5a6; }
+/* Steersman Y'rkoon: the Navigation cards' four numbered slots along the top. */
+.cf-leader .cf-lslots { position: absolute; left: 3cqw; right: 3cqw; top: 0.8cqh; height: 3.6cqh; display: flex; gap: 0.8cqw; }
+.cf-leader.has-slots .cf-lname { top: 5.6cqh; }
+.cf-leader.has-slots .cf-house { top: 13.6cqh; }
+.cf-leader .cf-lslots span { flex: 1; display: grid; place-items: center; font-size: 2.6cqh; line-height: 1; color: #c8c2b4;
+  background: #2e2b26; border: 0.2cqh solid #5c574e; border-radius: 0.6cqh; }
+/* Feyd-Rautha's and Chani's cells sit at the face's own boxes
+   (card_faces.js FEYD_FACE_BOXES, CHANI_FACE_BOXES), which the seat's
+   token uses too; so their layer covers the whole face. */
+.cf-ltrack-feyd, .cf-ltrack-chani { position: absolute; inset: 0; pointer-events: none; }
+.cf-lpaths { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cf-lpaths path { fill: none; stroke: #d6d2c8; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.cf-lcell { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box;
+  border-radius: 1.4cqh; font-size: 3.4cqh; font-weight: 700; line-height: 1.1; text-align: center; --cf-big: 7.5cqh; }
+.cf-ltrack-feyd .cf-lcell { background: #ecebe6; color: #222; border: 0.3cqh solid #9a968c; }
+/* Print's arrows on these light cells are black. */
+.cf-ltrack-feyd .cf-ic.cf-arrow { filter: invert(1); }
+.cf-ltrack-feyd .cf-lcell:first-of-type { background: #2c2c2c; border-color: #8a877e; }
+.cf-ltrack-feyd .cf-lcell.final { clip-path: polygon(0 0, 70% 0, 100% 50%, 70% 100%, 0 100%); border-radius: 1.4cqh 0 0 1.4cqh; }
+.cf-ltrack-chani .cf-lcell { background: #1f2a3c; border: 0.3cqh solid #4c5a72; color: #fff; }
+.cf-ltrack-snooper { position: absolute; left: 3.5cqw; right: 3.5cqw; top: 16.5cqh; height: 26cqh; display: flex; flex-direction: column; gap: 0.8cqh; }
+.cf-ltrack-snooper .cf-lcell { position: static; flex: 1; align-items: flex-start; padding: 0 2cqh; font-size: 2.9cqh; font-weight: 400;
+  background: #00000059; border: 0.25cqh solid #6d675c; --cf-big: 4.4cqh; }
+.cf-ltrack-snooper .cf-lcell .cf-line.big { justify-content: flex-start; }
+.cf-leader .cf-ltitle { font-size: 3.4cqh; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.2;
+  padding-bottom: 0.8cqh; margin-bottom: 1.2cqh; border-bottom: 0.25cqh solid #00000055; }
+.cf-leader .cf-ltext { font-size: 3.8cqh; line-height: 1.25; --cf-big: 8cqh; }
+.cf-leader .cf-labil { position: absolute; left: 0; top: 44cqh; width: 56cqw; bottom: 0; box-sizing: border-box; padding: 2.4cqh 7.5cqw 2.4cqh 3.5cqw;
+  display: flex; flex-direction: column; gap: 1.6cqh; background: linear-gradient(#9b845f, #6d5a3c);
+  clip-path: polygon(0 0, 88% 0, 100% 100%, 0 100%); }
+.cf-leader .cf-lpart.red { margin: 0 -1.4cqh; padding: 1cqh 1.4cqh; border-radius: 0.8cqh; background: #7d241d; }
+.cf-leader .cf-lsignet { position: absolute; left: 50.5cqw; right: 0; top: 44cqh; bottom: 0; box-sizing: border-box; padding: 2.4cqh 2.6cqw 2.4cqh 6cqw;
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; column-gap: 1.6cqw; align-content: start;
+  background: linear-gradient(#2a2927, #131313); clip-path: polygon(0 0, 100% 0, 100% 100%, 13% 100%); }
+.cf-leader .cf-lsignet > .cf-ltext { grid-column: 1 / -1; }
+.cf-leader .cf-lsignet > .cf-ltitle { align-self: end; }
+.cf-leader .cf-lbadge { width: 8cqh; height: 7.4cqh; margin-bottom: 1.2cqh; display: grid; place-items: center; font-size: 4.4cqh;
+  background: #121212; border: 0.4cqh solid #b8913e; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.cf-leader .cf-lbadge .cf-ic { height: 1.4em; }
+.cf-leader .cf-lbadge.nav { background: radial-gradient(60% 75% at 50% 55%, #e98b2a 0 45%, transparent 47%), #121212; }
+.popover-face.cf-leader, .popover-leader-stage > .card-face { width: 100%; margin: 6px 0 2px; }
+
+/* The card encyclopedia (#gallery, gallery.js): every redrawn face by kind,
+   searchable and filtered by box, a detail view; then the picture check. */
+#gallery { position: fixed; inset: 0; z-index: 10000; overflow: auto; background: #1e1b16; color: #ece6da; font-size: 12px; }
+.gallery-bar { position: sticky; top: 0; z-index: 20; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 12px; background: #2a2620; border-bottom: 1px solid #4a4438; }
+.gallery-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.gallery-title { margin: 0; font-size: 16px; }
+.gallery-filters { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.gallery-filters[hidden] { display: none; }
+.gallery-search { min-width: 220px; flex: 0 1 320px; padding: 4px 8px; border-radius: 6px; border: 1px solid #5a5446;
+  background: #1e1b16; color: inherit; font: inherit; }
+.gallery-sets { display: flex; flex-wrap: wrap; gap: 4px; }
+.gallery-pictures { font-size: 11px; opacity: 0.8; }
+.gallery-pictures button { padding: 2px 8px; }
+.gallery-face { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; max-width: 100%; }
+.gallery-detail { position: fixed; inset: 0; z-index: 30; background: #000a; display: grid; place-items: center; padding: 16px; }
+.gallery-detail-panel { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; max-width: min(1100px, 100%);
+  max-height: 100%; overflow: auto; padding: 16px; border-radius: 10px; background: #2a2620; border: 1px solid #5a5446;
+  font-size: 14px; }
+.gallery-detail-face { flex: none; max-width: 100%; }
+.gallery-detail-info { flex: 1 1 280px; min-width: 0; }
+.gallery-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gallery-detail-head h3 { margin: 0; font-size: 18px; }
+.gallery-detail-head button { padding: 4px 10px; border-radius: 6px; border: 1px solid #5a5446; background: #3a352c; color: inherit; cursor: pointer; }
+.gallery-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.gallery-tag { padding: 1px 8px; border-radius: 10px; background: #3a352c; border: 1px solid #5a5446; font-size: 12px; }
+.gallery-tag.promo { border-color: #c9a24a; }
+.gallery-tag.choam { border-color: #d8322c; }
+.gallery-detail-text { line-height: 1.5; }
+.gallery-detail-info h4 { margin: 14px 0 4px; font-size: 13px; color: #c9a24a; }
+.gallery-ruling p { margin: 2px 0 8px; color: #d6cfbf; }
+.help-encyclopedia { margin: 0 0 0.6rem; }
+.gallery-plain { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 6px; border: 1px dashed #6a6252;
+  background: #26221c; color: #ece6da; text-align: left; font-size: 11px; line-height: 1.35; overflow: hidden; aspect-ratio: 63.5 / 88; }
+.gallery-plain-intrigue { aspect-ratio: 44.2 / 68; }
+.gallery-plain b { font-size: 13px; }
+.gallery-detail-face .gallery-plain { font-size: 14px; }
+.gallery-tabs, .gallery-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gallery-bar button { padding: 4px 10px; border-radius: 6px; border: 1px solid #5a5446; background: #3a352c; color: inherit; cursor: pointer; }
+.gallery-bar button.on { background: #c9a24a; color: #1e1b16; border-color: #c9a24a; }
+.gallery-body { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; padding: 12px; }
+.gallery-cell { isolation: isolate; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.gallery-cell figcaption { max-width: 100%; text-align: center; color: #bdb5a4; overflow-wrap: anywhere; }
+.gallery-cell.wide { flex-basis: 100%; }
+.gallery-cell img { max-width: 100%; }
+
+/* Inside an OR/AND side a big row keeps to its column (no bleed margins). */
+.card-face .cf-split .cf-part .cf-line.big { margin: 0; }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="51" height="51" viewBox="0 0 100 100">
+  <!-- Log: the deck reshuffled, three green cards. Drawn by hand for the public build. -->
+  <defs><linearGradient id="rs" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3fbf4a"/><stop offset="1" stop-color="#0e6a1c"/></linearGradient></defs>
+  <rect x="26" y="12" width="40" height="62" rx="5" fill="url(#rs)" stroke="#f2f2f2" stroke-width="2.6"/><rect x="35" y="19" width="40" height="62" rx="5" fill="url(#rs)" stroke="#f2f2f2" stroke-width="2.6"/><rect x="44" y="26" width="40" height="62" rx="5" fill="url(#rs)" stroke="#f2f2f2" stroke-width="2.6"/>
+</svg>

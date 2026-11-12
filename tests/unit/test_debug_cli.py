@@ -1,0 +1,106 @@
+"""Tests for the human-readable engine debug interface."""
+
+import random
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.cli.debug import debug_snapshot, main, run_interactive_session
+from dune_imperium.core import GamePhase, PlayerDecision
+from dune_imperium.rules import UprisingRulesEngine
+
+
+def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=3)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+
+    snapshot = debug_snapshot(engine, state, decision.owner)
+
+    assert snapshot["decision_owner"] == decision.owner
+    assert snapshot["private"] == {
+        "deck_size": 5,
+        "hand": state.players[decision.owner].hand,
+        "intrigue_cards": (),
+        "peeked_card_id": "",
+        "peeked_intrigue_ids": (),
+        "navigation_slots": (),
+        "secret_project_tech_id": "",
+        "scouts_secret_picks": (),
+        # The original game's Covert Operation: the Factions those picks named.
+        "scouts_secret_factions": (),
+        "scouts_bid": -1,
+        # Stage B1: the Agent card the seat picked and has not placed yet.
+        "agent_card_pick": "",
+        "agent_card_pick_graft": False,
+        # Stage B3: the rows the seat picked toward one waiting effect.
+        "effect_pick": (),
+        # The original game's Baron Harkonnen: his secret Masterstroke Factions.
+        "masterstroke_factions": (),
+        # Rise of Ix (observation v39): Ilesa Ecaz's set-aside card, the
+        # Intrigue cards the seat knows by place, its open Rise of Ix choice.
+        "set_aside_card_id": "",
+        "known_intrigue_top": "",
+        "known_intrigue_bottom": (),
+        "known_intrigue_held": (),
+        "ix_pending": {
+            "shipping_rewards": (),
+            "tech_discount": 0,
+            "tech_payment": "",
+            "negotiators_returnable": 0,
+        },
+        # Uprising with Rise of Ix and the CHOAM Module (stage P7f-2): the
+        # two Rise of Ix Contracts the seat was given and its sealed choice.
+        "starting_contract_ids": (),
+        "starting_contract_pick": "",
+    }
+    actions = snapshot["legal_actions"]
+    assert isinstance(actions, list)
+    assert any(action["action_id"] == "reveal_turn" for action in actions)
+
+
+def test_interactive_session_can_stop_without_mutating_the_state() -> None:
+    output: list[str] = []
+    engine = UprisingRulesEngine()
+
+    state = run_interactive_session(
+        engine,
+        RulesetConfig(),
+        seed=5,
+        read=lambda _: "q",
+        write=output.append,
+    )
+
+    assert state.phase is GamePhase.PLAYER_TURNS
+    assert state.revision == 0
+    assert output[-1] == "Session stopped without changing the current state."
+
+
+def test_random_cli_mode_prints_a_round_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["--seed", "2", "--random-policy-seed", "12"]) == 0
+
+    output = capsys.readouterr().out
+    assert '"round": 2' in output
+    assert '"phase": "player_turns"' in output
+    assert '"steps":' in output
+
+
+def test_interactive_session_answers_chance_decisions_on_its_own() -> None:
+    # Seed 13: the first reward recipient stops on a choice, so the engine
+    # pauses before the second one is paid (rules/pauses.py); the session
+    # answers that chance decision itself and plays on to the round's end.
+    rng = random.Random(13)
+    lines: list[str] = []
+    state = run_interactive_session(
+        UprisingRulesEngine(),
+        RulesetConfig(),
+        13,
+        read=lambda prompt: str(rng.randrange(4)),
+        write=lines.append,
+    )
+
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 1

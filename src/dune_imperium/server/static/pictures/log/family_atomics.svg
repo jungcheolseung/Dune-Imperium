@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="119" height="119" viewBox="0 0 100 100">
+  <!-- Log: Family Atomics, an atom on a brown shield. Drawn by hand for the public build. -->
+  <defs><linearGradient id="fa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8582a"/><stop offset="1" stop-color="#5a2a10"/></linearGradient></defs>
+  <path d="M12,10 H88 V50 Q88,82 50,96 Q12,82 12,50 Z" fill="url(#fa)" stroke="#2a1606" stroke-width="3" stroke-linejoin="round"/><g fill="none" stroke="#f0d8b0" stroke-width="3"><ellipse cx="50" cy="50" rx="28" ry="10"/><ellipse cx="50" cy="50" rx="28" ry="10" transform="rotate(60 50 50)"/><ellipse cx="50" cy="50" rx="28" ry="10" transform="rotate(-60 50 50)"/></g><circle cx="50" cy="50" r="6" fill="#f0d8b0"/>
+</svg>

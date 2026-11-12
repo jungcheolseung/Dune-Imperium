@@ -1,0 +1,771 @@
+"""Lockstep self-play over many games with batched policy inference (M9/M10).
+
+``SelfPlayRunner.run`` drives a set of seeded games at once. Every lockstep
+round it resolves each game's chance decisions, builds one
+``PolicyRequest`` per game that waits on a player decision, groups the
+requests by the policy that owns that seat (the game's lineup names a
+policy per seat, so a league of learner, frozen checkpoints and rule-based
+baselines shares one run), calls each policy once with its whole batch,
+validates that every answer is a legal catalog index, and applies the
+decoded actions. Finished games yield an ``Episode`` with the terminal
+zero-sum rewards of the RL environment design (winner ``+1``, the others
+``-1/3``; a truncated game pays ``0``) and, when recording is on, the
+per-decision trajectory (observation, mask, action, seat) the learner
+trains on. ``stack_episodes`` turns episodes into flat NumPy arrays whose
+per-step return is the acting seat's terminal reward. With
+``undo_actions=False`` the runner withholds the pure-undo actions from every
+policy (request, mask and recorded trajectory alike, so a learner stays
+on-policy) while the engine still validates against its full legal set.
+The seats of the policies named in ``family_atomics_rule`` spend the Family
+Atomics token by the app AI's rule instead (``agents.app_ai.family_atomics``):
+the runner plays it for them when the rule fires, as a step no policy took
+and none records, and withholds it from their requests otherwise.
+
+For the self-play plan's stage 3 (docs/entity-self-play-plan.md 4.3) the
+runner can pay the graded reward (``reward_step``, the step of
+``pettingzoo_env.graded_reward``), records each decision's round, and with
+``record_round_starts`` keeps every seat's view at the first state of each
+round past its Round Start (where a search playout reads its leaf, as
+``training.round_values`` collects for the value). A spec that names its
+Leaders under a drafting ruleset plays without the draft, the Leaders dealt.
+"""
+
+import pickle
+import time
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+
+import numpy as np
+
+from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.adapters.pettingzoo_env import (
+    LOSER_REWARD,
+    WINNER_REWARD,
+    graded_reward,
+)
+from dune_imperium.agents.app_ai.family_atomics import (
+    FAMILY_ATOMICS_ACTION,
+    app_uses_family_atomics,
+    without_family_atomics,
+)
+from dune_imperium.config import RulesetConfig
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.endgame import final_standings
+from dune_imperium.training.policy import (
+    BatchPolicy,
+    PolicyRequest,
+    decision_kind_of,
+    encoded_view,
+    without_undo_actions,
+    without_window_specimen_return,
+)
+
+_MAX_CONSECUTIVE_CHANCE_STEPS = 64
+
+
+def rank_reward(rank: int, players: int) -> float:
+    """Spread the terminal reward evenly over the finishing order.
+
+    The default terminal reward says only whether a seat won: +1 for rank 1
+    and -1/3 for everyone else (``pettingzoo_env``), so a seat that played
+    well into second place is told the same thing as one that collapsed to
+    last. That is 0.811 bits a seat where the finishing order the engine
+    already computes carries 2.0.
+
+    This maps rank linearly onto [+1, -1] instead -- 1, 1/3, -1/3, -1 at four
+    players -- keeping the sum over a table at zero, so a game stays
+    zero-sum and the batch's raw return mean stays centred. It is a
+    learning-side reward transform: the environment keeps paying
+    winner-take-all (docs/rl-environment.md, "보상"), and the tournament's
+    win criterion is untouched.
+    """
+
+    if players < 2:
+        raise ValueError("a rank reward needs at least two players")
+    return 1.0 - 2.0 * (rank - 1) / (players - 1)
+
+
+# The Victory Points that score 1.0 under ``score_reward``: the base game's
+# win threshold [Main p. 3], so a typical final score lands near 1.
+SCORE_REWARD_SCALE: float = 10.0
+
+
+def score_reward(victory_points: int) -> float:
+    """Pay a seat its own final Victory Points instead of whether it won.
+
+    User request 2026-10-11 ("종료했을 때 점수를 최대한 먹기"로 설정하면 목표가
+    바뀌려나? -> "실험 갈래 추가해보자"): an experiment arm against the
+    winner-take-all default. Unlike ``rank_reward`` it is not zero-sum: each
+    seat is told only how many points it ended with, so a policy trained on
+    it maximizes its own score, not its place. A learning-side transform;
+    the environment, the tournament's win criterion and the search's value
+    reading are untouched.
+    """
+
+    return victory_points / SCORE_REWARD_SCALE
+
+
+class NoLegalActionsError(RuntimeError):
+    """A pending player decision offered no action: an engine defect."""
+
+
+@dataclass(frozen=True, slots=True)
+class SelfPlaySpec:
+    """One game of a self-play run: its seed and the policy name per seat.
+
+    ``leader_ids`` deals each seat its Leader. Under a drafting ruleset such a
+    game skips the draft (the engine's forced-Leader path serves only the
+    undrafted setup), every other option kept.
+    """
+
+    game_seed: int
+    lineup: tuple[str, ...]
+    leader_ids: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TrajectoryStep:
+    """One recorded decision: what the acting seat saw and chose.
+
+    ``legal`` holds the catalog indices the policy was offered, not a dense
+    mask over the whole catalog. A decision offers about five of them (mean
+    4.7 of 32,987 measured over full-expansion games), so the dense form
+    costs 32,987 bytes a step to say roughly five things, and a recorded
+    game holds one per decision until the episode is stacked.
+    """
+
+    seat: int
+    observation: np.ndarray
+    legal: np.ndarray  # int32 [legal actions]: catalog indices, ascending
+    action: int
+    # The round the decision was taken in (``GameState.round_number``).
+    round_number: int = 0
+    # The round of the last round start recorded before the decision (0
+    # before the first, or without ``record_round_starts``). A decision in a
+    # round's Round Start phase comes before that round's start.
+    after_start: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RoundStart:
+    """A seat's view at the first state of a round past its Round Start."""
+
+    round_number: int
+    seat: int
+    observation: np.ndarray
+
+
+@dataclass(frozen=True, slots=True)
+class Episode:
+    """One finished (or truncated) self-play game."""
+
+    game_seed: int
+    ruleset: str
+    lineup: tuple[str, ...]
+    rewards: tuple[float, ...]
+    ranks: tuple[int, ...]
+    victory_points: tuple[int, ...]
+    rounds: int
+    decisions: int
+    truncated: bool
+    steps: tuple[TrajectoryStep, ...]
+    # Every seat's round starts, when the runner records them.
+    round_starts: tuple[RoundStart, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingBatch:
+    """Flat arrays over every recorded step of a set of episodes.
+
+    The legal set is kept in compressed-row form -- ``legal_indices``
+    concatenated across steps, ``legal_offsets`` marking where each step's
+    slice starts -- instead of a dense ``[steps, action_size]`` mask. The
+    dense form is the largest array in training by a wide margin (32,987
+    bytes a step against 17,308 for the observation) and it is almost all
+    zeros. The learner reads a minibatch through ``local_legal``, which
+    indexes the rows over their legal union only; ``dense_masks`` still
+    materializes full-width rows for callers that want them. Nothing is
+    approximated: the row count is ragged and exact, so a
+    decision offering an unusual number of actions needs no padding and can
+    never be truncated.
+
+    ``teacher`` is set only by a kickstarted collection
+    (``training.kickstart``): a teacher's probability of every legal entry,
+    parallel to ``legal_indices`` and so sliced by the same offsets.
+    """
+
+    observations: np.ndarray  # int32 [steps, OBSERVATION_SIZE]
+    legal_indices: np.ndarray  # int32 [total legal]: catalog indices
+    legal_offsets: np.ndarray  # int64 [steps + 1]: row starts, ascending
+    action_size: int  # catalog width a dense mask would have
+    actions: np.ndarray  # int64 [steps]
+    seats: np.ndarray  # int8 [steps]
+    returns: np.ndarray  # float32 [steps]: terminal reward of the acting seat
+    episode_ids: np.ndarray  # int32 [steps]: index into the episode sequence
+    teacher: np.ndarray | None = None  # float32 [total legal], or None
+    # int16 [steps]: the round each step was taken in (stacked episodes have it).
+    rounds: np.ndarray | None = None
+    # int16 [steps]: each step's ``TrajectoryStep.after_start``.
+    after_starts: np.ndarray | None = None
+    # float32 [steps]: a fixed critic's value of each step's observation; the
+    # learner's advantage is then ``returns - baselines`` (training.loop).
+    baselines: np.ndarray | None = None
+
+    def dense_masks(self, rows: np.ndarray) -> np.ndarray:
+        """Return the dense 0/1 mask of ``rows``, in the order given."""
+
+        selected = np.asarray(rows, dtype=np.int64)
+        values, offsets = _gather_rows(
+            self.legal_indices, self.legal_offsets, selected
+        )
+        counts = np.diff(offsets)
+        masks = np.zeros((selected.shape[0], self.action_size), dtype=np.int8)
+        masks[np.repeat(np.arange(selected.shape[0]), counts), values] = 1
+        return masks
+
+    def local_legal(self, rows: np.ndarray, *, teacher: bool = False) -> LocalLegal:
+        """Return ``rows``' legal sets over the actions legal in any of them.
+
+        The learner's masked softmax gives an illegal action a logit of
+        ``MASKED_LOGIT``, so its probability, its entropy term and its
+        gradient are all exactly zero; a catalog action legal in none of the
+        rows therefore contributes nothing, and computing its head row at
+        all is wasted work. ``catalog`` is the sorted union of the rows'
+        legal sets (690 to 795 of the 33,007 catalog actions for a
+        1,024-step minibatch of champion-5081 self-play, 2026-09-27),
+        ``mask[i, j]`` says whether ``catalog[j]`` is legal in row ``i``,
+        and ``chosen[i]`` is the position of row ``i``'s action in
+        ``catalog``. Every chosen action must be legal in its own row. With
+        ``teacher``, ``LocalLegal.teacher[i, j]`` is the batch's teacher
+        probability of ``catalog[j]`` in row ``i`` (zero where it is not
+        legal there).
+        """
+
+        selected = np.asarray(rows, dtype=np.int64)
+        values, offsets = _gather_rows(
+            self.legal_indices, self.legal_offsets, selected
+        )
+        catalog, columns = np.unique(values, return_inverse=True)
+        counts = np.diff(offsets)
+        mask = np.zeros((selected.shape[0], catalog.shape[0]), dtype=np.bool_)
+        mask[np.repeat(np.arange(selected.shape[0]), counts), columns.reshape(-1)] = (
+            True
+        )
+        local_teacher: np.ndarray | None = None
+        if teacher:
+            if self.teacher is None:
+                raise ValueError("the batch carries no teacher probabilities")
+            probabilities, _ = _gather_rows(self.teacher, self.legal_offsets, selected)
+            local_teacher = np.zeros(mask.shape, dtype=np.float32)
+            # Added, not assigned: two legal entries of a row that named the
+            # same catalog index would share one column.
+            np.add.at(
+                local_teacher,
+                (np.repeat(np.arange(selected.shape[0]), counts), columns.reshape(-1)),
+                probabilities,
+            )
+        actions = self.actions[selected]
+        chosen = np.searchsorted(catalog, actions).astype(np.int64)
+        found = chosen < catalog.shape[0]
+        found[found] = catalog[chosen[found]] == actions[found]
+        found[found] = mask[np.flatnonzero(found), chosen[found]]
+        if not found.all():
+            raise ValueError("a chosen action is not in its own row's legal set")
+        return LocalLegal(
+            catalog=catalog.astype(np.int64),
+            mask=mask,
+            chosen=chosen,
+            teacher=local_teacher,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LocalLegal:
+    """Some rows' legal sets indexed over their union (``local_legal``)."""
+
+    catalog: np.ndarray  # int64 [K]: sorted catalog indices legal in any row
+    mask: np.ndarray  # bool [rows, K]: catalog[j] is legal in row i
+    chosen: np.ndarray  # int64 [rows]: position of the row's action in catalog
+    teacher: np.ndarray | None = None  # float32 [rows, K]: only when asked for
+
+
+def _gather_rows(
+    values: np.ndarray, offsets: np.ndarray, rows: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Take ``rows`` of a compressed-row array, keeping the order given."""
+
+    starts = offsets[rows]
+    counts = offsets[rows + 1] - starts
+    gathered = np.zeros(int(counts.sum()), dtype=values.dtype)
+    if gathered.shape[0]:
+        # Position i of the output reads values[start(row(i)) + rank(i)],
+        # where rank counts from the start of that row's slice.
+        row_of = np.repeat(np.arange(rows.shape[0]), counts)
+        ends = np.cumsum(counts)
+        rank = np.arange(gathered.shape[0]) - np.repeat(ends - counts, counts)
+        gathered = values[starts[row_of] + rank]
+    new_offsets = np.zeros(rows.shape[0] + 1, dtype=np.int64)
+    np.cumsum(counts, out=new_offsets[1:])
+    return gathered, new_offsets
+
+
+@dataclass(slots=True)
+class _Game:
+    index: int
+    spec: SelfPlaySpec
+    state: GameState
+    chance: ChanceResolver
+    decisions: int = 0
+    steps: list[TrajectoryStep] = field(default_factory=list)
+    round_starts: list[RoundStart] = field(default_factory=list)
+    # The last round whose start ``round_starts`` holds.
+    started_round: int = 0
+    # The engine's full legal set of the pending decision; ``apply`` must be
+    # handed exactly this tuple even when the policy was offered less.
+    legal: tuple[DomainAction, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SelfPlayResult:
+    """Episodes of one run plus throughput facts."""
+
+    episodes: tuple[Episode, ...]
+    duration_seconds: float
+
+    @property
+    def decisions(self) -> int:
+        return sum(episode.decisions for episode in self.episodes)
+
+
+class SelfPlayRunner:
+    """Run many games in lockstep, batching every policy's decisions."""
+
+    def __init__(
+        self,
+        config: RulesetConfig,
+        *,
+        max_steps: int = 30_000,
+        record: bool = True,
+        undo_actions: bool = True,
+        rank_rewards: bool = False,
+        score_rewards: bool = False,
+        stall_dir: Path | None = None,
+        family_atomics_rule: frozenset[str] = frozenset(),
+        reward_step: float | None = None,
+        record_round_starts: bool = False,
+    ) -> None:
+        if max_steps < 1:
+            raise ValueError("max_steps must be positive")
+        if (rank_rewards, score_rewards, reward_step is not None).count(True) > 1:
+            raise ValueError(
+                "rank_rewards, score_rewards and reward_step are exclusive"
+            )
+        # Where a game that reaches a decision without legal actions (an
+        # engine defect) is pickled before it is ended as truncated. Unset,
+        # such a game raises and takes the run down with it; a long training
+        # run sets it so one rare defect costs one game, not the run, and
+        # leaves the exact state behind to reproduce it from.
+        self.stall_dir = stall_dir
+        self.config = config
+        self.max_steps = max_steps
+        self.record = record
+        # False withholds ``UNDO_ACTION_IDS`` from every policy (training).
+        self.undo_actions = undo_actions
+        # True pays the finishing order instead of winner-take-all; see
+        # ``rank_reward``. A learning-side transform, off by default so the
+        # environment's documented reward stays the baseline.
+        self.rank_rewards = rank_rewards
+        # True pays each seat its own final Victory Points; see
+        # ``score_reward``.
+        self.score_rewards = score_rewards
+        # Policies whose seats spend the Family Atomics token by the app AI's
+        # rule (module docstring). The trained networks spent it on their
+        # first Agent turn in every game, so their value head never saw a
+        # position that still holds it.
+        self.family_atomics_rule = family_atomics_rule
+        # The graded reward's step (``graded_reward``): the user's 1/6 for the
+        # self-play plan (docs/entity-self-play-plan.md 3.2); None keeps the
+        # rewards above.
+        self.reward_step = reward_step
+        self.record_round_starts = record_round_starts
+        # A spec's dealt Leaders play this game without the draft.
+        self._dealt_config = replace(config, leader_draft=False)
+        self.codec = ActionCodec(config)
+        self._engines: dict[tuple[str, ...] | None, UprisingRulesEngine] = {}
+
+    def _engine(self, leader_ids: tuple[str, ...] | None) -> UprisingRulesEngine:
+        engine = self._engines.get(leader_ids)
+        if engine is None:
+            engine = (
+                UprisingRulesEngine(leader_ids=leader_ids)
+                if leader_ids is not None
+                else UprisingRulesEngine()
+            )
+            self._engines[leader_ids] = engine
+        return engine
+
+    def run(
+        self,
+        policies: Mapping[str, BatchPolicy],
+        specs: Sequence[SelfPlaySpec],
+    ) -> SelfPlayResult:
+        """Play every spec to the end and return the episodes in spec order."""
+
+        started = time.perf_counter()
+        games = []
+        for index, spec in enumerate(specs):
+            if len(spec.lineup) != self.config.players:
+                raise ValueError("a lineup names exactly one policy per seat")
+            for name in spec.lineup:
+                if name not in policies:
+                    raise ValueError(f"lineup names an unknown policy: {name!r}")
+            engine = self._engine(spec.leader_ids)
+            config = self.config if spec.leader_ids is None else self._dealt_config
+            games.append(
+                _Game(
+                    index=index,
+                    spec=spec,
+                    state=engine.reset(config, spec.game_seed),
+                    chance=ChanceResolver(seed=spec.game_seed),
+                )
+            )
+        episodes: dict[int, Episode] = {}
+        active = list(games)
+        while active:
+            waiting: list[_Game] = []
+            requests: dict[str, list[tuple[_Game, PolicyRequest]]] = {}
+            for game in active:
+                request = self._next_request(game, episodes)
+                if request is None:
+                    continue
+                requests.setdefault(game.spec.lineup[request.seat], []).append(
+                    (game, request)
+                )
+                waiting.append(game)
+            for name, batch in requests.items():
+                answers = policies[name].act([request for _, request in batch])
+                if len(answers) != len(batch):
+                    raise ValueError(f"policy {name!r} answered a different batch size")
+                for (game, request), index in zip(batch, answers, strict=True):
+                    self._apply(game, request, int(index), name)
+            active = waiting
+        return SelfPlayResult(
+            episodes=tuple(episodes[game.index] for game in games),
+            duration_seconds=time.perf_counter() - started,
+        )
+
+    def _next_request(
+        self, game: _Game, episodes: dict[int, Episode]
+    ) -> PolicyRequest | None:
+        """The game's next policy decision, or None once it has ended.
+
+        An ended game's episode goes into ``episodes``. Chance decisions and
+        the Family Atomics token spent by the rule are played on the way.
+        """
+
+        while True:
+            self._advance_chance(game)
+            if game.state.phase is GamePhase.FINISHED:
+                episodes[game.index] = self._finish(game, truncated=False)
+                return None
+            if game.decisions >= self.max_steps:
+                episodes[game.index] = self._finish(game, truncated=True)
+                return None
+            try:
+                request = self._request(game)
+            except NoLegalActionsError:
+                if self.stall_dir is None:
+                    raise
+                self._record_stall(game)
+                episodes[game.index] = self._finish(game, truncated=True)
+                return None
+            if request is not None:
+                return request
+
+    def _advance_chance(self, game: _Game) -> None:
+        engine = self._engine(game.spec.leader_ids)
+        for _ in range(_MAX_CONSECUTIVE_CHANCE_STEPS):
+            # Every state a game passes through comes here first (after a
+            # player's action, the Family Atomics rule's step and each chance
+            # step), so no round start is missed.
+            self._note_round_start(game, engine)
+            decision = engine.current_decision(game.state)
+            if not isinstance(decision, ChanceDecision):
+                return
+            game.state = engine.apply(game.state, game.chance.resolve(decision)).state
+        raise RuntimeError("too many consecutive chance decisions")
+
+    def _note_round_start(self, game: _Game, engine: UprisingRulesEngine) -> None:
+        """Keep every seat's view at the first state of a new round past its
+        Round Start: the state a search playout's leaf is read at
+        (``rollout_agent.past_horizon``; ``training.round_values``)."""
+
+        state = game.state
+        if (
+            not self.record_round_starts
+            or state.round_number <= game.started_round
+            or state.phase is GamePhase.ROUND_START
+            or state.phase is GamePhase.FINISHED
+        ):
+            return
+        game.started_round = state.round_number
+        for seat in range(self.config.players):
+            game.round_starts.append(
+                RoundStart(
+                    round_number=state.round_number,
+                    seat=seat,
+                    observation=encoded_view(engine.observe(state, seat)),
+                )
+            )
+
+    def _request(self, game: _Game) -> PolicyRequest | None:
+        """The pending decision as a request to its seat's policy.
+
+        None when the Family Atomics rule answered it instead: the token is
+        played, the game moves on, and the caller asks again.
+        """
+
+        engine = self._engine(game.spec.leader_ids)
+        decision = engine.current_decision(game.state)
+        if not isinstance(decision, PlayerDecision):
+            raise RuntimeError("self-play requires a pending player decision")
+        seat = decision.owner
+        legal_actions = engine.legal_actions(game.state, seat)
+        if not legal_actions:
+            raise NoLegalActionsError("current player decision has no legal actions")
+        game.legal = legal_actions
+        legal_actions = without_window_specimen_return(
+            legal_actions, decision_kind_of(game.state)
+        )
+        if not self.undo_actions:
+            legal_actions = without_undo_actions(legal_actions)
+        view = engine.observe(game.state, seat)
+        if game.spec.lineup[seat] in self.family_atomics_rule:
+            atomics = next(
+                (a for a in legal_actions if a.action_id == FAMILY_ATOMICS_ACTION),
+                None,
+            )
+            if atomics is not None:
+                if app_uses_family_atomics(game.state, view):
+                    game.state = engine.apply(
+                        game.state, atomics, legal_actions=game.legal
+                    ).state
+                    return None
+                legal_actions = without_family_atomics(legal_actions)
+        legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
+        mask = np.zeros(self.codec.size, dtype=np.int8)
+        mask[list(legal_indices)] = 1
+        return PolicyRequest(
+            game=game.index,
+            seat=seat,
+            state=game.state,
+            view=view,
+            legal_actions=legal_actions,
+            legal_indices=legal_indices,
+            observation=encoded_view(view),
+            mask=mask,
+        )
+
+    def _apply(
+        self, game: _Game, request: PolicyRequest, index: int, policy: str
+    ) -> None:
+        try:
+            position = request.legal_indices.index(index)
+        except ValueError:
+            raise ValueError(
+                f"policy {policy!r} chose illegal action index {index} for seat "
+                f"{request.seat} of game seed {game.spec.game_seed}"
+            ) from None
+        if self.record:
+            game.steps.append(
+                TrajectoryStep(
+                    seat=request.seat,
+                    observation=request.observation,
+                    # The request's dense mask is the policy's contract and
+                    # dies with the lockstep round; the recorded step keeps
+                    # only the indices it was built from.
+                    legal=np.asarray(request.legal_indices, dtype=np.int32),
+                    action=index,
+                    round_number=request.state.round_number,
+                    after_start=game.started_round,
+                )
+            )
+        engine = self._engine(game.spec.leader_ids)
+        game.state = engine.apply(
+            game.state,
+            request.legal_actions[position],
+            legal_actions=game.legal,
+        ).state
+        game.decisions += 1
+
+    def _record_stall(self, game: _Game) -> None:
+        """Pickle a game stuck on a decision without legal actions."""
+
+        assert self.stall_dir is not None
+        self.stall_dir.mkdir(parents=True, exist_ok=True)
+        seed = game.spec.game_seed
+        with (self.stall_dir / f"stall-{seed}.pkl").open("wb") as handle:
+            pickle.dump(
+                {"state": game.state, "spec": game.spec, "config": self.config},
+                handle,
+            )
+        frames = ",".join(str(frame.kind) for frame in game.state.decision_stack)
+        with (self.stall_dir / "stalls.log").open("a") as handle:
+            handle.write(
+                f"seed {seed} round {game.state.round_number} "
+                f"phase {game.state.phase} decisions {game.decisions} "
+                f"frames {frames}\n"
+            )
+
+    def _finish(self, game: _Game, *, truncated: bool) -> Episode:
+        players = self.config.players
+        if truncated:
+            rewards = tuple(0.0 for _ in range(players))
+            ranks = tuple(0 for _ in range(players))
+        else:
+            standings = final_standings(game.state)
+            by_player = {standing.player: standing for standing in standings}
+            ranks = tuple(by_player[seat].rank for seat in range(players))
+            rewards = tuple(
+                score_reward(game.state.players[seat].victory_points)
+                if self.score_rewards
+                else rank_reward(rank, players) if self.rank_rewards
+                else graded_reward(rank, self.reward_step)
+                if self.reward_step is not None
+                else (WINNER_REWARD if rank == 1 else LOSER_REWARD)
+                for seat, rank in enumerate(ranks)
+            )
+        return Episode(
+            game_seed=game.spec.game_seed,
+            ruleset=self.config.identifier,
+            lineup=game.spec.lineup,
+            rewards=rewards,
+            ranks=ranks,
+            victory_points=tuple(
+                player.victory_points for player in game.state.players
+            ),
+            rounds=game.state.round_number,
+            decisions=game.decisions,
+            truncated=truncated,
+            steps=tuple(game.steps),
+            round_starts=tuple(game.round_starts),
+        )
+
+
+def stack_episodes(episodes: Sequence[Episode], *, action_size: int) -> TrainingBatch:
+    """Flatten recorded steps into arrays; the return is the seat's reward.
+
+    ``action_size`` is the catalog width the recorded indices belong to. It
+    is asked for rather than inferred because the steps carry only the
+    indices they were offered, and the widest of those is not the catalog.
+    """
+
+    steps = [
+        (episode_id, step)
+        for episode_id, episode in enumerate(episodes)
+        for step in episode.steps
+    ]
+    if not steps:
+        raise ValueError("no recorded steps to stack")
+    observations = np.stack([step.observation for _, step in steps])
+    offsets = np.zeros(len(steps) + 1, dtype=np.int64)
+    np.cumsum(
+        [step.legal.shape[0] for _, step in steps], out=offsets[1:], dtype=np.int64
+    )
+    return TrainingBatch(
+        observations=observations,
+        legal_indices=np.concatenate([step.legal for _, step in steps]),
+        legal_offsets=offsets,
+        action_size=action_size,
+        actions=np.asarray([step.action for _, step in steps], dtype=np.int64),
+        seats=np.asarray([step.seat for _, step in steps], dtype=np.int8),
+        returns=np.asarray(
+            [episodes[episode_id].rewards[step.seat] for episode_id, step in steps],
+            dtype=np.float32,
+        ),
+        episode_ids=np.asarray([episode_id for episode_id, _ in steps], dtype=np.int32),
+        rounds=np.asarray([step.round_number for _, step in steps], dtype=np.int16),
+        after_starts=np.asarray(
+            [step.after_start for _, step in steps], dtype=np.int16
+        ),
+    )
+
+
+def select_policy_steps(
+    episodes: Sequence[Episode], name: str, *, action_size: int
+) -> TrainingBatch:
+    """Stack only the steps taken by seats the named policy controlled."""
+
+    batch = stack_episodes(episodes, action_size=action_size)
+    keep = np.asarray(
+        [
+            episodes[episode_id].lineup[seat] == name
+            for episode_id, seat in zip(
+                batch.episode_ids.tolist(), batch.seats.tolist(), strict=True
+            )
+        ],
+        dtype=bool,
+    )
+    if not keep.any():
+        raise ValueError(f"no steps were taken by policy {name!r}")
+    rows = np.flatnonzero(keep)
+    legal_indices, legal_offsets = _gather_rows(
+        batch.legal_indices, batch.legal_offsets, rows
+    )
+    return TrainingBatch(
+        observations=batch.observations[keep],
+        legal_indices=legal_indices,
+        legal_offsets=legal_offsets,
+        action_size=batch.action_size,
+        actions=batch.actions[keep],
+        seats=batch.seats[keep],
+        returns=batch.returns[keep],
+        episode_ids=batch.episode_ids[keep],
+        rounds=None if batch.rounds is None else batch.rounds[keep],
+        after_starts=None if batch.after_starts is None else batch.after_starts[keep],
+    )
+
+
+def apply_step_penalty(batch: TrainingBatch, penalty: float) -> TrainingBatch:
+    """Charge every later decision of the same seat against a step's return.
+
+    Learning-side shaping (the environment itself pays terminal rewards
+    only): with ``penalty`` per decision, a step's return becomes the seat's
+    terminal reward minus ``penalty`` times the number of decisions that
+    seat still makes afterwards in the episode, so pointless reversible
+    loops (deploy/withdraw, defer/resume) cost a little instead of nothing.
+    Rows must be in chronological order within each episode, as
+    ``stack_episodes`` produces them.
+    """
+
+    if penalty < 0.0:
+        raise ValueError("step penalty must not be negative")
+    if penalty == 0.0 or batch.actions.shape[0] == 0:
+        return batch
+    keys = batch.episode_ids.astype(np.int64) * 64 + batch.seats.astype(np.int64)
+    remaining = np.zeros(keys.shape[0], dtype=np.float32)
+    later: dict[int, int] = {}
+    for index in range(keys.shape[0] - 1, -1, -1):
+        key = int(keys[index])
+        count = later.get(key, 0)
+        remaining[index] = count
+        later[key] = count + 1
+    return TrainingBatch(
+        observations=batch.observations,
+        legal_indices=batch.legal_indices,
+        legal_offsets=batch.legal_offsets,
+        action_size=batch.action_size,
+        actions=batch.actions,
+        seats=batch.seats,
+        returns=(batch.returns - penalty * remaining).astype(np.float32),
+        episode_ids=batch.episode_ids,
+        teacher=batch.teacher,
+        rounds=batch.rounds,
+        after_starts=batch.after_starts,
+        baselines=batch.baselines,
+    )

@@ -1,0 +1,746 @@
+"""Tests for the determinizer and the rollout search baseline (M9)."""
+
+import random
+from collections import Counter
+from dataclasses import replace
+
+import pytest
+from tests.support.pauses import pause_outcome
+
+from dune_imperium import RulesetConfig
+from dune_imperium.agents import (
+    Agent,
+    HeuristicAgent,
+    RandomAgent,
+    RolloutAgent,
+    StateAgent,
+    determinize,
+    make_agent,
+    rollout_agent,
+)
+from dune_imperium.agents.rollout_agent import (
+    past_horizon,
+    player_value,
+    position_value,
+)
+from dune_imperium.content.core.icons import ConflictTier
+from dune_imperium.content.registry.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.registry.intrigue import is_twisted_intrigue
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.observation import PlayerView, observe_state
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.phases import prepare_round_start
+from dune_imperium.rules.setup import create_initial_state
+from dune_imperium.simulation.runner import run_policy_game
+
+
+def _play_rounds(seed: int, rounds: int) -> GameState:
+    """Advance a heuristic game until ``rounds`` have begun."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed)
+    chance = ChanceResolver(seed=seed)
+    policy = HeuristicAgent(seed=seed)
+    while state.round_number < rounds and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        # With the state, so the policy judges the rules' whole actions and
+        # answers with the row that stands for its choice (stage B3d-2a).
+        action = policy.choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, action).state
+    return state
+
+
+def _card_census(state: GameState) -> Counter[str]:
+    cards: Counter[str] = Counter()
+    cards.update(state.imperium_deck)
+    cards.update(state.intrigue_deck)
+    cards.update(state.contract_bank)
+    # The determinizer re-deals the deck with the boxed cards of each tier.
+    cards.update(state.conflict_deck)
+    cards.update(state.unused_conflict_ids)
+    cards.update(state.twisted_deck_stock)
+    cards.update(state.navigation_stock)
+    cards.update(state.tleilaxu_deck)
+    cards.update(state.skill_stack)
+    for stack in state.tech_stacks:
+        cards.update(stack)
+    for player in state.players:
+        cards.update(player.hand)
+        cards.update(player.deck)
+        cards.update(player.intrigue_cards)
+        cards.update(player.twisted_deck)
+        cards.update(player.navigation_slots)
+        cards.update(player.navigation_box)
+        if player.secret_project_tech_id:
+            cards[player.secret_project_tech_id] += 1
+    return cards
+
+
+def test_determinize_keeps_the_secret_project_bottoms_the_owner_has_seen() -> None:
+    """Kota Odax's owner has seen the bottom tile of every stack.
+
+    "Game Start: 각 stack의 맨 아래 Tech tile을 본다" [Bloodlines p. 6], so a
+    sampled world must keep those tiles where the open frame says they are.
+    Shuffling them deeper made the frame's own choice unappliable: the tile
+    stayed on its stack and also landed on the Leader card.
+    """
+
+    from dune_imperium.content.registry.leaders import LEADERS
+    from dune_imperium.rules.setup import create_initial_state
+    from dune_imperium.rules.tech import (
+        apply_secret_project,
+        legal_secret_project_actions,
+    )
+
+    leader_ids = ("kota_odax_of_ix", *(leader.leader_id for leader in LEADERS[1:4]))
+    setup = create_initial_state(
+        RulesetConfig(bloodlines=True, tech_module=True),
+        seed=3,
+        leader_ids=leader_ids,
+    ).state
+    candidates = {
+        dict(action.arguments)["tech_id"]
+        for action in legal_secret_project_actions(setup, 0)
+    }
+    assert candidates == {stack[-1] for stack in setup.tech_stacks}
+
+    for seed in range(25):
+        world = determinize(setup, 0, random.Random(seed))
+        assert {stack[-1] for stack in world.tech_stacks} == candidates
+        # Every offered choice still applies, which is what the rollout does.
+        for action in legal_secret_project_actions(world, 0):
+            chosen = apply_secret_project(world, action).state
+            tile = dict(action.arguments)["tech_id"]
+            assert chosen.players[0].secret_project_tech_id == tile
+            assert tile not in {t for stack in chosen.tech_stacks for t in stack}
+
+
+def test_determinize_keeps_the_long_live_fighters_top_three_in_place() -> None:
+    """Long Live the Fighters' pick names the deck's top three cards.
+
+    The owner has seen them, so a sampled world must keep them on top: with
+    the observer's deck reshuffled underneath the frame, the real-legal picks
+    were illegal in the world and the rollout raised on its own branch
+    (2026-09-16 baseline, rollout seat, base game seed 1).
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.rules.agent_effects import (
+        legal_agent_card_long_live_actions,
+        long_live_fighters_frame,
+    )
+
+    state = _play_rounds(seed=1, rounds=2)
+    assert len(state.players[0].deck) >= 4
+    frame = long_live_fighters_frame(
+        0, "round:2:player:0:agent_card:test:long_live_fighters", "test"
+    )
+    state = replace(state, decision_stack=(*state.decision_stack, frame))
+    real = legal_agent_card_long_live_actions(state, 0)
+    assert len(real) == 3
+
+    for seed in range(6):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.players[0].deck[:3] == state.players[0].deck[:3]
+        assert legal_agent_card_long_live_actions(world, 0) == real
+    # The rest of the deck is still re-dealt.
+    assert any(
+        determinize(state, 0, random.Random(seed)).players[0].deck[3:]
+        != state.players[0].deck[3:]
+        for seed in range(6)
+    )
+
+
+def test_determinize_keeps_the_contracts_coercive_negotiation_revealed() -> None:
+    """Coercive Negotiation's choice names the bank's top three Contracts.
+
+    The owner has seen them, so a sampled world must keep them on top: with
+    the bank reshuffled underneath the frame, the real-legal picks were
+    illegal in the world and the rollout raised on its own branch
+    (2026-09-16 rollout cells, CHOAM+Bloodlines+Tech, 16 of 200 games).
+    """
+
+    from dataclasses import replace
+
+    from dune_imperium.core.decisions import DecisionFrame
+    from dune_imperium.rules.frames import FrameKind
+    from dune_imperium.rules.intrigue_triggers import legal_trigger_contract_actions
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(choam_module=True, bloodlines=True)
+    state = engine.reset(config, 3)
+    chance = ChanceResolver(seed=3)
+    policy = HeuristicAgent(seed=3)
+    while state.round_number < 2 and state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        # From the state, as the runner hands it (stage B1: the heuristic
+        # picks its Agent-turn card from the placements it weighs).
+        action = policy.choose_action_with_state(
+            state, engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, action).state
+    assert len(state.contract_bank) >= 5
+    frame = DecisionFrame(
+        kind=FrameKind.INTRIGUE_TRIGGER_CONTRACT,
+        frame_id="round:2:player:0:intrigue_trigger:test",
+        decision=PlayerDecision(owner=0, prompt="Coercive Negotiation"),
+        context=(("card_id", "intrigue:coercive_negotiation:0"), ("turn_owner", 0)),
+    )
+    state = replace(state, decision_stack=(*state.decision_stack, frame))
+    real = legal_trigger_contract_actions(state, 0)
+    assert len(real) >= 3
+
+    for seed in range(6):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.contract_bank[:3] == state.contract_bank[:3]
+        assert legal_trigger_contract_actions(world, 0) == real
+        # Revealed to the whole table [Coercive Negotiation card; Main p. 7],
+        # so another seat's sampled world keeps them on top too.
+        other = determinize(state, 1, random.Random(seed))
+        assert other.contract_bank[:3] == state.contract_bank[:3]
+        assert observe_state(other, 1) == observe_state(state, 1)
+    # The rest of the bank is still re-dealt.
+    assert any(
+        determinize(state, 0, random.Random(seed)).contract_bank[3:]
+        != state.contract_bank[3:]
+        for seed in range(6)
+    )
+
+
+def test_determinize_keeps_the_observers_view_and_every_card() -> None:
+    state = _play_rounds(seed=21, rounds=4)
+    # Give an opponent a publicly known hand card and some held Intrigue so
+    # both special cases are exercised.
+    rival = state.players[1]
+    assert rival.hand, "the rival must hold cards mid-game"
+    state = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(rival, hand_public=(rival.hand[0],)),
+            *state.players[2:],
+        ),
+    )
+    assert any(player.intrigue_cards for player in state.players[1:])
+
+    world = determinize(state, 0, random.Random(3))
+
+    assert observe_state(world, 0) == observe_state(state, 0)
+    assert _card_census(world) == _card_census(state)
+    for original, sampled in zip(state.players, world.players, strict=True):
+        assert len(sampled.hand) == len(original.hand)
+        assert len(sampled.deck) == len(original.deck)
+        assert len(sampled.intrigue_cards) == len(original.intrigue_cards)
+    # The observer's own hand and Intrigue are knowledge, not a sample.
+    assert world.players[0].hand == state.players[0].hand
+    assert world.players[0].intrigue_cards == state.players[0].intrigue_cards
+    assert sorted(world.players[0].deck) == sorted(state.players[0].deck)
+    # The publicly known rival card stays in the rival's hand.
+    assert rival.hand[0] in world.players[1].hand
+    # Different RNG seeds sample different worlds.
+    other = determinize(state, 0, random.Random(4))
+    assert other != world
+
+
+def test_determinize_keeps_the_public_deck_tops_in_place() -> None:
+    # OQ-145: cards put face up on top of a deck are known to every seat, so
+    # a sampled world keeps them on top, in order, for the observer's own
+    # deck and every opponent's; below them the decks are re-dealt as before.
+    state = _play_rounds(seed=21, rounds=2)
+    mine, rival = state.players[0], state.players[1]
+    assert len(mine.deck) > 3 and len(rival.deck) > 3
+    top_mine, top_rival = mine.deck[:2], rival.deck[:3]
+    state = replace(
+        state,
+        players=(
+            replace(mine, deck_public_top=top_mine),
+            replace(rival, deck_public_top=top_rival),
+            *state.players[2:],
+        ),
+    )
+
+    moved = False
+    for seed in range(8):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.players[0].deck[:2] == top_mine
+        assert world.players[1].deck[:3] == top_rival
+        assert world.players[0].deck_public_top == top_mine
+        assert world.players[1].deck_public_top == top_rival
+        assert observe_state(world, 0) == observe_state(state, 0)
+        assert _card_census(world) == _card_census(state)
+        assert sorted(world.players[1].hand + world.players[1].deck) == sorted(
+            rival.hand + rival.deck
+        )
+        moved = moved or (
+            world.players[0].deck[2:] != mine.deck[2:]
+            and world.players[1].deck[3:] != rival.deck[3:]
+        )
+    assert moved
+    # A longer record than the peek shows wins; the peek still holds below it.
+    other = determinize(state, 1, random.Random(0))
+    assert other.players[0].deck[:2] == top_mine
+    assert other.players[1].deck[:3] == top_rival
+    assert observe_state(other, 1) == observe_state(state, 1)
+
+
+def test_determinize_keeps_twisted_intrigue_in_the_opponents_hands() -> None:
+    # Twisted Intrigue cards never join the shared deck (OQ-097, user ruling
+    # 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so a sampled
+    # world deals the hidden ones to opponents' hands, never to the deck.
+    # Which Twisted cards left Piter's face-down deck is hidden [Piter De
+    # Vries card]: the held ones are dealt again from the held ones and his
+    # deck (2026-11-08).
+    setup = create_initial_state(
+        RulesetConfig(bloodlines=True),
+        seed=3,
+        leader_ids=("gurney_halleck", "piter_de_vries", "chani", "lady_jessica"),
+    ).state
+    piter = setup.players[1]
+    twisted = piter.twisted_deck[:3]
+    regular = setup.intrigue_deck[:2]
+    state = replace(
+        setup,
+        intrigue_deck=setup.intrigue_deck[2:],
+        players=(
+            setup.players[0],
+            replace(
+                piter, intrigue_cards=twisted, twisted_deck=piter.twisted_deck[3:]
+            ),
+            replace(setup.players[2], intrigue_cards=regular),
+            setup.players[3],
+        ),
+    )
+
+    homes: set[int] = set()
+    dealt: set[str] = set()
+    for seed in range(30):
+        world = determinize(state, 0, random.Random(seed))
+        assert not any(is_twisted_intrigue(card) for card in world.intrigue_deck)
+        assert observe_state(world, 0) == observe_state(state, 0)
+        assert _card_census(world) == _card_census(state)
+        held = {
+            card: seat
+            for seat, player in enumerate(world.players)
+            for card in player.intrigue_cards
+            if is_twisted_intrigue(card)
+        }
+        assert len(held) == len(twisted)
+        homes.update(held.values())
+        dealt.update(held)
+    # The observer cannot tell whose hand holds them, nor which they are.
+    assert homes == {1, 2}
+    assert dealt - set(twisted)
+
+
+def test_twisted_free_intrigue_pools_draw_no_extra_random_numbers() -> None:
+    from dune_imperium.agents.determinize import _keep_twisted_in_hands
+
+    pool = ["intrigue:cunning:0", "intrigue:devour:0", "intrigue:held:0"]
+    rng = random.Random(7)
+    before = rng.getstate()
+    _keep_twisted_in_hands(pool, 1, 1, rng)
+    assert rng.getstate() == before
+    assert pool == ["intrigue:cunning:0", "intrigue:devour:0", "intrigue:held:0"]
+    # A Twisted card dealt outside the hand slots trades places into them.
+    twisted = "intrigue:twisted_withdrawn:0"
+    pool = [twisted, "intrigue:cunning:0", "intrigue:devour:0"]
+    _keep_twisted_in_hands(pool, 1, 2, rng)
+    assert pool[0] != twisted and twisted in pool[1:]
+
+
+def _tiers(conflict_ids: tuple[str, ...]) -> list[ConflictTier]:
+    return [CONFLICTS_BY_ID[conflict_id].tier for conflict_id in conflict_ids]
+
+
+def test_determinize_deals_the_boxed_conflicts_back_in_within_their_tier() -> None:
+    # The deck is built by back, "위에서부터 I 1장, II 5장, III 4장", and the
+    # unused I and II cards go to the box "앞면을 보지 않고" [Main p. 4]
+    # (docs/rules/setup-and-game-flow.md): the tier at every depth is public,
+    # but which cards of a tier were boxed is not, so a sampled world draws
+    # each tier from the deck and the box together.
+    state = _play_rounds(seed=5, rounds=2)
+    boxed = frozenset(state.unused_conflict_ids)
+    assert ConflictTier.TWO in _tiers(state.conflict_deck)
+    assert ConflictTier.TWO in _tiers(tuple(boxed))
+    hidden = frozenset((*state.conflict_deck, *boxed))
+    swapped = 0
+    for seed in range(20):
+        world = determinize(state, 0, random.Random(seed))
+        assert _tiers(world.conflict_deck) == _tiers(state.conflict_deck)
+        assert len(world.unused_conflict_ids) == len(boxed)
+        assert frozenset((*world.conflict_deck, *world.unused_conflict_ids)) == hidden
+        assert observe_state(world, 0) == observe_state(state, 0)
+        swapped += bool(set(world.conflict_deck) & boxed)
+    # A boxed card is in most sampled decks, never in the real one.
+    assert swapped > 10
+
+
+def test_determinize_keeps_a_tier_with_nothing_boxed_to_its_own_cards() -> None:
+    # Epic Game Mode puts all five Conflict III in the deck and boxes every
+    # Conflict I [Rise of Ix p. 10]: the III cards only change order and no
+    # I card ever enters the deck.
+    state = UprisingRulesEngine().reset(RulesetConfig(epic_game=True), 4)
+    threes = sorted(
+        card
+        for card in state.conflict_deck
+        if CONFLICTS_BY_ID[card].tier is ConflictTier.THREE
+    )
+    orders = set()
+    for seed in range(10):
+        world = determinize(state, 0, random.Random(seed))
+        assert _tiers(world.conflict_deck) == _tiers(state.conflict_deck)
+        assert ConflictTier.ONE not in _tiers(world.conflict_deck)
+        assert sorted(world.conflict_deck[-5:]) == threes
+        orders.add(world.conflict_deck[-5:])
+    assert len(orders) > 1
+
+
+def test_determinize_rejects_an_unknown_observer() -> None:
+    state = _play_rounds(seed=2, rounds=1)
+    with pytest.raises(ValueError, match="observer"):
+        determinize(state, 4, random.Random(0))
+
+
+def test_position_value_prefers_victory_points_and_rank() -> None:
+    state = _play_rounds(seed=5, rounds=2)
+    own = state.players[0]
+    richer = replace(state.players[0], victory_points=own.victory_points + 1)
+    ahead = replace(state, players=(richer, *state.players[1:]))
+    assert position_value(ahead, 0) > position_value(state, 0)
+    assert player_value(richer) - player_value(own) == pytest.approx(10.0)
+
+    finished = run_policy_game(
+        UprisingRulesEngine(),
+        RulesetConfig(),
+        9,
+        tuple(HeuristicAgent(seed=seat) for seat in range(4)),
+    )
+    values = [position_value(finished.state, seat) for seat in range(4)]
+    winner = finished.standings[0].player
+    assert values[winner] == max(values)
+    assert values[winner] == 100.0
+
+
+class _StateSpy:
+    """Records whether the runner used the state-aware path."""
+
+    def __init__(self) -> None:
+        self.state_calls = 0
+        self.view_calls = 0
+        self._inner = HeuristicAgent(seed=0)
+
+    def choose_action(
+        self,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        self.view_calls += 1
+        return self._inner.choose_action(observation, legal_actions)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        self.state_calls += 1
+        assert state.phase is not GamePhase.FINISHED
+        assert observation.player == legal_actions[0].actor
+        return self._inner.choose_action(observation, legal_actions)
+
+
+def test_runner_hands_the_state_to_state_agents() -> None:
+    spy = _StateSpy()
+    assert isinstance(spy, StateAgent)
+    # The heuristic is a StateAgent since stage B1 (it weighs a whole Agent
+    # placement from the state), so the view-only seats are random ones.
+    assert not isinstance(RandomAgent(seed=0), StateAgent)
+    agents: tuple[Agent, ...] = (
+        spy,
+        *(RandomAgent(seed=seat) for seat in range(1, 4)),
+    )
+
+    simulation = run_policy_game(UprisingRulesEngine(), RulesetConfig(), 4, agents)
+
+    assert simulation.state.phase is GamePhase.FINISHED
+    assert spy.state_calls > 0
+    assert spy.view_calls == 0
+
+
+def test_rollout_agent_searches_only_when_there_is_a_choice() -> None:
+    agent = RolloutAgent(seed=1, rollouts=1, candidates=3)
+    assert isinstance(agent, StateAgent)
+    assert isinstance(make_agent("rollout", 0), RolloutAgent)
+    with pytest.raises(ValueError, match="positive"):
+        RolloutAgent(seed=1, rollouts=0)
+
+    engine = UprisingRulesEngine()
+    state = _play_rounds(seed=8, rounds=3)
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    view = engine.observe(state, seat)
+    legal = engine.legal_actions(state, seat)
+    assert len(legal) > 1
+
+    chosen = agent.choose_action_with_state(state, view, legal)
+    assert chosen in legal
+    # The same seed and inputs reproduce the same choice.
+    again = RolloutAgent(seed=1, rollouts=1, candidates=3)
+    assert again.choose_action_with_state(state, view, legal) == chosen
+    # A single legal action needs no rollout and comes straight back.
+    assert agent.choose_action_with_state(state, view, legal[:1]) == legal[0]
+    # Without a state the agent still answers, like the heuristic would.
+    assert agent.choose_action(view, legal) in legal
+    with pytest.raises(ValueError, match="at least one"):
+        agent.choose_action_with_state(state, view, ())
+
+
+def test_rollout_agent_finishes_a_game_through_the_runner() -> None:
+    agents: tuple[Agent, ...] = (
+        RolloutAgent(seed=3, rollouts=1, candidates=2),
+        *(HeuristicAgent(seed=seat) for seat in range(1, 4)),
+    )
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), 12)
+    chance = ChanceResolver(seed=12)
+    rollout_decisions = 0
+    # Fifty decisions are enough to cross an Agent turn, a Reveal turn, and
+    # at least one Combat without spending seconds on a full game.
+    for _ in range(50):
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        actions = engine.legal_actions(state, decision.owner)
+        view = engine.observe(state, decision.owner)
+        agent = agents[decision.owner]
+        if isinstance(agent, StateAgent):
+            action = agent.choose_action_with_state(state, view, actions)
+            rollout_decisions += 1
+        else:
+            action = agent.choose_action(view, actions)
+        assert action in actions
+        state = engine.apply(state, action).state
+    assert rollout_decisions > 0
+    assert state.round_number >= 1
+
+
+def test_paired_playouts_share_the_seeds_across_candidates() -> None:
+    # Common random numbers: on one sampled world every candidate plays out
+    # with the same chance and policy seeds, so the candidates differ only by
+    # the action taken; each new world draws new seeds.
+    state = _play_rounds(seed=2, rounds=2)
+    engine = UprisingRulesEngine()
+    decision = engine.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    legal = engine.legal_actions(state, seat)
+    assert len(legal) > 1
+    seen: list[tuple[int, int] | None] = []
+
+    class Recording(RolloutAgent):
+        def _rollout(
+            self,
+            state: GameState,
+            seat: int,
+            horizon: int,
+            seeds: tuple[int, int] | None = None,
+        ) -> float:
+            seen.append(seeds)
+            return 0.0
+
+    paired = Recording(seed=5, rollouts=2, candidates=3, paired_playouts=True)
+    paired.choose_action_with_state(state, engine.observe(state, seat), legal)
+    assert len(seen) == 6 and None not in seen
+    assert len(set(seen[:3])) == 1 and len(set(seen[3:])) == 1
+    assert seen[0] != seen[3]
+
+    seen.clear()
+    unpaired = Recording(seed=5, rollouts=2, candidates=3, paired_playouts=False)
+    unpaired.choose_action_with_state(state, engine.observe(state, seat), legal)
+    assert seen == [None] * 6
+
+
+def _round_start_defense() -> GameState:
+    """Round 1's Round Start stopped on the Control defense, hands undrawn.
+
+    Reveal, then the optional defense, then the five-card draw [Main p. 8]
+    [Main p. 20] (OQ-072): seat 2 controls Arrakeen as Siege of Arrakeen is
+    revealed.
+    """
+
+    setup = create_initial_state(
+        RulesetConfig(),
+        seed=71,
+        leader_ids=(
+            "feyd_rautha_harkonnen",
+            "gurney_halleck",
+            "lady_amber_metulli",
+            "lady_jessica",
+        ),
+    ).state
+    controller = replace(setup.players[2], control_space_ids=("arrakeen",))
+    setup = replace(
+        setup,
+        players=(*setup.players[:2], controller, setup.players[3]),
+        conflict_deck=(
+            "siege_of_arrakeen",
+            *(card for card in setup.conflict_deck if card != "siege_of_arrakeen"),
+        ),
+    )
+    state = prepare_round_start(setup).state
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 1
+    assert state.decision_stack[-1].kind == FrameKind.CONTROL_DEFENSE
+    assert all(player.hand == () for player in state.players)
+    return state
+
+
+def test_the_horizon_is_not_reached_before_the_round_start_draw() -> None:
+    # The round number moves at the reveal, but the hands are drawn only
+    # after the defense; a leaf read in between would see empty hands.
+    state = _round_start_defense()
+    assert not past_horizon(state, state.round_number)
+
+    engine = UprisingRulesEngine()
+    defended = engine.apply(state, engine.legal_actions(state, 2)[0]).state
+    # The defense stops at the engine's pause before the draw
+    # (rules/pauses.py): still Round Start, still no hand, no leaf yet.
+    assert defended.decision_stack[-1].kind == FrameKind.PAUSE
+    assert not past_horizon(defended, defended.round_number)
+    drawn = engine.apply(defended, pause_outcome(defended)).state
+    assert drawn.phase is GamePhase.PLAYER_TURNS
+    assert past_horizon(drawn, drawn.round_number)
+    assert not past_horizon(drawn, drawn.round_number + 1)
+
+
+def test_a_rollout_reaching_the_horizon_is_read_after_the_round_start_draw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leaves: list[GameState] = []
+
+    def recorded(state: GameState, seat: int, **_: object) -> float:
+        leaves.append(state)
+        return 0.0
+
+    monkeypatch.setattr(rollout_agent, "position_value", recorded)
+    state = _round_start_defense()
+
+    RolloutAgent(seed=0)._rollout(state, 0, state.round_number, (0, 0))
+
+    (leaf,) = leaves
+    assert leaf.phase is GamePhase.PLAYER_TURNS
+    assert leaf.round_number == state.round_number
+    assert all(len(player.hand) == 5 for player in leaf.players)
+
+
+def test_the_untuned_rollout_variant_pins_the_first_knobs() -> None:
+    # The registry keeps the 2026-09-06 knobs so the re-tune of 2026-09-16
+    # (baseline-2026-09-16.md section 13) reruns from the committed tree.
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    assert "rollout_untuned" in BASELINE_AGENT_FACTORIES
+    untuned = make_agent("rollout_untuned", seed=3)
+    assert isinstance(untuned, RolloutAgent)
+    assert (untuned.rollouts, untuned.candidates, untuned.horizon_rounds) == (2, 6, 1)
+    assert untuned.paired_playouts is False
+    current = RolloutAgent(seed=3)
+    assert (current.rollouts, current.candidates, current.horizon_rounds) == (4, 3, 1)
+    assert current.paired_playouts is True
+    strong = make_agent("rollout_strong", seed=3)
+    assert isinstance(strong, RolloutAgent)
+    assert (strong.rollouts, strong.candidates, strong.paired_playouts) == (8, 3, True)
+
+
+def test_position_value_reads_the_opponents_mean_and_the_deck_by_value() -> None:
+    # Section 15: the mean reference and the printed-value deck are the
+    # defaults; the strongest-opponent, by-card function stays pinned.
+    from dune_imperium.agents.heuristic_agent import card_printed_value
+    from dune_imperium.agents.registry import BASELINE_AGENT_FACTORIES, make_agent
+
+    state = _play_rounds(seed=5, rounds=2)
+    own = player_value(state.players[0])
+    others = [player_value(p) for p in state.players[1:]]
+    assert position_value(state, 0) == pytest.approx(own - sum(others) / 3)
+    assert position_value(state, 0, opponent_reference="max") == pytest.approx(
+        own - max(others)
+    )
+    with pytest.raises(ValueError, match="opponent_reference"):
+        position_value(state, 0, opponent_reference="median")
+
+    seat = state.players[0]
+    zones = (seat.deck, seat.hand, seat.discard_pile, seat.in_play)
+    printed = sum(card_printed_value(card) for zone in zones for card in zone)
+    empty = replace(seat, deck=(), hand=(), discard_pile=(), in_play=())
+    assert own - player_value(empty) == pytest.approx(0.1 * printed)
+    cards = sum(len(zone) for zone in zones)
+    by_count = player_value(seat, deck_by_value=False)
+    assert by_count - player_value(empty, deck_by_value=False) == pytest.approx(
+        0.5 * max(0, cards - 10)
+    )
+
+    assert RolloutAgent(seed=1).opponent_reference == "mean"
+    assert RolloutAgent(seed=1).deck_by_value is True
+    assert "rollout_count_max" in BASELINE_AGENT_FACTORIES
+    pinned = make_agent("rollout_count_max", seed=1)
+    assert isinstance(pinned, RolloutAgent)
+    assert (pinned.opponent_reference, pinned.deck_by_value) == ("max", False)
+    untuned = make_agent("rollout_untuned", seed=1)
+    assert isinstance(untuned, RolloutAgent)
+    assert (untuned.opponent_reference, untuned.deck_by_value) == ("max", False)
+    with pytest.raises(ValueError, match="opponent_reference"):
+        RolloutAgent(seed=1, opponent_reference="median")
+
+
+def test_player_value_counts_bloodlines_assets() -> None:
+    from dune_imperium.core.player import PlayerState
+
+    base = PlayerState(player_id=0)
+    with_tech = replace(base, tech_ids=("glowglobes",))
+    assert player_value(with_tech) - player_value(base) == pytest.approx(1.0)
+    with_commander = replace(base, commanders_garrison=1)
+    assert player_value(with_commander) - player_value(base) == pytest.approx(1.2)
+    with_skill = replace(base, skill_ids=("skill:hardy:0",))
+    assert player_value(with_skill) - player_value(base) == pytest.approx(0.5)
+
+
+def test_player_value_counts_immortality_assets() -> None:
+    from dune_imperium.core.player import PlayerState
+
+    base = PlayerState(player_id=0)
+    # A specimen is a supply troop moved to the Axolotl tanks, where it
+    # buys Tleilaxu cards [Immortality p. 8]; supply itself scores nothing.
+    with_specimen = replace(
+        base, specimens=1, troops_supply=base.troops_supply - 1
+    )
+    assert player_value(with_specimen) - player_value(base) == pytest.approx(0.5)
+    # The research token's column is permanent progress toward the genetic
+    # markers [Immortality p. 6]; c4r2 sits in the fourth column.
+    with_research = replace(base, research_space="c4r2")
+    assert player_value(with_research) - player_value(base) == pytest.approx(1.6)
+    with_tleilaxu = replace(base, tleilaxu_space=3)
+    assert player_value(with_tleilaxu) - player_value(base) == pytest.approx(1.5)
+    with_atomics = replace(base, family_atomics=True)
+    assert player_value(with_atomics) - player_value(base) == pytest.approx(0.3)
+    # Without the expansion the research space is empty and adds nothing.
+    assert base.research_space == ""
+    assert player_value(base) == pytest.approx(player_value(replace(base)))

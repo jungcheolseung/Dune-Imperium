@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Combat marker (red): its +20 face. Drawn by hand for the public build. -->
+  <defs><linearGradient id="sq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6304e"/><stop offset="1" stop-color="#c1243d"/></linearGradient></defs>
+  <rect x="3" y="3" width="250" height="250" rx="34" fill="#0a0a0a"/><rect x="7" y="7" width="242" height="242" rx="31" fill="url(#sq)"/><rect x="44" y="44" width="168" height="168" rx="24" fill="#231b1b" stroke="#0a0a0a" stroke-width="3"/><text x="128" y="152" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="74" fill="#fff">+20</text>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="208" height="223" viewBox="0 0 93 100">
+  <!-- Tech Negotiation: a gold gear in a gold-rimmed hexagon. Drawn by hand for the public build. -->
+  <defs><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#c98612"/></linearGradient></defs>
+  <polygon points="84.6,73.5 46.5,97 8.4,73.5 8.4,26.5 46.5,3 84.6,26.5" fill="#262614" stroke="url(#gold)" stroke-width="6" stroke-linejoin="round"/><polygon points="41.7,30.8 42.2,24.4 50.8,24.4 51.3,30.8 56.7,33.1 61.6,28.8 67.7,34.9 63.4,39.8 65.7,45.2 72.1,45.7 72.1,54.3 65.7,54.8 63.4,60.2 67.7,65.1 61.6,71.2 56.7,66.9 51.3,69.2 50.8,75.6 42.2,75.6 41.7,69.2 36.3,66.9 31.4,71.2 25.3,65.1 29.6,60.2 27.3,54.8 20.9,54.3 20.9,45.7 27.3,45.2 29.6,39.8 25.3,34.9 31.4,28.8 36.3,33.1" fill="#e8cf6a" stroke="#3a3a12" stroke-width="1.8" stroke-linejoin="round"/><circle cx="46.5" cy="50" r="7.8" fill="#3a3a12"/><circle cx="46.5" cy="50" r="14.6" fill="none" stroke="#3a3a12" stroke-width="1.6" opacity=".45"/>
+</svg>

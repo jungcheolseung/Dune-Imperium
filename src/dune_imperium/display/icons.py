@@ -1,0 +1,170 @@
+"""Local game-icon filename mappings extracted from official rulebooks.
+
+``RULEBOOK_ICON_SOURCES`` records the named game icons and their
+``(page_number, image_xref)`` location inside the pinned "Uprising Main
+Rulebook" PDF (``scripts/official-rule-sources.json`` key ``main``, sha256
+``0a8daa36f73c09316143d05bbd5d845183d1ae6f56ce211d93c59b360074f7db``). Page
+numbers are 1-based; xrefs were read from that exact file with PyMuPDF
+(``page.get_image_info(xrefs=True)``) and are only valid for that file
+version. ``RULEBOOK_ICON_SOURCE_GROUPS`` also adds the Specimen icon from the
+pinned Immortality Rulebook (page 16, xref 203, sha256
+``2a7ba3b8129bc108a82c3b2677d7ce27ffc64be88532b691f55836bf48666a79``).
+If either pinned PDF is updated, its xrefs must be re-extracted, not reused.
+
+``scripts/extract_rulebook_icons.py`` uses this table to crop each icon out
+of its rulebook and key out its background, producing one transparent PNG per
+name in the gitignored ``assets/icons`` directory. Since 2026-10-07 (user
+decision) the owner's private assets replace every name with a sharper copy
+of the same artwork.
+
+``APP_ONLY_ICON_NAMES`` (Rise of Ix's card icons) have no rulebook source:
+their pictures come from the owner's private assets alone, so
+``scripts/extract_rulebook_icons.py``, which
+reads ``RULEBOOK_ICON_SOURCE_GROUPS``, never makes them. ``ICON_NAMES`` lists
+both kinds, and an icon is served once its PNG is in the icon directory.
+
+The icons are copyrighted Dire Wolf Digital artwork; they live in the owner's
+private assets repository and are never committed to this repository, the
+same policy as the card images in ``dune_imperium.display.images``.
+"""
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final
+
+RULEBOOK_ICON_SOURCES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
+    {
+        "agent": (20, 971),
+        "battle_crysknife": (20, 972),
+        "battle_ornithopter": (20, 973),
+        "battle_desert_mouse": (20, 974),
+        "battle_wild": (20, 976),
+        "contract": (20, 977),
+        "control": (20, 978),
+        "discard": (20, 979),
+        "draw": (20, 980),
+        "intrigue": (20, 981),
+        "influence_emperor": (20, 982),
+        "influence_spacing_guild": (20, 983),
+        "influence_bene_gesserit": (20, 984),
+        "influence_fremen": (20, 985),
+        "influence_any": (20, 986),
+        "influence_any_two": (20, 987),
+        "influence_lose": (20, 988),
+        "maker": (20, 989),
+        "maker_hooks": (20, 990),
+        "arrow_right": (20, 991),
+        "arrow_down": (20, 992),
+        "persuasion": (20, 994),
+        "recall_agent": (20, 995),
+        "recall_spy": (20, 996),
+        "solari": (20, 997),
+        "spice": (20, 998),
+        "water": (20, 999),
+        "sandworm": (20, 1000),
+        "shield_wall": (20, 1001),
+        "signet_ring": (20, 1002),
+        "spy": (20, 1003),
+        "steal_intrigue": (20, 1008),
+        "sword": (20, 1009),
+        "trash_intrigue": (20, 1010),
+        "trash": (20, 1011),
+        "troop": (20, 1012),
+        "victory_point": (20, 1014),
+        "agent_icon_emperor": (9, 1592),
+        "agent_icon_spacing_guild": (9, 1593),
+        "agent_icon_bene_gesserit": (9, 1594),
+        "agent_icon_fremen": (9, 1596),
+        "agent_icon_landsraad": (9, 1597),
+        "agent_icon_city": (9, 1598),
+        "agent_icon_spice_trade": (9, 1599),
+        "agent_icon_spy": (9, 1600),
+    }
+)
+
+IMMORTALITY_ICON_SOURCES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
+    {
+        # "Specimen: Place a troop from your supply in the Axolotl tanks"
+        # [Immortality p. 16].
+        "specimen": (16, 203),
+    }
+)
+
+RULEBOOK_ICON_SOURCE_GROUPS: Final[
+    Mapping[str, Mapping[str, tuple[int, int]]]
+] = MappingProxyType(
+    {
+        "main": RULEBOOK_ICON_SOURCES,
+        "immortality": IMMORTALITY_ICON_SOURCES,
+    }
+)
+
+# Rise of Ix's card icons (docs/rules/rise-of-ix.md 4-7): the Dreadnought
+# icon (commission a dreadnought), the Freighter icon (move your Freighter),
+# the Tech Negotiation icon (a Negotiator), Acquire Tech without and with a
+# Tech Discount of 1 or 2, and the Unload mark. Their pictures are the app's
+# alone, so no rulebook page or xref names them. Discard already is
+# ``discard``; the Infiltration icons are not drawn yet.
+APP_ONLY_ICON_NAMES: Final[tuple[str, ...]] = (
+    "dreadnought",
+    "freighter",
+    "tech_negotiation",
+    "acquire_tech",
+    "acquire_tech_minus1",
+    "acquire_tech_minus2",
+    "unload",
+)
+
+ICON_NAMES: Final[tuple[str, ...]] = (
+    *(
+        name
+        for sources in RULEBOOK_ICON_SOURCE_GROUPS.values()
+        for name in sources
+    ),
+    *APP_ONLY_ICON_NAMES,
+)
+
+
+def icon_filename(name: str) -> str:
+    """Return the extracted-icon filename for one icon name."""
+
+    return f"{name}.png"
+
+
+def available_icons(files: frozenset[str]) -> dict[str, str]:
+    """Return ``{name: filename}`` for every icon whose PNG is in ``files``.
+
+    ``files`` is the listing of a local icon directory (e.g. the gitignored
+    ``assets/icons``); names without a matching file are simply absent
+    from the result.
+    """
+
+    result: dict[str, str] = {}
+    for name in ICON_NAMES:
+        filename = icon_filename(name)
+        if filename in files:
+            result[name] = filename
+    return result
+
+
+def own_icon_filename(name: str) -> str:
+    """Return the project's own drawing of one icon (``docs/own-pictures-plan.md``)."""
+
+    return f"{name}.svg"
+
+
+def available_own_icons(files: frozenset[str]) -> dict[str, str]:
+    """Return ``{name: filename}`` for every icon the project has drawn itself.
+
+    ``files`` is the listing of the package's ``server/static/pictures/icons``.
+    These drawings ship with the code (the public build has no other
+    pictures); the catalog uses one only where the private assets lack the
+    icon, or always when the server shows the public build's pictures.
+    """
+
+    result: dict[str, str] = {}
+    for name in ICON_NAMES:
+        filename = own_icon_filename(name)
+        if filename in files:
+            result[name] = filename
+    return result

@@ -1,0 +1,1584 @@
+"""Simple rule-based heuristic opponent.
+
+``HeuristicAgent`` is the first non-random AI opponent for the M11 human
+play interface and is deliberately reused as the starting point of the M9
+heuristic baseline. It keeps the exact ``choose_action`` contract of
+``RandomAgent``: one ``PlayerView`` plus the legal actions, never hidden
+state.
+
+The policy is a static strategy preference over engine-legal actions, not a
+rules judgment: the engine alone decides legality and the agent only ranks
+what it is offered. Rankings may read printed public card data (acquisition
+costs, the Persuasion and swords in a Reveal box) through the content
+manifests, exactly as a human reads card text at the table. Unknown action IDs
+score 0, so new content degrades to a seeded uniform choice instead of
+failing.
+"""
+
+import random
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Final
+
+from dune_imperium.agents.agent_turn_steps import PlacementMemory
+from dune_imperium.agents.engine_order import engine_order_answer
+from dune_imperium.agents.window_returns import without_window_specimen_return
+from dune_imperium.content.core.effects import DeployFromGarrison, LoseInfluence
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.immortality.board import (
+    RESEARCH_SPACES_BY_ID,
+    ResearchBonus,
+)
+from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.registry.imperium import imperium_card_for_instance
+from dune_imperium.content.registry.intrigue import intrigue_card_for_instance
+from dune_imperium.content.registry.personal_cards import personal_card_for_instance
+from dune_imperium.content.registry.reserve import (
+    RESERVE_STACKS_BY_ID,
+    reserve_card_for_instance,
+)
+from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.observation import PlayerView, PublicPlayerView
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.influence import MAX_INFLUENCE
+from dune_imperium.rules.reveal_turn import REVEAL_CHOICE_ACTION_IDS
+from dune_imperium.rules.scouts_effects import SCOUTS_COLLECT
+
+# Strategy weights, largest first: direct victory points, then permanent
+# upgrades, then cards, units, and resources. Declines and passes sit below
+# zero so the agent acts when the engine offers anything to act on. The
+# numbers only order the choices inside one legal-action set.
+_ACTION_SCORES: Final[dict[str, float]] = {
+    # Direct victory points and Objective progress.
+    "complete_contract": 8.0,
+    "complete_contract_by_card": 8.0,
+    "trash_contract_reveal_for_vp": 8.0,
+    "flip_battle_card": 7.0,
+    "match_endgame_wild_icon": 7.0,
+    "take_high_council_from_reveal": 6.0,
+    # Keep placing Agents before revealing.
+    "agent_turn": 4.0,
+    "reveal_turn": 1.0,
+    # Combat presence.
+    "summon_maker_sandworms": 4.0,
+    "deploy_control_defense": 2.0,
+    "gain_two_reveal_strength": 2.0,
+    # Cards, Intrigue, and Spies.
+    "play_intrigue": 3.0,
+    "resolve_agent_card_effect": 2.0,
+    "resolve_board_effect": 2.0,
+    # Imperial Privilege's skipped recall when no Agent can be recalled:
+    # confirmed as soon as offered, like the icon resolutions. Its card draw
+    # is the space's own ``resolve_board_effect(cards)`` (user ruling
+    # 2026-10-10, OQ-027 (d)), which at 2.0 the agent takes before the
+    # Intrigue trade and the recall (1.0 each; offered together since the
+    # user ruling of 2026-10-14, the trade first before).
+    "resolve_imperial_privilege_without_recall": 2.0,
+    # Liet Kynes' replacement Intrigue card, its own step beside the trash
+    # (user ruling 2026-10-10, OQ-106): taken first, like an icon.
+    "draw_planetologist_intrigue": 2.0,
+    # A draw a trigger earned in the agent's own turn, its own step (user
+    # ruling 2026-10-10, OQ-106): taken early, like an icon, as when the
+    # trigger drew it.
+    "draw_owed_intrigue": 2.0,
+    "draw_owed_card": 2.0,
+    "gather_intelligence": 2.0,
+    "resolve_espionage_place_spy": 2.0,
+    "advance_feyd_track": 2.0,
+    # Influence steps.
+    "resolve_faction_influence": 2.0,
+    "exchange_reveal_influence": 2.0,
+    "pay_reveal_spice_influence": 2.0,
+    "choose_agent_card_influence": 2.0,
+    "choose_combat_reward_influence": 2.0,
+    "choose_distinct_combat_reward_influence": 2.0,
+    # Every eligible Faction at the top (OQ-060): the confirm is then the
+    # window's only action, so a neutral score.
+    "resolve_combat_influence_without_faction": 0.0,
+    # Holy War's unit loss (OQ-036 (a)): every opponent is asked, even with
+    # one option or none. The window holds only these actions, so the agent
+    # always answers; the zones tie and are drawn at random as before, and
+    # the confirm with no unit to lose is the window's only action.
+    "lose_unit": 0.0,
+    "resolve_unit_loss_without_unit": 0.0,
+    # Covert Operation against an empty hand (OQ-138): the confirm is the
+    # discard window's only action.
+    "resolve_opponent_discard_without_card": 0.0,
+    # A bank Commander with no choosable Skill (OQ-031, OQ-035 (b)): the
+    # confirm is the Skill choice window's only action.
+    "resolve_commander_without_skill": 0.0,
+    "choose_leader_signet_influence": 2.0,
+    "choose_connections_influence": 2.0,
+    "choose_intrigue_faction": 2.0,
+    # Resource pickups.
+    "harvest_maker_spice": 2.0,
+    "take_sietch_tabr_water": 2.0,
+    "take_sietch_tabr_supplies": 2.0,
+    "take_sietch_tabr_water_and_destroy_wall": 2.0,
+    "gain_five_reveal_solari": 2.0,
+    "keep_contract_reveal_spice": 2.0,
+    "take_contract": 2.0,
+    # Nothing in a non-empty market can be taken (OQ-059): the hold is the
+    # Contract window's only action, so a neutral score.
+    "hold_contract_icons": 0.0,
+    "resolve_contract_icons_without_contract": 0.0,
+    "gain_leader_signet_troop": 2.0,
+    "use_other_memories": 1.0,
+    # A Scouts line's later rewards taken ahead of its pending choice
+    # (OQ-100): the agent keeps the printed order. A draw waiting after the
+    # choice (OQ-106) is this action alone, so it is taken then.
+    "scouts_rewards_first": -5.0,
+    # Deploy everything the engine allows, then close the turn. Taking
+    # troops back (OQ-029) ranks below every decline and pass so the agent
+    # never cycles withdraw/deploy instead of settling a pending choice.
+    "finish_agent_turn": 0.5,
+    # Reveal gains are always taken; the order rarely matters to the rules
+    # agent, so it takes them before shopping.
+    "recruit_reveal_troops": 4.0,
+    # Rise of Ix's Treachery: its two troops go to the Conflict.
+    "deploy_reveal_supply_troops": 4.0,
+    "draw_reveal_intrigue": 4.0,
+    # Immortality: take the Reveal's specimens, answer research choices,
+    # and prefer the paid research bonus; returning specimens is a last
+    # resort so the heuristic does not undo its own tanks.
+    "generate_reveal_specimens": 4.0,
+    "advance_reveal_tleilaxu": 4.0,
+    "advance_reveal_research": 4.0,
+    "pay_agent_card_specimen": 2.0,
+    "choose_research_space": 3.0,
+    "choose_research_influence": 3.0,
+    "pay_research_bonus": 2.5,
+    "trash_intrigue_for_research_bonus": 1.0,
+    "decline_research_bonus": 0.5,
+    "use_family_atomics": 0.3,
+    # Strictly below ``_DECLINE_SCORE``: at -2.0 this tied with every
+    # decline, so the agent emptied its own tanks instead of declining a
+    # Tech tile or a Commander (12-game probe, all options on).
+    "return_specimen": -2.5,
+    # A Tleilaxu card costs specimens instead of Persuasion, so it is
+    # ranked the way Imperium cards are: a base plus the printed cost,
+    # plus ``_TLEILAXU_BONUSES``. Reclaimed Forces is the fallback use of
+    # three specimens and scores by the option chosen.
+    "acquire_tleilaxu": 2.5,
+    "acquire_reclaimed_forces": 1.0,
+    # Graft: the partner is mandatory once a grafted placement was chosen.
+    # Both cards' boxes are offered together (codec v143); a ``box=1`` row
+    # ranks like the same row of box 0.
+    "choose_graft_partner": 4.0,
+    "decline_agent_card_recall": 0.5,
+    "acquire_intrigue_tleilaxu": 2.5,
+    "decline_intrigue_tleilaxu": 0.5,
+    # Slice 5b-2 cards: two specimens for two track steps is a bargain, a
+    # kept Intrigue is a draw, a Victory Point outranks one Influence,
+    # and the Surgeon's troop sacrifice ranks below keeping the troops.
+    "pay_agent_card_two_specimens": 2.5,
+    "trash_grafted_card_for_specimen": 0.8,
+    "take_agent_card_combat_icon": 1.5,
+    "keep_peeked_intrigue": 2.0,
+    "acquire_reserve_by_card": 2.0,
+    "lose_reveal_influence_for_vp": 3.0,
+    "deploy_reveal_card_troop": 2.0,
+    "retreat_reveal_card_troop": 0.2,
+    "lose_reveal_troops_for_specimens": 0.4,
+    # Tleilaxu deck boxes: a Victory Point for a card, five Solari for a
+    # track step, and Piter's troop for two cards are all worth taking;
+    # trashing a grafted card for one Influence is not.
+    "trash_agent_card_self_for_vp": 3.0,
+    "pay_agent_card_five_solari_for_tleilaxu": 2.2,
+    "trash_grafted_card_for_influence": 0.3,
+    "lose_agent_card_troop": 1.2,
+    "choose_agent_card_reward": 2.0,
+    "gain_reveal_resources": 4.0,
+    "gain_reveal_faction_influence": 4.0,
+    # An Intrigue card's separate printed lines are used one at a time and
+    # paid when used (OQ-058). Using a line ranks with the other paid arrow
+    # effects and finishing the card with the other frame closers, or the
+    # two tie at zero and the agent abandons half the lines it played the
+    # card for (12-game probe, all options on).
+    "use_intrigue_effect": 2.5,
+    "finish_intrigue_effects": 0.5,
+    # Delivery Logistics' "1 Persuasion OR a contract" and the Bloodlines
+    # Immediate's contract: a contract is a Victory Point path, so both
+    # rank with ``take_contract`` rather than at zero.
+    "take_reveal_contract": 2.0,
+    "take_trigger_contract": 2.0,
+    "gain_reveal_persuasion": 1.0,
+    "withdraw_troops": -10.0,
+    # Bloodlines: a Sardaukar Commander is a 2-strength unit for 2 Solari
+    # plus a Skill; buying one from the board outranks a plain recruit.
+    "acquire_sardaukar_commander": 3.0,
+    "recruit_sardaukar_commander": 1.5,
+    "trash_skill_for_strength": 1.0,
+    "withdraw_commanders": -10.0,
+    # Tech Module: a tile is a permanent upgrade; buying outranks most
+    # minor picks and never blocks a turn (the decline still ranks lowest).
+    "acquire_tech": 2.5,
+    "resolve_tech_acquire_effect": 1.5,
+    # An acquire box's Influence icon (the original game's CHOAM Directorship
+    # and Lady Jessica, OQ-141): a mandatory gain.
+    "resolve_acquire_icon": 2.0,
+    # Flips are free once per round; Forbidden Weapons' swords beat losing
+    # all spice, and Plasteel Blades' extra Skill is worth the tile.
+    "flip_tech": 1.5,
+    "choose_tech_strength": 1.0,
+    "choose_tech_trash": -1.0,
+    "choose_secret_project": 1.0,
+    # Arrakeen Scouts: a new High Council seat's subcommittee, offered only
+    # when one can be joined now. Above ``finish_reveal`` (0.0) so a
+    # Corrinth City seat's choice is not left to lapse; below the visit's
+    # paid effects, which may make another subcommittee payable first. The
+    # list it opens always holds the decline, so it never loops.
+    "choose_subcommittee": 1.0,
+    "gain_leader_signet_spice": 1.5,
+    "trash_leader_tech": 0.5,
+    # Rise of Ix (docs/rules/rise-of-ix.md): a dreadnought is a free 3-strength
+    # unit and a tile a permanent upgrade, so commissioning and acquiring
+    # outrank the turn's end (0.5) like ``acquire_tech``; the Freighter climbs
+    # before it recalls (``recall_*`` ranks at ``_MINOR_ACTION_SCORE``), so a
+    # recall waits for the top space; a Negotiator is a plain troop of the
+    # supply sent to the Ix board, taken when nothing better is offered; a
+    # shipping reward and the winner's dreadnought are mandatory picks, and
+    # Detonation Devices' 1 VP outranks a Control space. Taking dreadnoughts
+    # back ranks last, as for troops.
+    "commission_board_dreadnought": 2.5,
+    "commission_intrigue_dreadnought": 2.5,
+    "acquire_board_tech": 2.5,
+    "acquire_agent_card_tech": 2.5,
+    "acquire_agent_card_tech_with_solari": 2.5,
+    "acquire_negotiation_tech": 2.5,
+    "place_board_negotiator": 1.0,
+    "place_intrigue_negotiator": 1.0,
+    "advance_board_freighter": 1.5,
+    "advance_intrigue_freighter": 1.5,
+    "advance_agent_card_freighter": 1.5,
+    # Weirding Way: another turn at once.
+    "take_agent_card_extra_turn": 3.0,
+    "advance_reveal_freighter": 1.5,
+    # Negotiated Withdrawal: three units leave the Conflict for one Influence.
+    "retreat_reveal_units_for_influence": -1.0,
+    "place_reveal_negotiator": 1.0,
+    "advance_freighter": 1.5,
+    "resolve_shipping_reward": 2.0,
+    "place_combat_reward_dreadnought": 2.0,
+    "detonate_combat_reward_dreadnought": 3.0,
+    "withdraw_dreadnoughts": -10.0,
+}
+
+_IMPERIUM_ACQUISITIONS: Final = frozenset(
+    {
+        "acquire_imperium",
+        "acquire_imperium_with_solari",
+        "acquire_imperium_by_card",
+        "acquire_intrigue_imperium",
+        "acquire_leader_imperium",
+        "acquire_manipulated_imperium",
+        # Boundless Ambition, revealed and in its Unload's window.
+        "acquire_reveal_imperium_card",
+        "acquire_unload_imperium_card",
+    }
+)
+_RESERVE_ACQUISITIONS: Final = frozenset(
+    {
+        "acquire_reserve",
+        "acquire_reserve_with_solari",
+        "acquire_intrigue_reserve",
+        "acquire_leader_reserve",
+        "acquire_reveal_reserve_card",
+        "acquire_unload_reserve_card",
+    }
+)
+_COUNT_DEPLOYMENTS: Final = frozenset(
+    {
+        "deploy_troops",
+        "deploy_intrigue_troops",
+        "deploy_commanders",
+        "deploy_dreadnoughts",
+    }
+)
+# Intrigue unit moves whose ``count`` may be zero since codec v137: "Deploy
+# up to N troops" (Counterattack, Detonation, Twisted Devious) and Tactical
+# Option's "Retreat any number". Zero moves nothing and was not offered
+# before, so it ranks below every count that moves a unit
+# (``HeuristicAgent.choose_action``).
+_ZERO_COUNT_UNIT_MOVES: Final = frozenset(
+    {"deploy_intrigue_troops", "retreat_intrigue_troops"}
+)
+
+_ACQUISITION_BASE: Final = 3.0
+_SPY_PLACEMENT_SCORE: Final = 3.0
+_MINOR_ACTION_SCORE: Final = 1.0
+_DECLINE_SCORE: Final = -2.0
+_PASS_SCORE: Final = -3.0
+# Arrakeen Scouts. Critical Moment: call a small amount (the largest of 1-3
+# still open), never more; a pass is 0. A sealed bid: a small fixed amount,
+# then the confirmation at once (``HeuristicAgent._sealed_bid``).
+_SCOUTS_CALL_SCORES: Final[dict[int, float]] = {0: 0.0, 1: 0.5, 2: 0.6, 3: 0.7}
+_SCOUTS_CALL_TOO_HIGH: Final = -1.0
+_SCOUTS_BID: Final = 2
+_RETREAT_SCORE: Final = -1.0
+
+# The rows of the Agent turn's optional effects -- "may", an arrow cost or a
+# black trash icon [FAQ p. 3]. Since the user ruling of 2026-10-14 (OQ-095
+# (2), codec v146) such an effect offers no refusal row, does not hold
+# ``finish_agent_turn`` back, and lapses unused when the turn ends. Before,
+# the turn's end was not legal while one was pending and the agent weighed
+# its rows against its refusal (``_DECLINE_SCORE``); the turn's end (0.5)
+# would now skip every such row scoring between the two, so while one of
+# these rows is offered beside it the end ranks as that refusal did
+# (``turn_end_as_decline``). The end is legal only once every mandatory
+# effect is done, so a row of this set beside it belongs to an optional
+# effect: the Agent boxes' trash, discard, payment, acquisition and recall
+# rows (the Agent-box records marked
+# optional, ``OPTIONAL_AGENT_ICONS`` and the boxes part way through), the
+# Leader Signet's optional stages (Lady Jessica / Reverend Mother, Princess
+# Irulan, Chani, Duncan Idaho,
+# Staban Tuek's paid follow-up, Fenring's and Mohiam's Spy half before its
+# recall, Feyd-Rautha's trash stages), the visit's optional effects
+# (``rules.effects.OPTIONAL_BOARD_ICONS``) and Reverend Mother's repeat.
+_OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
+    {
+        # Agent boxes.
+        "trash_agent_card",
+        "discard_agent_card",
+        "recall_agent_for_agent_card",
+        "recall_conflict_agent_for_agent_card",
+        "pay_agent_card_water",
+        "pay_agent_card_spice",
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_agent_card_specimen",
+        "pay_agent_card_two_specimens",
+        "trash_grafted_card_for_specimen",
+        "trash_agent_card_self_for_vp",
+        "lose_agent_card_troop",
+        "pay_corrinth_city",
+        "select_corrinth_city_discard",
+        "pay_agent_card_intrigue_and_spice",
+        "trash_intrigue_for_agent_card",
+        "put_intrigue_on_bottom_for_agent_card",
+        "acquire_imperium_with_solari",
+        "acquire_reserve_with_solari",
+        "acquire_imperium_by_card",
+        "acquire_reserve_by_card",
+        # The Leader Signet's optional stages.
+        "pay_leader_signet_spice",
+        "pay_leader_signet_solari",
+        "pay_leader_signet_water",
+        "acquire_leader_imperium",
+        "acquire_leader_reserve",
+        "trash_leader_card",
+        "retreat_leader_troops",
+        "deploy_leader_agent",
+        "place_leader_spy",
+        "recall_spy_for_leader_placement",
+        # The visit's optional effects and Reverend Mother's repeat.
+        "trash_card_for_desert_tactics",
+        "trash_intrigue_for_imperial_privilege",
+        "acquire_sardaukar_commander",
+        "acquire_tech",
+        "choose_subcommittee",
+        "pay_leader_board_repeat",
+        "use_other_memories",
+    }
+)
+
+# The rows of the Reveal's optional choices -- "may", an arrow cost or a
+# black trash icon [FAQ p. 3] -- with the score of the refusal each choice
+# offered before the user ruling of 2026-10-14 (OQ-095 (7) addition, codec
+# v147). Each choice opened its own frame then, and the agent weighed its rows
+# against that refusal alone; now every pending choice is a row of the Reveal
+# frame, offers no refusal and lapses at ``finish_reveal``
+# (``turn_end_as_decline``): a row scoring below its refusal is never taken,
+# and the end ranks as the lowest refusal beside the rows still worth taking.
+_OPTIONAL_REVEAL_ROWS: Final[dict[str, float]] = {
+    # ``decline_reveal_spy_recall``: Spy Network, Arrakis Observer, In High
+    # Places.
+    "recall_spy_for_reveal": _DECLINE_SCORE,
+    "recall_spies_for_reveal": _DECLINE_SCORE,
+    # ``decline_reveal_influence_exchange`` (Captured Mentat).
+    "exchange_reveal_influence": _DECLINE_SCORE,
+    # ``decline_reveal_spice_influence`` (Spacing Guild's Favor).
+    "pay_reveal_spice_influence": _DECLINE_SCORE,
+    # ``decline_reveal_card_trash``: Calculus of Power, Shrouded Counsel,
+    # Disruption Tactics, CHOAM Demands.
+    "trash_reveal_card": _DECLINE_SCORE,
+    # ``decline_reveal_troop_retreat`` (Chani, Command Center).
+    "retreat_two_troops_for_reveal": _DECLINE_SCORE,
+    # ``decline_command_acquisition`` (Engineered Miracle).
+    "command_acquire_row_card": _DECLINE_SCORE,
+    # ``decline_reveal_influence_loss`` (For Humanity).
+    "lose_reveal_influence_for_vp": 0.5,
+    # ``decline_reveal_troop_move`` (Shadout Mapes, Unswerving Loyalty).
+    "deploy_reveal_card_troop": 0.5,
+    "retreat_reveal_card_troop": 0.5,
+    # ``decline_reveal_troop_sacrifice`` (Tleilaxu Surgeon).
+    "lose_reveal_troops_for_specimens": 0.6,
+}
+
+# Board space preference. Only Swordmaster and High Council were ranked
+# before 2026-09-10, so the other 21 spaces tied at ``agent_turn``'s base and
+# the agent picked among them almost uniformly -- 1,652 of 15,296 legal-action
+# sets in a 20-game all-option probe were ``agent_turn`` argument ties, the
+# single largest tie family by an order of magnitude.
+#
+# The values below are strategy preference, not a rules judgment (see the
+# module docstring): each space's printed yield comes from
+# ``docs/rules/board-spaces.md`` `[Board Guide pp. 1-2]`, and that yield is
+# priced on one rubric and reduced by the printed cost, so the numbers stay
+# comparable to each other and to the reward scores in ``_ACTION_SCORES``:
+#
+#   Influence 1   0.45   (a Victory Point at 2 and an Alliance at 4)
+#   sandworm 1    0.45   Maker Hooks 0.35   control location 0.35
+#   Intrigue 1    0.30   Spy placement 0.25   water 1 0.22
+#   card 1        0.20   troop 1 0.18   spice 1 0.12   Solari 1 0.07
+#
+# Permanent upgrades stay on top at their established values: a third Agent
+# for the rest of the game and a Council seat's standing +2 Persuasion are
+# worth more than any one-shot yield, so every priced space lands below them.
+#
+# Three spaces are ranked below what the rubric says: Imperial Basin, Secrets
+# and Arrakeen sit at the median (0.6), tied with Deep Desert, Dutiful
+# Service and Hagga Basin. Priced by the rubric (0.85, 1.0, 0.75) they took
+# 56% of the agent's placements, and demoting them was measured to be the
+# largest single lever this table has (docs/evaluation/baseline-2026-09-10.md
+# section 18; 2,000 agent-games a cell, paired 2:2 mirrors,
+# ``--rotate-leaders``): demoted to the floor (0.3) the table beats the
+# rubric-priced one by +9.8pp on base+CHOAM, +15.2pp on Bloodlines and
+# +7.4pp on Immortality, and beats the two-entry table on the Tech Module,
+# where the rubric-priced table lost by -13.6pp, by +6.2pp and +3.6pp on two
+# seed blocks. The mechanism is the placement mix: the Agents go to the
+# Faction spaces instead (Espionage, Deliver Supplies, Sietch Tabr, Sardaukar,
+# Fremkit, Hagga Basin), the seat ends with 11.0 Influence against 9.1 and
+# scores from the tracks while winning fewer Conflicts (1.86 against 2.51).
+# Re-deriving the rubric with the control-location term at 0 instead
+# (Imperial Basin 0.5, Arrakeen 0.4, Secrets 0.75) measured -6.8pp against
+# the floor on the Tech Module.
+#
+# The level was then measured one ruleset axis at a time against the floor
+# (section 18(h), 2026-09-16): the median (all three at 0.6) beat the floor on
+# base, CHOAM and Immortality and lost the Tech Module without CHOAM. Ablating
+# that table's most-visited spaces one at a time (section 18(i)) showed the
+# trade-off was two conclusions on one lever: Imperial Basin alone at the
+# floor beats the median table on every axis (+9.1pp on base, +7.1pp on CHOAM,
+# +4.6pp on Immortality, +7.7pp on the Tech Module without CHOAM), while
+# Arrakeen at the floor loses everywhere (-6.8 to -12.4pp), and Espionage or
+# Deliver Supplies at the floor changes nothing. Raising Arrakeen with
+# Imperial Basin at the floor keeps paying up to the Faction spaces' top
+# (section 18(j)); the committed table, Imperial Basin 0.3 / Secrets 0.6 /
+# Arrakeen 1.2, measures +17.2/+16.8pp on base, +16.2/+12.7pp on CHOAM,
+# +15.8pp on Bloodlines, +10.6/+7.8pp on Immortality, +15.9/+14.8pp on the
+# Tech Module without CHOAM, +14.5pp on the Tech Module with CHOAM, +11.5pp on
+# CHOAM + Tech + Immortality against the median table. The placement mix
+# behind the split is recorded in section 18(k). The median table stays pinned
+# on ``heuristic_median_table``, the floor table on ``heuristic_floor_table``.
+#
+# The split table's own ablation (section 18(k)) then found Deliver Supplies:
+# at the floor it measures +9.6/+3.6pp on base, +5.6/+5.5pp on CHOAM, +0.7pp
+# on Bloodlines, +4.9/+2.6pp on Immortality, +4.6/+5.2pp on the Tech Module
+# without CHOAM, +0.5pp on the Tech Module with CHOAM, +3.9pp on CHOAM + Tech
+# + Immortality against the split table (section 18(l)), while Espionage does
+# not move the result and Hagga Basin sits on the edge of noise. The split
+# table stays pinned on ``heuristic_split_table``.
+#
+# That table's own ablation (section 18(l)) then found Espionage: demoted from
+# 0.8 it measures +5.7/+3.3pp on base, +4.1/+7.4pp on CHOAM, +8.8pp on
+# Bloodlines, +6.4/+7.6pp on Immortality, +4.8/+4.6pp on the Tech Module
+# without CHOAM, +4.5pp on the Tech Module with CHOAM, +7.3pp on CHOAM + Tech
+# + Immortality against the Deliver Supplies table (section 18(m)), while
+# Fremkit, Sietch Tabr and Arrakeen at the floor all lose heavily -- the
+# Fremen and Arrakeen visits are what the table now lives on. The Deliver
+# Supplies table stays pinned on ``heuristic_supplies_table``.
+#
+# Two limits are deliberate. ``score_action`` sees only the action, so a space
+# whose yield depends on the ruleset is priced on its base reward -- Dutiful
+# Service and Accept Contract pay 2 Solari here rather than a CHOAM contract,
+# and Research Station omits the Immortality research advance. And a space
+# with several cost options is one value, so Gather Support's two Solari for a
+# water and Spice Refinery's spice for two more Solari still tie; that and the
+# ``card_id`` half of an ``agent_turn`` tie are the remaining argument ties.
+_UPRISING_SPACE_VALUES: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        # Permanent upgrades keep their established values.
+        "swordmaster": 3.0,
+        "high_council": 2.0,
+        # Arrakeen ranks with the Faction spaces' top, just below the
+        # permanent upgrades: raised from the median once Imperial Basin
+        # left it (section 18(j)).
+        "arrakeen": 1.2,
+        # Influence plus a big recruit.
+        "sardaukar": 1.0,
+        # A second placement this turn, behind Emperor Influence 2.
+        "imperial_privilege": 0.9,
+        "heighliner": 0.8,
+        "sietch_tabr": 0.75,
+        "fremkit": 0.65,
+        "deep_desert": 0.6,
+        "dutiful_service": 0.6,
+        "hagga_basin": 0.6,
+        # Secrets, priced 1.0 by the rubric, sits at the median with the
+        # three spaces above; its level barely moves the result (18(j)).
+        "secrets": 0.6,
+        # Espionage, priced 0.8, joined the median when the Deliver Supplies
+        # table's own ablation found it (section 18(m)).
+        "espionage": 0.6,
+        "tuek_sietch": 0.55,
+        "assembly_hall": 0.5,
+        "desert_tactics": 0.5,
+        "spice_refinery": 0.5,
+        "shipping": 0.45,
+        "gather_support": 0.4,
+        # Deliver Supplies, priced 0.7, sits with Gather Support since the
+        # split table's own ablation found it (section 18(l)).
+        "deliver_supplies": 0.4,
+        # Both pay the least once their cost is priced in.
+        "accept_contract": 0.35,
+        "research_station": 0.35,
+        # Imperial Basin, priced 0.85 by the rubric, sits at the floor below
+        # every other yield: demoting it alone is the largest lever the table
+        # has (sections 18(i) and 18(j)).
+        "imperial_basin": 0.3,
+    }
+)
+
+# The original game's spaces that print an Uprising space's name but not its
+# printing ("같은 이름, 다른 인쇄", docs/rules/imperium-base.md): the engine
+# gives them ids of their own, so the table above, keyed by Uprising ids,
+# priced them 0 at original tables (P7a's scan, 2026-10-30). Each now takes
+# its Uprising twin's value. Where the printing differs, the twin's value is
+# kept rather than re-priced: the table's levels come from paired
+# measurements, not from the rubric any more (sections 18(h)-(m)), so a
+# rubric difference has no scale to be added on; the paired A/B against
+# ``heuristic_before_original_twins`` measures the mapping as a whole. On
+# 2026-10-30 (2:2 mirrors, draft and promos, 1,000 games a cell) it measured
+# 36.1% [34.8, 37.4] and 36.0% [34.7, 37.4] a seat on the original game
+# (seed blocks 0 and 500; parity 25%, VP margin +1.5), 30.4% [29.0, 31.9]
+# and 31.2% [29.6, 32.7] with Rise of Ix (+0.8), no game raised.
+#
+#   Swordmaster       the same Agent; Uprising's falls to 6 Solari once taken
+#   High Council      the same seat and Persuasion 2; once a game in the
+#                     original, Uprising's later visits pay more (the table
+#                     prices the first)
+#   Heighliner        original 6 spice for 5 troops and 2 water, Uprising 5
+#                     spice for 5 troops
+#   Sietch Tabr       original troop and water, Uprising's option (a) without
+#                     the Maker Hooks or (b) water and the Shield Wall
+#   Hagga Basin       original 2 spice, Uprising's 2 spice or a sandworm
+#   Research Station  original 3 cards, Uprising 2 troops and 2 cards
+ORIGINAL_TWIN_SPACES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "imperium_swordmaster": "swordmaster",
+        "imperium_high_council": "high_council",
+        "imperium_heighliner": "heighliner",
+        "imperium_sietch_tabr": "sietch_tabr",
+        "imperium_hagga_basin": "hagga_basin",
+        "imperium_research_station": "research_station",
+    }
+)
+
+UPRISING_SPACE_BONUSES: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **_UPRISING_SPACE_VALUES,
+        **{
+            original: _UPRISING_SPACE_VALUES[twin]
+            for original, twin in ORIGINAL_TWIN_SPACES.items()
+        },
+    }
+)
+
+# The table before the original twins took their Uprising twins' values
+# (2026-10-30), kept so the registry's ``heuristic_before_original_twins``
+# reproduces it for the paired A/B at original tables. It plays every
+# Uprising table exactly as the live one: no Uprising space has an
+# ``imperium_`` id.
+SPACE_BONUSES_BEFORE_ORIGINAL_TWINS: Final[Mapping[str, float]] = (
+    _UPRISING_SPACE_VALUES
+)
+
+# The floor demotion of 2026-09-11 (the three spaces at 0.3, below every
+# other yield), kept so the registry's ``heuristic_floor_table`` reproduces
+# the level comparison of section 18(h) from the committed tree.
+SPACE_BONUSES_DEMOTED_TO_FLOOR: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
+        "espionage": 0.8,
+        "secrets": 0.3,
+        "imperial_basin": 0.3,
+        "arrakeen": 0.3,
+    }
+)
+
+# The split table of 2026-09-16 noon (Imperial Basin 0.3, Secrets 0.6,
+# Arrakeen 1.2, Deliver Supplies still 0.7), kept so the registry's
+# ``heuristic_split_table`` reproduces section 18(l) from the committed tree.
+# Every pinned table names Deliver Supplies explicitly: the pins inherit the
+# live table's other entries, so a later change there must be overridden
+# here to keep each pin the table it was measured with.
+SPACE_BONUSES_SPLIT_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {**UPRISING_SPACE_BONUSES, "deliver_supplies": 0.7, "espionage": 0.8}
+)
+
+# The Deliver Supplies table of 2026-09-16 afternoon (Espionage still 0.8),
+# kept so the registry's ``heuristic_supplies_table`` reproduces section
+# 18(m) from the committed tree.
+SPACE_BONUSES_BEFORE_ESPIONAGE: Final[Mapping[str, float]] = MappingProxyType(
+    {**UPRISING_SPACE_BONUSES, "espionage": 0.8}
+)
+
+# The median demotion of 2026-09-16 morning (the three spaces at 0.6), kept
+# so the registry's ``heuristic_median_table`` reproduces the ablation and
+# its follow-up (sections 18(i) and 18(j)) from the committed tree.
+SPACE_BONUSES_MEDIAN_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
+        "espionage": 0.8,
+        "secrets": 0.6,
+        "imperial_basin": 0.6,
+        "arrakeen": 0.6,
+    }
+)
+
+# The rubric-priced ranking of 2026-09-10, before the three spaces above were
+# demoted (2026-09-11). Kept so the registry's ``heuristic_uprising_table``
+# reproduces it for a paired A/B from the committed tree.
+SPACE_BONUSES_BEFORE_DEMOTION: Final[Mapping[str, float]] = MappingProxyType(
+    {
+        **UPRISING_SPACE_BONUSES,
+        "deliver_supplies": 0.7,
+        "espionage": 0.8,
+        "secrets": 1.0,
+        "imperial_basin": 0.85,
+        "arrakeen": 0.75,
+    }
+)
+
+# The ranking before the 2026-09-10 retune, kept so the registry's
+# ``heuristic_untuned`` baseline reproduces it for a paired A/B from the
+# committed tree instead of needing a scratch module. Until 2026-09-11 it was
+# also the table the Tech Module used: the rubric-priced table lost there
+# (-13.6pp without CHOAM, -6.2pp with it) and every overlay on top of it was
+# rejected (docs/evaluation/baseline-2026-09-10.md sections 15 and 16). The
+# demoted table wins there too, so one table now serves every ruleset.
+SPACE_BONUSES_BEFORE_RETUNE: Final[Mapping[str, float]] = MappingProxyType(
+    {"swordmaster": 3.0, "high_council": 2.0}
+)
+
+
+# Which card an Agent turn spends, once the board space is settled.
+#
+# "Agent turn에는 낸 card의 Agent box만 처리하고 그 card의 Reveal box는
+# 무시한다." `[Main p. 8]` `[Main p. 9]`, and on the Reveal turn "앞선 Agent
+# turn에 낸 card의 Reveal box 효과는 얻지 않는다." `[Main p. 12]`
+# (``docs/rules/player-turns.md`` lines 60 and 161). So sending the same Agent
+# to the same space costs a different amount depending on which hand card
+# carries it: the Persuasion and swords printed in the Reveal box that card
+# will never open this round.
+#
+# Both weights come off the rubric the board space table is priced on:
+#
+#   Persuasion 1  0.20  Assembly Hall is ranked 0.5 and pays "Intrigue 1장
+#                       draw" plus "Persuasion 1" `[Board Guide p. 1]`; the
+#                       rubric prices an Intrigue at 0.30, leaving 0.20.
+#   sword 1       0.09  "Conflict의 troop 하나는 strength 2 ... reveal한 sword
+#                       하나는 strength 1" `[Main p. 12]`, and the rubric
+#                       prices a recruited troop at 0.18 -- half a troop's
+#                       combat contribution, which is what one sword is.
+#
+# Only the ratio between the two is load-bearing: the tie-break takes an
+# argmin, so scaling both weights together changes nothing. They are kept on
+# the board rubric anyway, so a later change that does compare a card against a
+# space starts from a value that is already comparable to one.
+#
+# This is applied as a tie-break *inside one space*, never as a term added to
+# ``score_action``. Adding it to the score was measured and rejected: at full
+# rubric weight it is the size of a space bonus and reorders the spaces instead
+# of the cards -- the cheapest card to send (Dagger: no Persuasion, one sword)
+# carries only the Landsraad icon, so Dagger placements doubled, Assembly Hall
+# and Gather Support absorbed them, the Combat placement share fell
+# 50.2% -> 46.5%, and three paired blocks measured -2.2pp, -6.0pp and -8.6pp.
+# Scaling it down to fit inside the board table's smallest gap fixed
+# base+CHOAM (-0.2pp, +0.2pp) but reproduced the expansion loss *exactly*, to
+# the decision count: an expansion ruleset kept the two-entry table then
+# (``SPACE_BONUSES_BEFORE_RETUNE``), so 21 spaces were equal there and any card term at
+# all -- at any scale -- picks the space. Only a tie-break that never compares
+# two spaces is safe in both. Numbers in
+# ``docs/evaluation/baseline-2026-09-10.md`` section 14.
+#
+# Two limits are deliberate, and both understate the cost rather than invent a
+# value. The printed integers are priced but a Reveal box's *effects* are not
+# (67 of the 105 Imperium cards that can be sent carry one). And a Graft
+# placement names only its own card; the partner is chosen in a later frame
+# `[Immortality p. 10]`, so the partner's Reveal box is not counted.
+#
+# The Agent box a card *pays* is not priced either. That half needs a value for
+# each transcribed Agent effect and is a separate measurement; leaving it out
+# keeps this change attributable to one term.
+@dataclass(frozen=True, slots=True)
+class RevealValue:
+    """Per-unit price of the Reveal box an Agent turn gives up."""
+
+    persuasion: float
+    sword: float
+
+
+SPENT_CARD_VALUE: Final = RevealValue(persuasion=0.20, sword=0.09)
+
+
+def reveal_value_forfeited(
+    action: DomainAction, weights: RevealValue | None
+) -> float:
+    """Reveal value the placement's card forfeits, or 0.0 when unpriced."""
+
+    if weights is None or action.action_id not in ("agent_turn", "choose_agent_card"):
+        return 0.0
+    instance_id = _argument(action, "card_id")
+    if not isinstance(instance_id, str):
+        return 0.0
+    try:
+        card = personal_card_for_instance(instance_id)
+    except (ValueError, NotImplementedError):
+        # New or untranscribed content falls back to the flat ranking rather
+        # than failing, exactly as an unknown action ID scores 0.
+        return 0.0
+    return (
+        weights.persuasion * card.reveal_persuasion
+        + weights.sword * card.reveal_strength
+    )
+
+
+def cheapest_card_for_the_same_space(
+    chosen: DomainAction,
+    tied: tuple[DomainAction, ...],
+    weights: RevealValue | None,
+) -> DomainAction:
+    """Re-spend ``chosen``'s placement on its cheapest tied hand card.
+
+    ``chosen`` already fixes the board space -- it was drawn from ``tied`` by
+    the seeded tie-break, so the space distribution is untouched. Only the card
+    carrying the Agent there is reconsidered, among the tied placements that
+    name the same space. Anything but an ``agent_turn`` placement, or a card
+    pick scored without its space (``choose_agent_card``, view-only), is
+    returned unchanged.
+    """
+
+    if weights is None or chosen.action_id not in ("agent_turn", "choose_agent_card"):
+        return chosen
+    space_id = _argument(chosen, "space_id")
+    same_space = tuple(
+        action
+        for action in tied
+        if action.action_id == chosen.action_id
+        and _argument(action, "space_id") == space_id
+    )
+    if len(same_space) < 2:
+        return chosen
+    priced = tuple(
+        (reveal_value_forfeited(action, weights), action) for action in same_space
+    )
+    cheapest = min(cost for cost, _ in priced)
+    if reveal_value_forfeited(chosen, weights) == cheapest:
+        # The draw already spends one of the cheapest cards; leave it alone so
+        # everything else it settled stays settled.
+        return chosen
+    winners = tuple(action for cost, action in priced if cost == cheapest)
+    # Swap the card and nothing else. One card reaches one space once per cost
+    # option (each carrying its Navigation Chamber cut, which is mandatory
+    # since codec v142, OQ-104) and again for a Graft or an Infiltrate, and
+    # every one of those forfeits the same Reveal box -- so taking the first
+    # cheapest would quietly move the cost option the draw made (777 of the
+    # separating swaps over a 40-game all-option probe) or spend a Spy on an
+    # Infiltrate the draw did not ask for. Before v142 it could also drop an
+    # optional discount (97 of 6,198 separating swaps).
+    terms = _placement_terms(chosen)
+    return next(
+        (action for action in winners if _placement_terms(action) == terms),
+        winners[0],
+    )
+
+
+def _placement_terms(action: DomainAction) -> tuple[tuple[str, ActionValue], ...]:
+    """Everything an ``agent_turn`` settles except which card pays for it."""
+
+    return tuple((key, value) for key, value in action.arguments if key != "card_id")
+
+
+# Tie-breaks inside one action family.
+#
+# After the space table and the spent-card price, the seeded RNG still decided
+# 228 legal sets a game (base+CHOAM, 80-game census of 2026-09-16, recorded in
+# docs/evaluation/baseline-2026-09-16.md section 14). Three families were both
+# frequent and uniformly random: which Faction an Influence step goes to
+# (about 9 a game), which card a trash or discard removes (about 5), and which
+# of two same-cost cards a buy takes (about 14). Each is settled here *inside
+# the tie set the score already fixed*, never as a term in ``score_action``
+# (docs/lessons.md 2026-09-10): the narrowed set is always a subset of the
+# tied actions of one family, so no tie-break can change which score wins or
+# reach another family. ``TieBreaks`` names the three so the registry can pin
+# the uniform draw for the paired A/B.
+#
+# The Faction rule follows the Influence track: "Influence 2에 도달하면 1 VP를
+# 얻는다" `[Main pp. 7, 17]`; "한 Faction에서 처음 Influence 4에 도달한 플레이어는
+# Alliance token과 그 token의 1 VP를 얻는다. 다른 플레이어가 현재 보유자보다 높은
+# 칸으로 올라가면 token과 그 VP가 새 플레이어에게 이전된다. 동률만으로는 ...
+# 충족하지 않는다" `[Main p. 7]` (docs/rules/uprising-systems.md). A step that
+# reaches 2, reaches 4 first, or climbs above the token's holder is worth a
+# Victory Point (3.0 on this scale); a step that only ties the holder is a
+# small progress (0.6); otherwise the higher track is preferred so the seat
+# concentrates toward its next threshold. A *loss* step (an Intrigue card's
+# LoseInfluence cost, "임의의 Faction Influence를 ... 1 잃는 효과는 네 Faction
+# 가운데 하나를 고른다" `[Main p. 20]`) is the mirror image: never step down
+# from 2 or off a held Alliance when another track can pay.
+@dataclass(frozen=True, slots=True)
+class TieBreaks:
+    """Which within-family tie-breaks ``HeuristicAgent`` applies."""
+
+    faction: bool = True
+    trash: bool = True
+    buy: bool = True
+
+
+TIE_BREAKS: Final = TieBreaks()
+UNIFORM_TIES: Final = TieBreaks(faction=False, trash=False, buy=False)
+
+_FACTION_CHOICE_FAMILIES: Final = frozenset(
+    {
+        "choose_agent_card_influence",
+        "choose_combat_reward_influence",
+        "choose_distinct_combat_reward_influence",
+        "choose_leader_signet_influence",
+        "choose_shipping_influence",
+        # The original game's Earl Memnon Thorvald.
+        "choose_connections_influence",
+        "pay_reveal_spice_influence",
+        "choose_research_influence",
+        "gain_reveal_faction_influence",
+        "choose_intrigue_faction",
+        "resolve_tech_acquire_effect",
+        "resolve_acquire_icon",
+    }
+)
+_TRASH_FAMILIES: Final = frozenset(
+    {
+        "trash_agent_card",
+        "trash_leader_card",
+        "trash_reveal_card",
+        "trash_combat_reward_card",
+        "trash_card_for_desert_tactics",
+        "trash_optional_card",
+        "discard_agent_card",
+        "discard_opponent_card",
+        "choose_intrigue_discard",
+    }
+)
+_THRESHOLD_VALUE: Final = 3.0
+_TIE_PROGRESS_VALUE: Final = 0.6
+_CLIMB_VALUE: Final = 0.5
+_BEHIND_VALUE: Final = 0.2
+_TRACK_LEVEL_VALUE: Final = 0.05
+_TOP_OF_TRACK: Final = 6
+
+
+def _own_seat(view: PlayerView) -> PublicPlayerView:
+    return view.players[view.player]
+
+
+def _influence_of(seat: PublicPlayerView, faction: str) -> int:
+    return int(getattr(seat.influence, faction))
+
+
+def _alliance_holder_level(view: PlayerView, faction: str) -> int | None:
+    """The Influence of the opponent holding this Faction's token, or None."""
+
+    for seat in view.players:
+        if seat.player != view.player and faction in seat.alliance_faction_ids:
+            return _influence_of(seat, faction)
+    return None
+
+
+def influence_step_value(view: PlayerView, faction: str) -> float:
+    """Value of one more Influence step with ``faction`` for the observer."""
+
+    me = _own_seat(view)
+    current = _influence_of(me, faction)
+    if current >= _TOP_OF_TRACK:
+        return -10.0
+    after = current + 1
+    value = _TRACK_LEVEL_VALUE * current
+    if after == 2:
+        value += _THRESHOLD_VALUE
+    if after >= 4 and faction not in me.alliance_faction_ids:
+        holder = _alliance_holder_level(view, faction)
+        if holder is None:
+            value += _THRESHOLD_VALUE if after == 4 else _CLIMB_VALUE
+        elif after > holder:
+            value += _THRESHOLD_VALUE
+        elif after == holder:
+            value += _TIE_PROGRESS_VALUE
+        else:
+            value += _BEHIND_VALUE
+    return value
+
+
+def influence_step_cost(view: PlayerView, faction: str) -> float:
+    """Cost of losing one Influence step with ``faction`` for the observer."""
+
+    me = _own_seat(view)
+    current = _influence_of(me, faction)
+    if current == 0:
+        return 100.0
+    cost = _TRACK_LEVEL_VALUE * current
+    if current == 2:
+        cost += _THRESHOLD_VALUE
+    if faction in me.alliance_faction_ids:
+        cost += _THRESHOLD_VALUE if current == 4 else 1.0
+    return cost
+
+
+def _intrigue_faction_choice_is_loss(
+    view: PlayerView, offered: frozenset[str]
+) -> bool | None:
+    """Whether a ``choose_intrigue_faction`` set pays a LoseInfluence cost.
+
+    The frame does not say; the resolving card and the offered tracks do. The
+    loss step offers exactly the occupied tracks, while the card's gain step
+    is unrestricted and offers exactly the tracks below the top (a full track
+    is left out since the gain there is lost, OQ-060,
+    ``influence_gain_candidates``). So the set that matches only the occupied
+    tracks is the loss, the one that matches only the tracks below the top is
+    the gain, and ``None`` when the two sets coincide (every track between 1
+    and 5) or the offer matches neither.
+    """
+
+    lose_cost = False
+    for instance_id in view.intrigue_resolving:
+        try:
+            card = intrigue_card_for_instance(instance_id)
+        except ValueError:
+            continue
+        lose_cost = lose_cost or any(
+            isinstance(cost, LoseInfluence)
+            for option in card.options
+            for section in option.sections
+            for cost in section.costs
+        )
+    if not lose_cost:
+        return False
+    me = _own_seat(view)
+    occupied = frozenset(f for f in _FACTIONS if _influence_of(me, f) > 0)
+    below_top = frozenset(
+        f for f in _FACTIONS if _influence_of(me, f) < MAX_INFLUENCE
+    )
+    loss = offered == occupied
+    gain = offered == below_top
+    if loss == gain:
+        return None
+    return loss
+
+
+_FACTIONS: Final = tuple(faction.value for faction in Faction)
+
+
+def card_printed_value(instance_id: str) -> float:
+    """Printed acquisition cost plus the Reveal box on the spent-card rubric."""
+
+    try:
+        card = personal_card_for_instance(instance_id)
+    except (ValueError, NotImplementedError):
+        return 0.0
+    cost = 0.0
+    if instance_id.startswith("imperium:"):
+        cost = float(imperium_card_for_instance(instance_id).acquisition_cost or 0)
+    elif instance_id.startswith("reserve:"):
+        cost = float(reserve_card_for_instance(instance_id).acquisition_cost)
+    elif instance_id.startswith("tleilaxu:"):
+        cost = float(tleilaxu_card_for_instance(instance_id).specimen_cost)
+    return (
+        cost
+        + SPENT_CARD_VALUE.persuasion * card.reveal_persuasion
+        + SPENT_CARD_VALUE.sword * card.reveal_strength
+    )
+
+
+def acquisition_reveal_value(action: DomainAction) -> float:
+    """Reveal box (and printed VP) of the card an acquisition would take."""
+
+    if action.action_id in _IMPERIUM_ACQUISITIONS:
+        instance_id = _argument(action, "instance_id")
+        if not isinstance(instance_id, str):
+            return 0.0
+        try:
+            card = imperium_card_for_instance(instance_id)
+        except ValueError:
+            return 0.0
+        return (
+            SPENT_CARD_VALUE.persuasion * card.reveal_persuasion
+            + SPENT_CARD_VALUE.sword * card.reveal_strength
+        )
+    card_id = _argument(action, "card_id")
+    entry = RESERVE_STACKS_BY_ID.get(card_id) if isinstance(card_id, str) else None
+    if entry is None:
+        return 0.0
+    return (
+        SPENT_CARD_VALUE.persuasion * entry.reveal_persuasion
+        + SPENT_CARD_VALUE.sword * entry.reveal_strength
+        + float(entry.acquisition_vp)
+    )
+
+
+def _argmax_subset(
+    top: tuple[DomainAction, ...], key: Callable[[DomainAction], float]
+) -> tuple[DomainAction, ...]:
+    values = tuple(key(action) for action in top)
+    best = max(values)
+    return tuple(a for a, v in zip(top, values, strict=True) if v == best)
+
+
+def _faction_tie(
+    family: str, top: tuple[DomainAction, ...], view: PlayerView
+) -> tuple[DomainAction, ...]:
+    if family == "exchange_reveal_influence":
+        return _argmax_subset(
+            top,
+            lambda a: influence_step_value(view, str(_argument(a, "gained_faction")))
+            - influence_step_cost(view, str(_argument(a, "lost_faction"))),
+        )
+    if family not in _FACTION_CHOICE_FAMILIES:
+        return top
+    if family == "resolve_tech_acquire_effect" and any(
+        _argument(action, "effect") != "influence" for action in top
+    ):
+        # Different acquire icons can share this action family and score.
+        # Apply faction preferences only to an Influence-only choice.
+        return top
+    if family == "resolve_acquire_icon" and any(
+        _argument(action, "faction") is None for action in top
+    ):
+        # A fixed Faction's icon names no Faction to prefer; only a chosen
+        # Influence picks one.
+        return top
+    offered = frozenset(
+        f for f in (_argument(a, "faction") for a in top) if isinstance(f, str)
+    )
+    if len(offered) < 2:
+        return top
+    if family == "choose_intrigue_faction":
+        loss = _intrigue_faction_choice_is_loss(view, offered)
+        if loss is None:
+            return top
+        if loss:
+            return _argmax_subset(
+                top, lambda a: -influence_step_cost(view, str(_argument(a, "faction")))
+            )
+    return _argmax_subset(
+        top, lambda a: influence_step_value(view, str(_argument(a, "faction")))
+    )
+
+
+def narrow_family_tie(
+    top: tuple[DomainAction, ...], view: PlayerView, tie_breaks: TieBreaks
+) -> tuple[DomainAction, ...]:
+    """Narrow a top-scoring tie set of one family; always a non-empty subset."""
+
+    families = {action.action_id for action in top}
+    if tie_breaks.buy and families <= (_IMPERIUM_ACQUISITIONS | _RESERVE_ACQUISITIONS):
+        # A Reserve card and an Imperium card at the same cost are one
+        # family for this purpose: the same Persuasion buys either.
+        return _argmax_subset(top, acquisition_reveal_value)
+    if len(families) != 1:
+        return top
+    family = next(iter(families))
+    if tie_breaks.faction:
+        narrowed = _faction_tie(family, top, view)
+        if len(narrowed) < len(top):
+            return narrowed
+    if tie_breaks.trash and family in _TRASH_FAMILIES:
+        ids = tuple(_argument(a, "card_id") for a in top)
+        if all(isinstance(i, str) for i in ids):
+            return _argmax_subset(
+                top, lambda a: -card_printed_value(str(_argument(a, "card_id")))
+            )
+    return top
+
+
+# Which Tech tile to buy when more than one face-up tile is affordable: the
+# ones that score or pay back at once first. Re-pricing this table was
+# measured and rejected (docs/evaluation/baseline-2026-09-10.md section 17;
+# 2,000 agent-games a cell, Bloodlines + Tech Module, against the committed
+# table): an all-18-tile table built from the printed effects, and the same
+# table tilted by cost either way, all land within +-2.2pp of this one, and
+# only a deliberately cheap-first table loses (-4.8pp). The buys spread
+# almost evenly over the tiles (0.09 to 0.18 a seat each), so the offer and
+# the seat's spice settle most purchases before the ranking is consulted.
+# ``HeuristicAgent(tech_bonuses=...)`` is the slot for re-running that A/B.
+_TECH_BONUSES: Final[dict[str, float]] = {
+    "sardaukar_high_command": 2.0,
+    "choam_transports": 1.5,
+    "panopticon": 1.0,
+    "navigation_chamber": 1.0,
+    "ornithopter_fleet": 1.0,
+    "delivery_bay": 0.5,
+    "plasteel_blades": 0.5,
+    "spy_drones": 0.5,
+    "suspensor_suits": 0.5,
+    "training_depot": 0.5,
+}
+
+# Tleilaxu cards (Immortality) whose printed box pays back the moment the
+# card is bought or scores outright: an acquisition box, a Victory Point,
+# or a Reveal box that puts a specimen back in the tanks every round. Every
+# other card keeps the cost-scaled score, so a buy still outranks a decline
+# whatever the card [Immortality pp. 8-9] [Tleilaxu card faces].
+_TLEILAXU_BONUSES: Final[dict[str, float]] = {
+    "subject_x_137": 1.0,
+    "scientific_breakthrough": 1.0,
+    "corrino_genes": 0.5,
+    "twisted_mentat": 0.5,
+    "usurp": 0.5,
+}
+
+# The research track's branch choice is worth what the destination space
+# pays. The scale mirrors ``rollout_agent.player_value`` so both baselines
+# rank the same step the same way: an Influence is 1.5 there, a specimen
+# and a Tleilaxu step 0.5, spice 0.4, Solari 0.25. A Research space is the
+# best of all because it "triggers another research icon and immediately
+# advances her token again" [Immortality p. 6], a free extra space.
+_RESEARCH_BONUS_SCORES: Final[dict[ResearchBonus, float]] = {
+    ResearchBonus.RESEARCH: 2.0,
+    ResearchBonus.INFLUENCE_ANY: 1.5,
+    ResearchBonus.TLEILAXU_AND_SPECIMEN: 1.0,
+    ResearchBonus.TRASH_INTRIGUE_FOR_CARD_AND_INTRIGUE: 1.0,
+    ResearchBonus.SEVEN_SOLARI_FOR_TWO_TLEILAXU: 1.0,
+    ResearchBonus.SPICE_TWO: 0.8,
+    ResearchBonus.TRASH_AND_SPECIMEN: 0.75,
+    ResearchBonus.SPECIMEN: 0.5,
+    ResearchBonus.TLEILAXU: 0.5,
+    ResearchBonus.SPICE_ONE: 0.4,
+    ResearchBonus.SOLARI_ONE: 0.25,
+    ResearchBonus.NONE: 0.0,
+}
+
+# Reclaimed Forces' two options for the same three specimens: "recruit 2
+# troops" or "advance the Tleilaxu token 1 space" [Immortality p. 9]. Two
+# garrison troops outweigh one track step on the same ``player_value``
+# scale (0.6 each against 0.5), so the units are the static default.
+_RECLAIMED_FORCES_SCORES: Final[dict[str, float]] = {
+    "troops": 0.7,
+    "tleilaxu": 0.5,
+}
+
+# Putting an acquired Tleilaxu card straight on the deck instead of in the
+# discard pile is a free upgrade once the first genetic marker is reached
+# [Immortality p. 6]; it draws the card a whole reshuffle sooner.
+_TLEILAXU_DECK_TOP_BONUS: Final = 0.5
+
+
+def score_action(
+    action: DomainAction,
+    *,
+    space_bonuses: Mapping[str, float] = UPRISING_SPACE_BONUSES,
+    tech_bonuses: Mapping[str, float] = _TECH_BONUSES,
+) -> float:
+    """Rank one engine-legal action; higher is preferred.
+
+    ``space_bonuses`` is the board space preference to rank ``agent_turn``
+    with, and ``tech_bonuses`` the Tech tile preference to rank
+    ``acquire_tech`` with. Passing an earlier table reproduces an earlier
+    ranking, which is how the registry offers a paired A/B opponent from the
+    committed tree. Which card an ``agent_turn`` spends is not scored here; it
+    is settled after the tie-break by ``cheapest_card_for_the_same_space``.
+    """
+
+    action_id = action.action_id
+    if action_id == "scouts_call":
+        count = _argument(action, "count")
+        if not isinstance(count, int):
+            return 0.0
+        return _SCOUTS_CALL_SCORES.get(count, _SCOUTS_CALL_TOO_HIGH)
+    if action_id in _COUNT_DEPLOYMENTS:
+        count = _argument(action, "count")
+        return float(count) if isinstance(count, int) else 0.0
+    if action_id in _IMPERIUM_ACQUISITIONS or action_id in _RESERVE_ACQUISITIONS:
+        cost = _acquisition_cost(action)
+        return _ACQUISITION_BASE + (float(cost) if cost is not None else 0.0)
+    if action_id in ("agent_turn", "place_agent"):
+        # A whole placement (``agents.agent_turn_steps``), or, view-only,
+        # the space pick of stage B1: the space's bonus.
+        space_id = _argument(action, "space_id")
+        bonus = space_bonuses.get(space_id, 0.0) if isinstance(space_id, str) else 0.0
+        return _ACTION_SCORES["agent_turn"] + bonus
+    if action_id == "choose_agent_card":
+        # View-only, a card pick cannot see where the card goes: an Agent
+        # turn still outranks a Reveal, and the spent-card price picks the
+        # card (``cheapest_card_for_the_same_space``).
+        return _ACTION_SCORES["agent_turn"]
+    if action_id == "acquire_tech":
+        tech_id = _argument(action, "tech_id")
+        bonus = tech_bonuses.get(tech_id, 0.0) if isinstance(tech_id, str) else 0.0
+        return _ACTION_SCORES["acquire_tech"] + bonus
+    if action_id == "acquire_tleilaxu":
+        return _ACTION_SCORES["acquire_tleilaxu"] + _tleilaxu_acquisition_bonus(action)
+    if action_id == "acquire_reclaimed_forces":
+        choice = _argument(action, "choice")
+        bonus = (
+            _RECLAIMED_FORCES_SCORES.get(choice, 0.0)
+            if isinstance(choice, str)
+            else 0.0
+        )
+        return _ACTION_SCORES["acquire_reclaimed_forces"] + bonus
+    if action_id == "choose_research_space":
+        space_id = _argument(action, "space_id")
+        space = (
+            RESEARCH_SPACES_BY_ID.get(space_id) if isinstance(space_id, str) else None
+        )
+        bonus = 0.0 if space is None else _RESEARCH_BONUS_SCORES.get(space.bonus, 0.0)
+        return _ACTION_SCORES["choose_research_space"] + bonus
+    if action_id in _ACTION_SCORES:
+        return _ACTION_SCORES[action_id]
+    if action_id.startswith("decline_"):
+        return _DECLINE_SCORE
+    if action_id.startswith("pass_"):
+        return _PASS_SCORE
+    if action_id.startswith("retreat_"):
+        return _RETREAT_SCORE
+    if action_id.startswith("place_") and action_id.endswith("_spy"):
+        return _SPY_PLACEMENT_SCORE
+    if action_id.startswith(("trash_", "pay_", "recall_")):
+        return _MINOR_ACTION_SCORE
+    return 0.0
+
+
+def _sealed_bid(
+    observation: PlayerView, legal_actions: tuple[DomainAction, ...]
+) -> DomainAction | None:
+    """An Arrakeen Scouts sealed bid: pick once, then confirm.
+
+    Every count and the confirmation would otherwise tie, and the agent
+    would re-pick until it drew the confirmation. None outside a bid.
+    """
+
+    confirms = [a for a in legal_actions if a.action_id == "confirm_scouts_bid"]
+    confirm = confirms[0] if confirms else None
+    if confirm is None:
+        return None
+    if observation.private is not None and observation.private.scouts_bid >= 0:
+        return confirm
+    bids = [action for action in legal_actions if action.action_id == "scouts_bid"]
+    if not bids:
+        return confirm
+    return min(
+        bids,
+        key=lambda action: abs(int(_argument(action, "count") or 0) - _SCOUTS_BID),
+    )
+
+
+def _argument(action: DomainAction, name: str) -> ActionValue | None:
+    for key, value in action.arguments:
+        if key == name:
+            return value
+    return None
+
+
+def _tleilaxu_acquisition_bonus(action: DomainAction) -> float:
+    """Printed specimen cost, card bonus, and deck-top bonus of a buy."""
+
+    instance_id = _argument(action, "instance_id")
+    if not isinstance(instance_id, str):
+        return 0.0
+    try:
+        entry = tleilaxu_card_for_instance(instance_id)
+    except ValueError:
+        return 0.0
+    bonus = float(entry.specimen_cost) + _TLEILAXU_BONUSES.get(entry.card.card_id, 0.0)
+    if _argument(action, "to_deck_top"):
+        bonus += _TLEILAXU_DECK_TOP_BONUS
+    return bonus
+
+
+def _acquisition_cost(action: DomainAction) -> int | None:
+    """Printed acquisition cost of the card an acquisition action targets."""
+
+    if action.action_id in _IMPERIUM_ACQUISITIONS:
+        instance_id = _argument(action, "instance_id")
+        if isinstance(instance_id, str):
+            try:
+                return imperium_card_for_instance(instance_id).acquisition_cost
+            except ValueError:
+                return None
+        return None
+    card_id = _argument(action, "card_id")
+    if isinstance(card_id, str):
+        entry = RESERVE_STACKS_BY_ID.get(card_id)
+        if entry is not None:
+            return entry.acquisition_cost
+    return None
+
+
+def _deploys_only_from_garrison(action: DomainAction) -> bool:
+    """Whether a ``play_intrigue`` option's only rewards are garrison deploys.
+
+    Reads the printed option (Counterattack's Plot, Detonation's and Twisted
+    Devious' second Plot): "Deploy up to N troops from your garrison to the
+    Conflict" is all the option does.
+    """
+
+    if action.action_id != "play_intrigue":
+        return False
+    instance_id = _argument(action, "card_id")
+    option = _argument(action, "option")
+    if not isinstance(instance_id, str) or not isinstance(option, int):
+        return False
+    try:
+        options = intrigue_card_for_instance(instance_id).options
+    except ValueError:
+        return False
+    if not 0 <= option < len(options):
+        return False
+    rewards = tuple(
+        reward for section in options[option].sections for reward in section.rewards
+    )
+    return bool(rewards) and all(
+        isinstance(reward, DeployFromGarrison) for reward in rewards
+    )
+
+
+def _garrison_units(view: PlayerView) -> int:
+    """Troops and Commanders in the observer's garrison."""
+
+    me = _own_seat(view)
+    return me.troops_garrison + me.commanders_garrison
+
+
+def turn_end_as_decline(
+    legal_actions: tuple[DomainAction, ...],
+    scored: tuple[float, ...],
+) -> tuple[float, ...]:
+    """``scored`` with the turn's end ranked as a refusal beside an optional
+    effect of the Agent turn (``_OPTIONAL_AGENT_TURN_ROWS``) or the Reveal
+    (``_OPTIONAL_REVEAL_ROWS``), and the Reveal's choices taken first.
+
+    Since the user rulings of 2026-10-14 (OQ-095 (2) and its (7) addition)
+    the press of ``finish_agent_turn`` or ``finish_reveal`` is how the seat
+    leaves such an effect unused, where before it chose the effect's
+    refusal; ranking the end there keeps every choice the agent made against
+    that refusal. A Reveal choice's row scoring below its own refusal was
+    never taken and is ranked last, and the Reveal's end ranks as the lowest
+    refusal of the rows still worth taking, never above its own score.
+
+    Before codec v147 every Reveal choice was a frame of its own above the
+    Reveal frame, so the agent answered each one before any purchase, gain
+    or Plot. Now the choices are rows of the Reveal frame beside those, and
+    the rows it would take rank above every other row, in their own order:
+    without that it bought first with the Persuasion a choice had not added
+    yet (Desert Power's 2, In High Places' 3, Command Center's 2; 88 of 1,115
+    choice Reveals in a 200-record replay of the v145 corpus, 2026-10-14).
+    """
+
+    if any(action.action_id in _OPTIONAL_AGENT_TURN_ROWS for action in legal_actions):
+        scored = tuple(
+            _DECLINE_SCORE if action.action_id == "finish_agent_turn" else score
+            for action, score in zip(legal_actions, scored, strict=True)
+        )
+    refusals = tuple(
+        _OPTIONAL_REVEAL_ROWS.get(action.action_id) for action in legal_actions
+    )
+    left = tuple(
+        refusal is not None and score <= refusal
+        for refusal, score in zip(refusals, scored, strict=True)
+    )
+    if any(refusal is not None for refusal in refusals):
+        floor = min(scored) - 1.0
+        worth = [
+            refusal
+            for refusal, unused in zip(refusals, left, strict=True)
+            if refusal is not None and not unused
+        ]
+        end = min(worth, default=None)
+        scored = tuple(
+            floor
+            if unused
+            else min(score, end)
+            if end is not None and action.action_id == "finish_reveal"
+            else score
+            for action, unused, score in zip(
+                legal_actions, left, scored, strict=True
+            )
+        )
+    taken = tuple(
+        action.action_id in REVEAL_CHOICE_ACTION_IDS and not unused
+        for action, unused in zip(legal_actions, left, strict=True)
+    )
+    others = [score for score, choice in zip(scored, taken, strict=True) if not choice]
+    if not any(taken) or not others:
+        return scored
+    lift = max(others) - min(
+        score for score, choice in zip(scored, taken, strict=True) if choice
+    ) + 1.0
+    if lift <= 0:
+        return scored
+    return tuple(
+        score + lift if choice else score
+        for score, choice in zip(scored, taken, strict=True)
+    )
+
+
+def demote_pointless_actions(
+    observation: PlayerView,
+    legal_actions: tuple[DomainAction, ...],
+    scored: tuple[float, ...],
+) -> tuple[float, ...]:
+    """Rank last the legal actions that only waste the seat's turn or card.
+
+    Applied after ``score_action`` and before the tie set is fixed, so each
+    demoted action falls below every other offer; the scratch variants under
+    ``scripts/ab`` call it too, so they keep tracking this agent. The turn's
+    end beside an optional Agent-turn effect is ranked as a refusal first
+    (``turn_end_as_decline``): ending the turn there wastes that effect.
+    """
+
+    scored = turn_end_as_decline(legal_actions, scored)
+    if any(action.action_id == "pass_combat_intrigue" for action in legal_actions):
+        # A specimen may be returned at Combat Intrigue priority too
+        # (OQ-050), but nothing then refills from the supply, so it only
+        # empties the tanks: passing ranks above it.
+        scored = tuple(
+            min(scored) - 1.0 if action.action_id == "return_specimen" else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id == "play_intrigue" for action in legal_actions
+    ) and _garrison_units(observation) < 1:
+        # "Deploy up to N troops from your garrison" may be played with
+        # nothing to deploy since codec v137 and then only deploys zero,
+        # so the card is spent for nothing. Before, the engine withheld
+        # the line without a deployable garrison unit; with an empty
+        # garrison it ranks last again. The view does not show the
+        # turn's other deployment limits (Harkonnen Advisor's troop,
+        # OQ-038; Emperor of the Known Universe [Main p. 17]).
+        scored = tuple(
+            min(scored) - 1.0 if _deploys_only_from_garrison(action) else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    if any(
+        action.action_id in _ZERO_COUNT_UNIT_MOVES
+        and _argument(action, "count") == 0
+        for action in legal_actions
+    ):
+        # A zero count moves nothing and was not offered before codec
+        # v137: it ranks below every count that moves a unit, so the
+        # counts of one and more keep the order (and the draw) they had.
+        scored = tuple(
+            min(scored) - 1.0
+            if action.action_id in _ZERO_COUNT_UNIT_MOVES
+            and _argument(action, "count") == 0
+            else s
+            for action, s in zip(legal_actions, scored, strict=True)
+        )
+    return scored
+
+
+@dataclass(slots=True)
+class HeuristicAgent:
+    """Pick a highest-scoring legal action, breaking ties with a seeded RNG."""
+
+    seed: int
+    # A fixed board space ranking, or None for ``UPRISING_SPACE_BONUSES``. The
+    # registry pins the earlier tables on variants so an A/B against them is
+    # reproducible from the committed tree.
+    space_bonuses: Mapping[str, float] | None = None
+    # How the Reveal box a placement forfeits is priced, or None to leave every
+    # card the same price. The registry pins None on one variant for the same
+    # reason.
+    spent_card_value: RevealValue | None = SPENT_CARD_VALUE
+    # A fixed Tech tile ranking, or None for the committed ``_TECH_BONUSES``.
+    tech_bonuses: Mapping[str, float] | None = None
+    # Which within-family tie-breaks narrow a tie set before the draw, or
+    # None for the uniform draw the registry pins on one variant.
+    tie_breaks: TieBreaks | None = TIE_BREAKS
+    _rng: random.Random = field(init=False, repr=False)
+    _placements: PlacementMemory = field(
+        init=False, repr=False, default_factory=PlacementMemory
+    )
+
+    def __post_init__(self) -> None:
+        if self.seed < 0:
+            raise ValueError("agent seed must not be negative")
+        self._rng = random.Random(self.seed)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """``choose_action``, with an Agent-turn step (stage B1) scored as the
+        placements it stands for, one decision per placement
+        (``agents.agent_turn_steps``): the state only supplies the seat's
+        own placements. A Conflict reward's icons are answered in the
+        engine's older order (``agents.engine_order``)."""
+
+        legal_actions = without_window_specimen_return(
+            legal_actions, observation.decision_kind
+        )
+        scripted = engine_order_answer(state, observation.player, legal_actions)
+        if scripted is not None:
+            return scripted
+        return self._placements.choose(
+            state,
+            observation.player,
+            legal_actions,
+            lambda actions: self.choose_action(observation, actions),
+        )
+
+    def choose_action(
+        self,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """Return one top-ranked action without inspecting hidden state."""
+
+        if not legal_actions:
+            raise ValueError("a heuristic agent requires at least one legal action")
+        legal_actions = without_window_specimen_return(
+            legal_actions, observation.decision_kind
+        )
+        if any(action.actor != observation.player for action in legal_actions):
+            raise ValueError("every legal action must belong to the observing player")
+        sealed = _sealed_bid(observation, legal_actions)
+        if sealed is not None:
+            return sealed
+        if legal_actions == (
+            DomainAction(action_id=SCOUTS_COLLECT, actor=observation.player),
+        ):
+            # A Scouts line's collect click (OQ-164) is its one action: taken
+            # without a draw, so the seat's random stream, and every later
+            # choice, is what it was before the click existed.
+            return legal_actions[0]
+        bonuses = (
+            UPRISING_SPACE_BONUSES
+            if self.space_bonuses is None
+            else self.space_bonuses
+        )
+        tech_bonuses = (
+            _TECH_BONUSES if self.tech_bonuses is None else self.tech_bonuses
+        )
+        scored = tuple(
+            score_action(action, space_bonuses=bonuses, tech_bonuses=tech_bonuses)
+            for action in legal_actions
+        )
+        scored = demote_pointless_actions(observation, legal_actions, scored)
+        best = max(scored)
+        top = tuple(
+            action
+            for action, score in zip(legal_actions, scored, strict=True)
+            if score == best
+        )
+        if len(top) > 1 and self.tie_breaks is not None:
+            top = narrow_family_tie(top, observation, self.tie_breaks)
+        chosen = self._rng.choice(top)
+        # The draw settles the board space; the card carrying the Agent there
+        # is then the cheapest Reveal box among the placements that reach it.
+        return cheapest_card_for_the_same_space(chosen, top, self.spent_card_value)

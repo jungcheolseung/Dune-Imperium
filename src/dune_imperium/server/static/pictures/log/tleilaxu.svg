@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="106" height="106" viewBox="0 0 100 100">
+  <!-- Log: Tleilaxu, a gold beetle on a black diamond. Drawn by hand for the public build. -->
+  <defs><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd76a"/><stop offset="1" stop-color="#c98612"/></linearGradient></defs>
+  <polygon points="50,4 96,50 50,96 4,50" fill="#141414" stroke="#d9a62a" stroke-width="2.6" stroke-linejoin="round"/><ellipse cx="50" cy="56" rx="20" ry="25" fill="url(#gold)" stroke="#5a3a00" stroke-width="2"/><path d="M50,34 V80" stroke="#5a3a00" stroke-width="2"/><ellipse cx="50" cy="30" rx="11" ry="8" fill="url(#gold)" stroke="#5a3a00" stroke-width="2"/><path d="M30,44 L20,36 M30,58 L18,58 M32,72 L22,80 M70,44 L80,36 M70,58 L82,58 M68,72 L78,80 M44,22 L38,14 M56,22 L62,14" stroke="#e2b23a" stroke-width="3" stroke-linecap="round"/>
+</svg>

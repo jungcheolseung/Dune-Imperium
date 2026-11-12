@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dune: Imperium admin</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <header>
+    <h1 data-i18n="admin.title">서버 관리</h1>
+    <a id="back-link" href="/" data-i18n="admin.back" hidden>게임 화면으로</a>
+    <span class="spacer"></span>
+    <span id="last-refresh" hidden></span>
+    <button type="button" id="refresh" data-i18n="admin.refresh" hidden>새로고침</button>
+    <button type="button" id="language-toggle" lang="en">English</button>
+  </header>
+  <main id="admin">
+    <p id="status" role="status" hidden></p>
+    <section id="signed-out" hidden>
+      <p id="signed-out-message" data-i18n="admin.not_signed_in">이 브라우저는 호스트로 로그인되어 있지 않습니다.</p>
+      <p id="signed-out-how"></p>
+    </section>
+    <div id="panels" hidden>
+      <section>
+        <h2 data-i18n="admin.server_heading">서버</h2>
+        <dl id="server-list" class="facts"></dl>
+      </section>
+      <section>
+        <h2 data-i18n="admin.machine_heading">기기</h2>
+        <dl id="machine-list" class="facts"></dl>
+      </section>
+      <section>
+        <h2 data-i18n="admin.games_heading">진행 중인 게임</h2>
+        <div id="games"></div>
+      </section>
+      <section>
+        <h2 data-i18n="admin.saves_heading">저장본</h2>
+        <div id="saves"></div>
+      </section>
+      <section>
+        <h2 data-i18n="admin.log_heading">최근 로그</h2>
+        <div id="log"></div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/ui_text.js"></script>
+  <script src="/static/errors_ko.js"></script>
+  <script src="/static/admin.js"></script>
+</body>
+</html>

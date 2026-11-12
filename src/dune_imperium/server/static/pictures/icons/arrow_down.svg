@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="54" height="61" viewBox="0 0 89 100">
+  <!-- Arrow down: a white block arrow. Drawn by hand for the public build. -->
+  <polygon points="30,6 59,6 59,48 84,48 44.5,94 5,48 30,48" fill="#fff" stroke="#2a2a2a" stroke-width="3" stroke-linejoin="round"/>
+</svg>

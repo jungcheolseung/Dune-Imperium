@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="html.page_title">듄: 임페리움</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/space_text.css">
+  <link rel="stylesheet" href="/static/log_icons.css">
+  <link rel="stylesheet" href="/static/piles.css">
+  <link rel="stylesheet" href="/static/scouts_stage.css">
+  <link rel="stylesheet" href="/static/panel_toggles.css">
+  <link rel="stylesheet" href="/static/phone.css">
+  <link rel="stylesheet" href="/static/motion.css">
+</head>
+<body>
+  <header>
+    <h1 data-i18n="html.page_title">듄: 임페리움</h1>
+    <div id="header-status"></div>
+    <span id="game-clock" data-clock="game" role="timer" hidden></span>
+    <span id="connection-note" role="status" hidden data-i18n="html.connection_note">서버 연결 끊김 — 다시 연결하는 중…</span>
+    <!-- Show or hide the table's panels, 700px and wider (layout.js); folded
+         into one button below 1200px. -->
+    <div id="panel-toggles">
+      <button id="panel-toggles-open" type="button" aria-expanded="false"
+        aria-controls="panel-toggles-list" data-i18n="html.panel_toggles_open">보기 ▾</button>
+      <div id="panel-toggles-list" role="group" aria-label="패널"
+        data-i18n-attr="aria-label=html.panel_toggles_aria">
+        <button type="button" data-panel="hand" aria-pressed="true" data-i18n="html.panel_hand">핸드</button>
+        <button type="button" data-panel="seats" aria-pressed="true" data-i18n="html.panel_seats">플레이어</button>
+        <button type="button" data-panel="market" aria-pressed="true" data-i18n="html.panel_market">공용 카드</button>
+        <button type="button" data-panel="log" aria-pressed="true" data-i18n="html.panel_log">기록</button>
+      </div>
+    </div>
+    <button id="open-help" title="도움말 (?)" aria-keyshortcuts="Shift+Slash" data-i18n="html.open_help" data-i18n-attr="title=html.open_help_title">도움말</button>
+    <button id="language-toggle" lang="en">English</button>
+    <button id="open-lobby" hidden data-i18n="html.open_lobby">플레이어</button>
+    <select id="ai-pace" hidden data-i18n-attr="title=html.ai_pace_title;aria-label=html.ai_pace_title" title="AI 진행 속도" aria-label="AI 진행 속도"></select>
+    <button id="save-game" hidden data-i18n="html.save_game">저장</button>
+    <button id="leave-game" hidden data-i18n="html.leave_game">나가기</button>
+    <!-- Below 600px the header buttons fold into this menu (phone.js). -->
+    <button id="phone-menu" type="button" aria-expanded="false" aria-label="메뉴"
+      data-i18n-attr="aria-label=html.phone_menu">☰</button>
+  </header>
+
+  <main>
+    <section id="setup-screen" class="panel">
+      <div class="setup-intro">
+        <h2 data-i18n="html.setup_title">새 게임</h2>
+        <p data-i18n="html.setup_intro">플레이어와 규칙을 고르고 아라키스로 떠나세요.</p>
+        <!-- Every card, tile and Leader, searchable (gallery.js). -->
+        <button type="button" id="open-encyclopedia" data-i18n="html.open_encyclopedia">카드 백과 ▶</button>
+      </div>
+      <form id="setup-form">
+        <fieldset class="setup-seats">
+          <legend data-i18n="html.seat_assignment_legend">플레이어 배정</legend>
+          <div id="seat-selects"></div>
+          <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용)</span>
+            <input type="text" id="opt-checkpoint"></label>
+          <p id="opt-search-note" class="muted" hidden data-i18n="html.search_ai_note">탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.</p>
+          <label id="opt-seed-row"><span data-i18n="html.opt_seed_label">시드 (빈칸 = 무작위)</span>
+            <input type="number" id="opt-seed" min="0" placeholder="무작위" data-i18n-attr="placeholder=html.opt_seed_placeholder"></label>
+          <label id="opt-ai-pace-row"><span data-i18n="html.opt_ai_pace_label">AI 진행 속도</span>
+            <select id="opt-ai-pace"></select></label>
+        </fieldset>
+        <fieldset class="setup-rules">
+          <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
+          <label id="opt-base-game-row"><span data-i18n="html.opt_base_game_label">기본 판</span>
+            <select id="opt-base-game">
+              <option value="uprising" data-i18n="html.opt_base_game_uprising">듄 임페리움: 봉기</option>
+              <option value="imperium" data-i18n="html.opt_base_game_imperium">듄: 임페리움 (원판)</option>
+            </select></label>
+          <p id="opt-base-game-note" class="muted" hidden data-i18n="html.base_game_imperium_note">원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)·익스의 부상 확장·불멸 확장(11점을 향해 포함)·혈통 확장·아라킨 스카웃과, 익스의 부상과 함께일 때 에픽 게임 모드만 함께 씁니다. 원판의 혈통은 원판에 맞지 않는 카드와 지도자를 빼고(혈통 지도자 6종), 기술 모듈은 기술 타일 12장으로 쓰며, 익스의 부상과 함께면 익스 대사관 없이 익스 게임판에서 두 확장의 기술 타일 30장을 씁니다. 아라킨 스카웃은 앱의 원판 일정(관측 초소를 쓰지 않는 항목)을 쓰고, 초암 모듈은 원판과 함께 쓰지 않습니다. 원판 판에는 앱 AI·휴리스틱 AI·랜덤 AI와, 서버에 원판용 망이 있으면 탐색 AI가 앉습니다(롤아웃 AI는 아직 원판을 두지 않습니다).</p>
+          <div id="rule-options">
+          <label><input type="checkbox" id="opt-first-player-seat-zero" checked>
+            <span data-i18n="html.opt_first_player_seat_zero">플레이어1이 시작 플레이어 (사막쥐 목적 카드는 플레이어1에게, 나머지 목적 카드는 무작위; 공식 규칙 아님)</span></label>
+          <label><input type="checkbox" id="opt-leader-draft" checked>
+            <span data-i18n="html.opt_leader_draft">지도자 6종 공개 드래프트 (공식 규칙 아님)</span></label>
+          <label><input type="checkbox" id="opt-choam" checked>
+            <span data-i18n="html.opt_choam">초암 모듈</span></label>
+          <label><input type="checkbox" id="opt-promo" checked>
+            <span id="opt-promo-uprising" data-i18n="html.opt_promo">프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터, 원판 카드를 켜면 원판 3장 Duncan, Loyal Blade · Jessica of Arrakis · Thumper도)</span>
+            <span id="opt-promo-imperium" hidden data-i18n="html.opt_promo_imperium">프로모 카드 (원판 3장: Duncan, Loyal Blade · Jessica of Arrakis · Thumper; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터도)</span></label>
+          <label><input type="checkbox" id="opt-imperium-cards">
+            <span data-i18n="html.opt_imperium_cards">원판 카드 (봉기에서만: 듄: 임페리움 원판의 임페리움 카드·책략 카드를 Calculated Hire만 빼고 모두, 지도자 8종도 함께 섞음)</span></label>
+          <label><input type="checkbox" id="opt-rise-of-ix">
+            <span data-i18n="html.opt_rise_of_ix">익스의 부상 확장 (드레드노트·기술 타일·운송 트랙·새 카드·지도자 6종)</span></label>
+          <p id="opt-uprising-ix-note" class="muted" hidden data-i18n="html.uprising_ix_note">봉기와 익스의 부상: 초암 게임판 덮개를 반만 펴 게임판 오른쪽 위(회의장·지원자 모집·운송·계약 수락과 그 관측소 둘)를 덮고, 익스 게임판을 옆에 둡니다. 덮개와 익스 게임판에는 관측소가 하나씩 있는 것으로 칩니다. 익스의 교전 카드는 넣지 않습니다. 초암 모듈과 함께면 각자 익스 계약 2장을 받아 시작 계약 하나를 몰래 고르고(모두 고르면 공개), 아라킨 스카웃과 함께면 지원 제공 임무 대신 익스 임무 셋(비자금·무장 경호·밀항자)을 씁니다.</p>
+          <label><input type="checkbox" id="opt-bloodlines" checked>
+            <span data-i18n="html.opt_bloodlines">혈통 확장 (사다우카 지휘관·새 카드·지도자 8종)</span></label>
+          <label><input type="checkbox" id="opt-tech" checked>
+            <span data-i18n="html.opt_tech">기술 모듈 (혈통 필요: 익스 대사관 판·기술 타일 18장·익스의 코타 오닥스)</span></label>
+          <div id="opt-ix-parts" class="option-choice" role="radiogroup" aria-labelledby="opt-ix-parts-title" hidden>
+            <p id="opt-ix-parts-title" data-i18n="html.opt_ix_parts">익스의 부상과 기술 모듈을 함께 쓸 때 익스를 얼마나 쓸까요?</p>
+            <label><input type="radio" name="opt-ix-parts" id="opt-ix-parts-all" value="all" checked>
+              <span data-i18n="html.opt_ix_parts_all">익스 전부 (공식)</span></label>
+            <label><input type="radio" name="opt-ix-parts" id="opt-ix-parts-leaders" value="leaders_tech">
+              <span data-i18n="html.opt_ix_parts_leaders">익스 지도자와 기술 타일만 (컴패니언 앱의 조합: 롬버 버니우스 대공·헌드로 모리타니 자작을 뺀 지도자 4종, 기술 타일 16장을 익스 대사관 판에)</span></label>
+            <label><input type="radio" name="opt-ix-parts" id="opt-ix-parts-tech" value="tech">
+              <span data-i18n="html.opt_ix_parts_tech">익스 기술 타일만 (공식: Detonation Devices·Troop Transports를 뺀 16장을 익스 대사관 판에; 아라킨 스카웃과는 함께 쓰지 않음)</span></label>
+          </div>
+          <label><input type="checkbox" id="opt-immortality" checked>
+            <span data-i18n="html.opt_immortality">불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)</span></label>
+          <label><input type="checkbox" id="opt-go-to-11" checked>
+            <span data-i18n="html.opt_go_to_11">11점을 향해 (불멸 필요: 모두 승점 0에서 시작, 종료 점수는 그대로)</span></label>
+          <label><input type="checkbox" id="opt-epic-game" checked>
+            <span data-i18n="html.opt_epic_game">에픽 게임 모드 (12점까지 · 교전 I 없이 II·III 5장씩 · 주둔지 병력 5·책략 카드 1장으로 시작 · 사막 행성 듄 1장 대신 스파이스를 지배하라)</span></label>
+          <label><input type="checkbox" id="opt-scouts">
+            <span data-i18n="html.opt_scouts">아라킨 스카웃 (컴패니언 앱 모드: 소위원회·임무·이벤트·경매·판매, 공식 규칙서 없음)</span></label>
+          </div>
+        </fieldset>
+        <div class="setup-start">
+          <p id="setup-summary" role="status"></p>
+          <!-- Disabled until app.js has its submit handler on the form: a press
+               before that submitted the form itself and reloaded the page. -->
+          <button type="submit" id="create-game" data-i18n="html.create_game" disabled>게임 시작</button>
+        </div>
+      </form>
+      <p id="open-admin-wrap" class="admin-link"><a id="open-admin" href="/admin" data-i18n="html.open_admin" hidden>서버 관리</a></p>
+      <div id="game-list-wrap" hidden>
+        <h2 data-i18n="html.game_list_title">진행 중인 게임</h2>
+        <ul id="game-list"></ul>
+      </div>
+      <div id="save-list-wrap" hidden>
+        <h2 data-i18n="html.save_list_title">저장된 게임</h2>
+        <ul id="save-list"></ul>
+      </div>
+      <p id="setup-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section id="landing-screen" class="panel" hidden>
+      <h2 data-i18n="html.landing_title">초대받은 사람만 들어올 수 있는 서버입니다</h2>
+      <p data-i18n="html.landing_instructions">호스트가 보낸 방 링크로 접속하세요.</p>
+      <p class="muted" data-i18n="html.landing_host_note">호스트라면 서버를 띄운 콘솔에 찍힌 관리자 링크를 여세요.</p>
+      <p id="landing-resume" hidden>
+        <button type="button" id="landing-resume-button" data-i18n="html.landing_resume_button">마지막으로 있던 방으로 이어 하기 ▶</button></p>
+      <p id="landing-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section id="lobby-screen" class="panel" hidden>
+      <h2 id="lobby-title" data-i18n="html.lobby_title">플레이어 고르기</h2>
+      <p id="lobby-status" class="muted"></p>
+      <label><span data-i18n="html.lobby_name_label">이름 (다른 플레이어에게 보입니다)</span>
+        <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>
+      <ul id="lobby-seats"></ul>
+      <p id="lobby-error" class="error" role="alert" hidden></p>
+      <p id="lobby-note" class="muted" hidden></p>
+      <button id="lobby-enter" hidden data-i18n="html.lobby_enter">게임 화면으로 ▶</button>
+      <div id="lobby-host" hidden></div>
+    </section>
+
+    <section id="game-screen" data-phone-view="board" hidden>
+      <div id="table">
+        <aside id="seats" aria-label="플레이어" data-i18n-attr="aria-label=html.seats_aria"></aside>
+        <!-- Column handles (layout.js): positioned over the gaps, outside
+             the grid's placement. -->
+        <div id="split-seats" class="col-splitter" data-column="seats" role="separator"
+          aria-orientation="vertical" aria-controls="seats" tabindex="0"
+          aria-label="플레이어 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+          data-i18n-attr="aria-label=html.split_seats_aria;title=html.split_title"></div>
+        <div id="center">
+          <section id="board" aria-label="게임판" data-i18n-attr="aria-label=html.board_aria"></section>
+          <!-- Below 600px: the board at twice the screen's width, to pan
+               with a finger (phone.js); wider, not displayed. -->
+          <button id="phone-board-zoom" type="button" aria-pressed="false" aria-controls="board"
+            data-i18n="html.phone_board_zoom">확대</button>
+          <!-- The revealed Arrakeen Scouts item over the board (scouts_stage.js):
+               the board's own grid cell, the board square inside it. Folded,
+               it is hidden whole; the Scouts panel's button brings it back. -->
+          <div id="scouts-stage" hidden>
+            <div class="scouts-stage-frame">
+              <article id="scouts-stage-card" class="scouts-stage-card" role="region" tabindex="-1">
+                <div class="scouts-stage-art"></div>
+                <div class="scouts-stage-panel">
+                  <div class="scouts-stage-lines"></div>
+                </div>
+                <div class="scouts-stage-header">
+                  <span class="scouts-stage-bar upper" aria-hidden="true"></span>
+                  <span class="scouts-stage-bar lower" aria-hidden="true"></span>
+                  <div class="scouts-stage-top">
+                    <div class="scouts-stage-kind"></div>
+                    <!-- This round's items, two or more: previous / next and a counter. -->
+                    <div class="scouts-stage-pager" hidden>
+                      <button type="button" class="scouts-stage-prev" aria-controls="scouts-stage-card"></button>
+                      <span class="scouts-stage-count"></span>
+                      <button type="button" class="scouts-stage-next" aria-controls="scouts-stage-card"></button>
+                    </div>
+                  </div>
+                  <h2 class="scouts-stage-name"></h2>
+                </div>
+                <button type="button" class="scouts-stage-hide" aria-controls="scouts-stage-card" aria-expanded="true"></button>
+              </article>
+            </div>
+          </div>
+          <section id="market" aria-label="공용 카드" data-i18n-attr="aria-label=html.market_aria"></section>
+          <section id="private-zone" aria-label="내 핸드" data-i18n-attr="aria-label=html.private_zone_aria"></section>
+          <div id="split-market" class="col-splitter" data-column="market" role="separator"
+            aria-orientation="vertical" aria-controls="market" tabindex="0"
+            aria-label="공용 카드 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+            data-i18n-attr="aria-label=html.split_market_aria;title=html.split_title"></div>
+        </div>
+        <div id="split-actions" class="col-splitter" data-column="actions" role="separator"
+          aria-orientation="vertical" aria-controls="side" tabindex="0"
+          aria-label="행동 열 너비" title="열 너비 조절 (두 번 클릭: 기본값)"
+          data-i18n-attr="aria-label=html.split_actions_aria;title=html.split_title"></div>
+        <aside id="side">
+          <div id="side-main">
+            <details id="host-panel" class="panel" hidden>
+              <summary data-i18n="html.host_panel_summary">호스트 · 방 링크와 플레이어</summary>
+              <div id="host-panel-body"></div>
+            </details>
+            <section id="decision-banner" class="panel">
+              <div id="decision-info"></div>
+              <div id="actions"></div>
+            </section>
+            <section id="review-bar" class="panel" hidden>
+              <div class="review-controls">
+                <label><span data-i18n="html.review_seat_label">검토 플레이어</span> <select id="review-seat"></select></label>
+                <button id="review-first" aria-label="처음으로" title="처음으로" data-i18n-attr="aria-label=html.review_first;title=html.review_first">⏮</button>
+                <button id="review-prev" aria-label="이전 수" title="이전 수" data-i18n-attr="aria-label=html.review_prev;title=html.review_prev">◀</button>
+                <input type="range" id="review-slider" min="0" max="0" value="0" aria-label="검토 위치" data-i18n-attr="aria-label=html.review_slider_aria">
+                <button id="review-next" aria-label="다음 수" title="다음 수" data-i18n-attr="aria-label=html.review_next;title=html.review_next">▶</button>
+                <button id="review-last" aria-label="끝으로" title="끝으로" data-i18n-attr="aria-label=html.review_last;title=html.review_last">⏭</button>
+                <button id="review-prev-own"></button>
+                <button id="review-next-own"></button>
+                <button id="review-exit" data-i18n="html.review_exit">검토 종료</button>
+              </div>
+              <div class="review-controls review-playback">
+                <button id="review-play"></button>
+                <label><span data-i18n="html.review_unit_label">단위</span>
+                  <select id="review-unit">
+                    <option value="turn" selected data-i18n="html.review_unit_turn">한 차례씩</option>
+                    <option value="step" data-i18n="html.review_unit_step">한 수씩</option>
+                  </select>
+                </label>
+                <label><span data-i18n="html.review_interval_label">간격</span>
+                  <select id="review-interval">
+                    <option value="250" data-i18n="html.review_interval_025">0.25초</option>
+                    <option value="500" data-i18n="html.review_interval_05">0.5초</option>
+                    <option value="1000" selected data-i18n="html.review_interval_1">1초</option>
+                    <option value="2000" data-i18n="html.review_interval_2">2초</option>
+                    <option value="4000" data-i18n="html.review_interval_4">4초</option>
+                  </select>
+                </label>
+              </div>
+              <div id="review-status" class="meta"></div>
+              <div id="review-odds" hidden></div>
+            </section>
+            <p id="game-error" class="error" role="alert" hidden></p>
+            <p id="game-note" class="muted" hidden></p>
+            <section id="standings" class="panel" hidden></section>
+            <section id="scouts-panel" class="panel" hidden></section>
+            <section id="disclosure" class="panel" hidden></section>
+          </div>
+          <div id="side-log">
+            <section id="action-log" class="panel" hidden></section>
+          </div>
+        </aside>
+        <!-- Below 600px the table shows one of these views at a time
+             (phone.js, phone.css); wider, this bar is not displayed. -->
+        <nav id="phone-tabs" aria-label="화면" data-i18n-attr="aria-label=html.phone_tabs_aria">
+          <button type="button" data-view="board" aria-pressed="true" data-i18n="html.phone_tab_board">게임판</button>
+          <button type="button" data-view="hand" aria-pressed="false" data-i18n="html.phone_tab_hand">핸드</button>
+          <button type="button" data-view="seats" aria-pressed="false" data-i18n="html.phone_tab_seats">플레이어</button>
+          <button type="button" data-view="market" aria-pressed="false" data-i18n="html.phone_tab_market">공용 카드</button>
+          <button type="button" data-view="log" aria-pressed="false" data-i18n="html.phone_tab_log">기록</button>
+        </nav>
+      </div>
+    </section>
+  </main>
+
+  <div id="pile-viewer" class="popover pile-viewer" role="dialog" aria-labelledby="pile-viewer-title" hidden>
+    <div class="pile-viewer-head">
+      <div id="pile-viewer-title" class="popover-title"></div>
+      <button type="button" id="pile-viewer-close" class="pile-viewer-close" aria-label="닫기" title="닫기" data-i18n-attr="aria-label=common.close;title=common.close">×</button>
+    </div>
+    <div id="pile-viewer-body" class="pile-viewer-body"></div>
+  </div>
+  <div id="card-popover" class="popover" hidden></div>
+  <div id="play-effects" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="stat-floats" aria-hidden="true"></div>
+  <!-- Pieces moving between places: bought cards, the Conflict card, the
+       Alliance token, the round's cleanup (motion.js). -->
+  <div id="fx-layer" aria-hidden="true"></div>
+  <div id="phase-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="help" hidden>
+    <div id="help-body" role="dialog" aria-modal="true" aria-labelledby="help-title"></div>
+  </div>
+  <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+  <div id="bt-zoom" hidden>
+    <div id="bt-zoom-body" role="dialog" aria-modal="true" aria-label="베네 틀레이락스 게임판" data-i18n-attr="aria-label=html.bt_zoom_label"></div>
+  </div>
+
+  <!-- Classic scripts sharing one global scope, so the order is the file's
+       old top-to-bottom order and must stay that way: a top-level const is
+       in the temporal dead zone until its own script has run. Only app.js
+       runs anything at load (init()), so it is last. -->
+  <script src="/static/labels.js"></script>
+  <script src="/static/labels_en.js"></script>
+  <script src="/static/prompts_ko.js"></script>
+  <script src="/static/errors_ko.js"></script>
+  <script src="/static/ui_text.js"></script>
+  <script src="/static/core.js"></script>
+  <script src="/static/space_text.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/screens.js"></script>
+  <script src="/static/sounds.js"></script>
+  <script src="/static/session.js"></script>
+  <script src="/static/review.js"></script>
+  <script src="/static/render.js"></script>
+  <script src="/static/card_faces.js"></script>
+  <script src="/static/log_icons.js"></script>
+  <script src="/static/turn.js"></script>
+  <script src="/static/board.js"></script>
+  <script src="/static/panels.js"></script>
+  <script src="/static/piles.js"></script>
+  <script src="/static/scouts_stage.js"></script>
+  <script src="/static/effects.js"></script>
+  <script src="/static/motion.js"></script>
+  <script src="/static/help.js"></script>
+  <script src="/static/clock.js"></script>
+  <script src="/static/layout.js"></script>
+  <script src="/static/phone.js"></script>
+  <script src="/static/gallery.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

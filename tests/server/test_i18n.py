@@ -1,0 +1,1123 @@
+"""Guard: the client speaks one language at a time (사용자 결정 2026-09-20).
+
+The client is dependency-free vanilla JS with no JS test runner, so the
+language tables are checked from Python, the way ``test_terms.py`` checks the
+rule terms:
+
+- no Korean string literal is left in ``static/*.js`` outside the tables that
+  hold Korean on purpose (a literal elsewhere would stay Korean in English);
+- every ``t("key")`` / ``tNode("key")`` names a ``UI_TEXT`` entry with both a
+  Korean and an English text, the English holds no Hangul, and every entry is
+  used;
+- ``LABELS_EN`` mirrors each Korean label table key for key, keeps each
+  value's ``{term}`` tokens and holds no Hangul;
+- ``index.html``'s and ``admin.html``'s ``data-i18n`` keys exist and their inline
+  Korean is the table's Korean;
+- every prompt the engine shows a person has a Korean rendering.
+"""
+
+import ast
+import json
+import re
+from collections.abc import Iterator
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+
+from dune_imperium.server.catalog import build_catalog
+
+_REPO = Path(__file__).resolve().parents[2]
+_STATIC = _REPO / "src" / "dune_imperium" / "server" / "static"
+_RULES = _REPO / "src" / "dune_imperium" / "rules"
+_HANGUL = re.compile(r"[가-힣]")
+_TERM = re.compile(r"\{([a-z_]+)(?::\d+)?\}")
+_HOLE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
+
+# Tables that hold Korean on purpose, by the name of their `const`.
+_KOREAN_TABLES = re.compile(
+    r"^(?:[A-Z_]*LABELS|TERMS|UI_TEXT|PROMPT_KO|PROMPT_KO_PATTERNS|SEAT_KINDS"
+    r"|AGENT_ICON_GROUPS|SERVER_ERROR_KO|SERVER_ERROR_KO_PATTERNS)$"
+)
+# The toggle names the other language in that language (i18n.js).
+_ALLOWED_LITERALS = {"i18n.js": {"한국어"}, "admin.js": {"한국어"}}
+
+
+def _literals(source: str) -> Iterator[tuple[int, str]]:
+    """(offset, text) of every string or template literal, comments skipped.
+
+    A small tokenizer, not a parser: enough for this client, which has regex
+    literals only in a few tables. A regex is recognised after a punctuator
+    that cannot end an expression.
+    """
+    index, size, previous = 0, len(source), ""
+    while index < size:
+        char = source[index]
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            index = size if end < 0 else end
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            index = size if end < 0 else end + 2
+            continue
+        if char in "\"'`":
+            end, depth = index + 1, 0
+            while end < size:
+                if source[end] == "\\":
+                    end += 2
+                    continue
+                if char == "`" and source.startswith("${", end):
+                    depth += 1
+                    end += 2
+                    continue
+                if depth and source[end] == "}":
+                    depth -= 1
+                elif not depth and source[end] == char:
+                    break
+                end += 1
+            yield index, source[index + 1 : end]
+            index, previous = end + 1, "x"
+            continue
+        if char == "/" and previous in ("", "(", ",", "=", ":", "[", "!", "&", "|", "?",
+                                        "{", "}", ";", "\n"):
+            end, in_class = index + 1, False
+            while end < size and (source[end] != "/" or in_class):
+                if source[end] == "\\":
+                    end += 2
+                    continue
+                if source[end] == "[":
+                    in_class = True
+                elif source[end] == "]":
+                    in_class = False
+                elif source[end] == "\n":
+                    break
+                end += 1
+            index, previous = end + 1, "x"
+            continue
+        if not char.isspace():
+            previous = char if char in "(,=:[!&|?{};" else "x"
+        elif char == "\n" and previous in ("{", "}", ";"):
+            previous = "\n"
+        index += 1
+
+
+def _table_spans(source: str) -> list[tuple[int, int, str]]:
+    spans = []
+    for match in re.finditer(r"^const ([A-Z_]+) = [\[{]", source, re.MULTILINE):
+        opener = source[match.end() - 1]
+        closer = "]" if opener == "[" else "}"
+        end = source.find(f"\n{closer};", match.end())
+        spans.append((match.start(), end if end > 0 else len(source), match.group(1)))
+    return spans
+
+
+def _json_const(name: str, filename: str) -> Any:
+    source = (_STATIC / filename).read_text()
+    match = re.search(rf"^const {name} = (.*?);\n", source, re.MULTILINE | re.DOTALL)
+    assert match, f"{name} not found in {filename}"
+    return json.loads(match.group(1))
+
+
+def _ui_text() -> dict[str, dict[str, str]]:
+    table: dict[str, dict[str, str]] = _json_const("UI_TEXT", "ui_text.js")
+    return table
+
+
+def _client() -> dict[str, str]:
+    return {path.name: path.read_text() for path in sorted(_STATIC.glob("*.js"))}
+
+
+def test_no_korean_literal_outside_the_tables() -> None:
+    stray = []
+    for name, source in _client().items():
+        spans = _table_spans(source)
+        allowed = _ALLOWED_LITERALS.get(name, set())
+        for offset, text in _literals(source):
+            if not _HANGUL.search(text) or text in allowed:
+                continue
+            table = next((t for a, b, t in spans if a <= offset < b), None)
+            if table and _KOREAN_TABLES.match(table):
+                continue
+            line = source.count("\n", 0, offset) + 1
+            stray.append(f"{name}:{line}: {text[:40]!r}")
+    assert not stray, (
+        f"{len(stray)} Korean literals outside the language tables — move them "
+        "into UI_TEXT and call t()/tNode(): " + "; ".join(stray[:10])
+    )
+
+
+# UI_TEXT keys are "<file stem>.<name>" (plus common. and html.).
+_KEY_LITERAL = re.compile(
+    r"^(?:common|html|admin|app|board|card_faces|clock|core|effects|gallery|help|i18n|layout|panels|render"
+    r"|review|screens|scouts_stage|session|turn)\.[a-z0-9_]+$"
+)
+
+
+def _called_keys() -> dict[str, set[str]]:
+    """Every string literal in the client shaped like a UI_TEXT key.
+
+    Most are the first argument of t()/tNode(); some sit in a table the help
+    panel or a helper passes on (t(textKey)). Counting every literal of that
+    shape covers both, and a misspelt one shows up as a key with no entry.
+    """
+    keys: dict[str, set[str]] = {}
+    for name, source in _client().items():
+        if name == "ui_text.js":
+            continue
+        for _, text in _literals(source):
+            if _KEY_LITERAL.match(text):
+                keys.setdefault(text, set()).add(name)
+        # Calls inside a template literal's ${...}, which the tokenizer
+        # reads as part of the template.
+        for key in re.findall(r"\bt(?:Node)?\(\s*\"([^\"]+)\"", source):
+            if _KEY_LITERAL.match(key):
+                keys.setdefault(key, set()).add(name)
+    return keys
+
+
+_STATIC_PAGES = ("index.html", "admin.html")
+
+
+def _html_keys() -> set[str]:
+    keys: set[str] = set()
+    for page in _STATIC_PAGES:
+        html = (_STATIC / page).read_text()
+        keys |= set(re.findall(r'data-i18n="([^"]+)"', html))
+        for attributes in re.findall(r'data-i18n-attr="([^"]+)"', html):
+            for pair in attributes.split(";"):
+                if "=" in pair:
+                    keys.add(pair.split("=", 1)[1].strip())
+    return keys
+
+
+def test_every_text_key_resolves_in_both_languages() -> None:
+    table = _ui_text()
+    used = set(_called_keys()) | _html_keys()
+    missing = sorted(key for key in used if key not in table)
+    assert not missing, f"keys with no UI_TEXT entry: {missing[:10]}"
+    half = sorted(
+        key
+        for key, entry in table.items()
+        if not entry.get("ko") or not entry.get("en")
+    )
+    assert not half, f"UI_TEXT entries missing a language: {half[:10]}"
+
+
+def test_english_texts_hold_no_hangul_and_every_entry_is_used() -> None:
+    table = _ui_text()
+    korean = sorted(key for key, entry in table.items() if _HANGUL.search(entry["en"]))
+    assert not korean, f"English texts with Korean in them: {korean[:10]}"
+    used = set(_called_keys()) | _html_keys()
+    unused = sorted(set(table) - used)
+    assert not unused, f"UI_TEXT entries nothing uses: {unused[:10]}"
+
+
+def test_both_languages_fill_the_same_holes() -> None:
+    table = _ui_text()
+    uneven = sorted(
+        key
+        for key, entry in table.items()
+        if sorted(_HOLE.findall(entry["ko"])) != sorted(_HOLE.findall(entry["en"]))
+    )
+    assert not uneven, f"ko and en take different {{holes}}: {uneven[:10]}"
+
+
+def _korean_tables() -> dict[str, dict[str, str]]:
+    """The Korean label tables as {name: {key: text}}, read from the source."""
+    tables: dict[str, dict[str, str]] = {}
+    for filename in ("labels.js", "core.js"):
+        source = (_STATIC / filename).read_text()
+        for name in re.findall(r"^const ([A-Z_]*LABELS) = \{", source, re.MULTILINE):
+            if name == "TERMS":
+                continue
+            block = re.search(rf"^const {name} = \{{(.*?)\n\}};", source, re.S | re.M)
+            assert block
+            rows = {}
+            for match in re.finditer(
+                r'^\s{2}("?)([A-Za-z_0-9]+)\1:\s*\n?\s*"((?:[^"\\]|\\.)*)"',
+                block.group(1),
+                re.M,
+            ):
+                rows[match.group(2)] = match.group(3)
+            tables[name] = rows
+        lists = re.findall(r"^const (SEAT_KINDS|AGENT_ICON_GROUPS) = \[", source, re.M)
+        for name in lists:
+            block = re.search(rf"^const {name} = \[(.*?)\n\];", source, re.S | re.M)
+            assert block
+            pairs = re.findall(r'\["([a-z_]+)",\s*"([^"]*)"\]', block.group(1))
+            tables[name] = dict(pairs)
+    return tables
+
+
+def test_english_label_tables_mirror_the_korean() -> None:
+    english = _json_const("LABELS_EN", "labels_en.js")
+    problems = []
+    for name, korean in _korean_tables().items():
+        twin = english.get(name)
+        if twin is None:
+            problems.append(f"{name}: no English twin")
+            continue
+        if set(twin) != set(korean):
+            missing = sorted(set(korean) - set(twin))[:5]
+            extra = sorted(set(twin) - set(korean))[:5]
+            problems.append(f"{name}: keys differ (missing {missing}, extra {extra})")
+        for key in set(twin) & set(korean):
+            if _HANGUL.search(twin[key]):
+                problems.append(f"{name}.{key}: Korean in the English")
+            if sorted(_TERM.findall(twin[key])) != sorted(_TERM.findall(korean[key])):
+                problems.append(f"{name}.{key}: term tokens differ from the Korean")
+    assert not problems, "; ".join(problems[:12])
+
+
+def test_an_agent_box_is_written_as_the_word_never_the_agent_icon() -> None:
+    """The Agent *box* of a card is a word ({agent_box}), not the Agent piece.
+
+    User report 2026-10-05: the Graft choice read "다른 카드의 [Agent icon] 칸
+    해결" -- the {agent} term draws the piece, so the box looked like a pawn.
+    The glossary names the place on the card "에이전트 칸" ("Agent box",
+    [Main p. 8]); {agent} stays for the piece itself (place, recall, count).
+    """
+    korean = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    korean += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    korean += [
+        (f"PROMPT_KO.{key}", text)
+        for key, text in _json_const("PROMPT_KO", "prompts_ko.js").items()
+    ]
+    english = [
+        (f"{table}.{key}", text)
+        for table, rows in _json_const("LABELS_EN", "labels_en.js").items()
+        for key, text in rows.items()
+    ]
+    english += [(f"UI_TEXT.{key}", entry["en"]) for key, entry in _ui_text().items()]
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in korean
+        if re.search(r"\{agent(?::\d+)?\}\s*칸", text)
+    ]
+    leaks += [
+        f"{where}: {text!r}"
+        for where, text in english
+        if re.search(r"\{agent(?::\d+)?\}\s+(?:box|slot)", text, re.I)
+    ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
+# Glossary rows the UI applies that have no TERMS entry of their own. Since
+# 2026-10-11 no English phrase is kept in Korean text on purpose any more
+# (the Leader ability names, Feyd's token, Memories, the Immediate contract,
+# Usurp and the wild battle icon all have their Korean, glossary-ko.md).
+_GLOSSARY_WORDS = {
+    "aside",
+    "atomics",
+    "bloodlines",
+    "embassy",
+    "feyd",
+    "flip",
+    "flipped",
+    "immortality",
+    "infiltrate",
+    "intelligence",
+    "ixian",
+    "memories",
+    "navigation",
+    "tactics",
+    "uprising",
+    "wild",
+}
+_TERM_FILLERS = {"a", "an", "and", "any", "card", "cards", "for", "in", "of", "on"}
+_TERM_FILLERS |= {"one", "or", "the", "this", "to", "turn", "two"}
+
+
+# The base-game and Rise of Ix names the rulings notice uses (OQ-113 ~ 127).
+_BASE_IX_NAMES = (
+    "Advanced Weaponry",
+    "Arrakis Liaison",
+    "Baron Harkonnen",
+    "Battle for Arrakeen",
+    "Bindu Suspension",
+    "Bypass Protocol",
+    "Corner the Market",
+    "Disposal Facility",
+    "Dispatch an Envoy",
+    "Double Cross",
+    "Foldspace",
+    "Grand Conspiracy",
+    "Holtzman Engine",
+    "Ilesa Ecaz",
+    "Infiltrate",
+    "Know Their Ways",
+    "Machinations",
+    "Machine Culture",
+    "Masterstroke",
+    "Rapid Mobilization",
+    "Reverend Mother Mohiam",
+    "Shuttle Fleet",
+    "Spice Smugglers",
+    "The Voice",
+    "Treachery",
+    "Troop Transports",
+    "Unload",
+    "Urgent Mission",
+    "Water of Life",
+    "Weirding Way",
+    "Acquire Tech",
+)
+
+
+def _house_ruling_texts(fields: tuple[str, ...]) -> list[tuple[str, str]]:
+    """The rulings notice's texts (display.house_rulings), as the page shows
+    them through the catalog."""
+
+    rulings = build_catalog()["house_rulings"]
+    assert isinstance(rulings, list) and rulings, "no rulings in the catalog"
+    texts: list[tuple[str, str]] = []
+    for entry in rulings:
+        assert isinstance(entry, dict)
+        for field in fields:
+            value = entry[field]
+            if isinstance(value, str) and value:
+                texts.append((f"house_rulings.{entry['oq']}.{field}", value))
+    return texts
+
+
+def test_korean_text_never_spells_a_glossary_term_in_english() -> None:
+    """A rule word the glossary gives in Korean is never left in English.
+
+    The guards above look at what a table holds, not at what its Korean says;
+    on 2026-09-21 eleven chrome strings still read "Hand (공개)", "내 discard",
+    "Navigation 3장 남음", "(Flip됨)", "Ixian Embassy", "Bloodlines 확장" and the
+    like. Proper nouns (catalog names) and the phrases the glossary has no
+    row for stay English; file paths are not words.
+    """
+    labels = (_STATIC / "labels.js").read_text()
+    block = re.search(r"^const TERMS = \{(.*?)\n\};", labels, re.S | re.M)
+    assert block
+    english = re.findall(r'^\s+[a-z_]+: \{[^}]*en: "([^"]*)"', block.group(1), re.M)
+    assert english, "no TERMS entry read — the pattern is broken"
+    words = {w.lower() for phrase in english for w in re.findall(r"[A-Za-z]+", phrase)}
+    words = (words - _TERM_FILLERS) | _GLOSSARY_WORDS
+
+    names: set[str] = set()
+    for table in build_catalog().values():
+        if not isinstance(table, dict):
+            continue
+        for entry in table.values():
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if isinstance(name, str):
+                names.add(name)
+
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    texts += _house_ruling_texts(("title_ko", "ruling_ko", "sources_ko"))
+    # The rulings notice also names base-game and Rise of Ix cards, which no
+    # catalog holds yet (docs/rules/imperium-base.md, rise-of-ix.md).
+    keep = sorted([*names, *_BASE_IX_NAMES], key=len, reverse=True)
+    leaks = []
+    for where, text in texts:
+        bare = re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}|\S*/\S*", " ", text)
+        for name in keep:
+            bare = bare.replace(name, " ")
+        found = sorted(
+            {w for w in re.findall(r"[A-Za-z]+", bare) if w.lower() in words}
+        )
+        if found:
+            leaks.append(f"{where}: {found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
+
+
+def test_korean_prompts_leave_no_english_word_behind() -> None:
+    """A Korean prompt holds {term} tokens and Korean, not stray English.
+
+    User report 2026-10-05: the Arrakeen Scouts call read "spice 호가, 또는
+    패스" -- the one prompt that wrote the currency as a bare English word
+    where the rest use {spice} ("스파이스"); the Mercenaries retreat likewise
+    said "용병 troop 후퇴". No English word may stay (since 2026-10-11 the
+    Secret Project and Immediate prompts say 비밀 프로젝트 and 즉시 too).
+    """
+    texts = list(_json_const("PROMPT_KO", "prompts_ko.js").values())
+    texts += [
+        korean for _, korean in _json_const("PROMPT_KO_PATTERNS", "prompts_ko.js")
+    ]
+    leaks = []
+    for text in texts:
+        bare = re.sub(r"\{[a-z_]+(?::\d+)?\}", " ", text)
+        found = re.findall(r"[A-Za-z]+", bare)
+        if found:
+            leaks.append(f"{found} in {text!r}")
+    assert not leaks, "; ".join(leaks[:10])
+
+
+def test_korean_labels_call_a_sandworm_rather_than_summon_it() -> None:
+    """A sandworm is called, "모래벌레를 불러서" [Main p. 10] [Main p. 20]:
+    소환 is kept for recalling Agents and Spies (docs/rules/glossary-ko.md).
+    The display-text guard (tests/support/ko_text.py) reads Python text
+    only, so this one covers the label tables of static/labels.js."""
+    wrong = [
+        f"{table}.{key}: {text!r}"
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+        if "{sandworm" in text and "소환" in text
+    ]
+    assert not wrong, "; ".join(wrong)
+
+
+# Catalog names the glossary still gives in Korean where they are a status
+# rather than the board space: the High Council seat (원로회) and the
+# Swordmaster (소드마스터) [Main p. 17]. The guard above strips catalog
+# names, so it cannot see these in Korean text.
+_KOREAN_STATUS_NAMES = ("High Council", "Swordmaster")
+
+
+def test_korean_text_names_the_council_seat_and_swordmaster_in_korean() -> None:
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    prompts = (_STATIC / "prompts_ko.js").read_text()
+    korean_prompts = re.findall(r'^\s+"[^"]*": "([^"]*)",?$', prompts, re.M)
+    texts += [("PROMPT_KO", ko) for ko in korean_prompts]
+    assert len(texts) > 300, "the tables were not read"
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in texts
+        for name in _KOREAN_STATUS_NAMES
+        if name in text
+    ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
+def test_korean_text_names_a_card_by_its_korean_print() -> None:
+    """A card whose Korean print is known is named in Korean in Korean text.
+
+    The page shows such a card's catalog name in Korean (``name_ko``), so
+    Korean chrome that spells it in English (the promo option's "Arrakis
+    Revolt", 2026-09-23) reads as two different cards. Cards without a known
+    Korean print keep their English name, in the chrome as on the table.
+    A Leader's ability and Signet Ring names count too: "Other Memories"
+    is 다른 기억들 on the Korean card (2026-10-11).
+
+    Covers ``PROMPT_KO`` too (ITEM 8f, 2026-09-25): the engine's English
+    prompts for Plasteel Blades and Covert Operation still named them in
+    English after both cards' rows already used their Korean prints, so a
+    rename that only touches the catalog and label tables can miss a prompt.
+    """
+
+    from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
+
+    catalog = build_catalog()
+    english: dict[str, str] = {}
+    for section, names in KOREAN_CARD_NAMES.items():
+        table = catalog[section]
+        assert isinstance(table, dict)
+        for entry_id, korean in names.items():
+            entry = table[entry_id]
+            assert isinstance(entry, dict)
+            name = entry["name"]
+            assert isinstance(name, str)
+            english[name] = korean
+    leaders = catalog["leaders"]
+    assert isinstance(leaders, dict)
+    for leader in leaders.values():
+        assert isinstance(leader, dict)
+        for field in ("ability", "signet"):
+            name, korean_name = leader.get(field), leader.get(f"{field}_ko")
+            if isinstance(name, str) and isinstance(korean_name, str):
+                english[name] = korean_name
+    texts = [
+        (f"{table}.{key}", text)
+        for table, rows in _korean_tables().items()
+        for key, text in rows.items()
+    ]
+    texts += [(f"UI_TEXT.{key}", entry["ko"]) for key, entry in _ui_text().items()]
+    korean = _json_const("PROMPT_KO", "prompts_ko.js")
+    texts += [(f"PROMPT_KO.{key}", ko) for key, ko in korean.items()]
+    assert len(texts) > 300, "the tables were not read"
+    # Names that stay English go first, longest first: "Ruthless Leadership"
+    # (not read) holds "Leadership" (read).
+    kept: set[str] = set()
+    for table in catalog.values():
+        if not isinstance(table, dict):
+            continue
+        for entry in table.values():
+            if not isinstance(entry, dict):
+                continue
+            for field in ("name", "ability", "signet"):
+                other = entry.get(field)
+                if isinstance(other, str) and other not in english:
+                    kept.add(other)
+    others = sorted(kept, key=len, reverse=True)
+    leaks = []
+    for where, text in texts:
+        bare = text
+        for other in others:
+            bare = bare.replace(other, " ")
+        for name, korean in english.items():
+            if re.search(rf"(?<![A-Za-z']){re.escape(name)}(?![A-Za-z'])", bare):
+                leaks.append(f"{where}: {name!r} (Korean print {korean!r}) in {text!r}")
+    assert not leaks, "; ".join(leaks[:40])
+
+
+_IMPERIAL_PRIVILEGE_STEPS = (
+    "recall_agent_for_imperial_privilege",
+    "recall_conflict_agent_for_imperial_privilege",
+    "resolve_imperial_privilege_without_recall",
+)
+
+
+def test_imperial_privilege_recall_labels_name_only_the_recall() -> None:
+    """The recall and its skip confirmation say nothing of a card draw.
+
+    "4번은 소환과 뽑기가 당연히 두 단계로 나눠야지. 이건 정말 기본적인
+    원칙인데" (user ruling 2026-10-10, OQ-027 (d)): Imperial Privilege's
+    recall only recalls and its draw is the space's own ``cards`` icon
+    (``resolve_board_effect``), so the recall button, the Into the Fray
+    recall and the confirm with no Agent to recall name the recall alone,
+    in both languages. Before the split the recall also drew the card, so
+    its label named the draw and render.js kept a recall-only text for its
+    greyed-out row (``UNAVAILABLE_ROW_TEXT``); the plain label serves that
+    row again.
+    """
+    korean = _korean_tables()["ACTION_LABELS"]
+    english = _json_const("LABELS_EN", "labels_en.js")["ACTION_LABELS"]
+    for action_id in _IMPERIAL_PRIVILEGE_STEPS:
+        for table in (korean, english):
+            assert "{draw}" not in table[action_id], (action_id, table[action_id])
+            assert "{agent}" in table[action_id], (action_id, table[action_id])
+    assert korean["recall_agent_for_imperial_privilege"] == (
+        "{agent} 소환 (제국 특권)"
+    )
+    assert english["recall_agent_for_imperial_privilege"] == (
+        "Recall {agent} (Imperial Privilege)"
+    )
+    # The confirm reads like its Contract sibling's.
+    assert korean["resolve_imperial_privilege_without_recall"] == (
+        "{agent} 소환 없이 확인 (제국 특권)"
+    )
+    assert english["resolve_imperial_privilege_without_recall"] == (
+        "Confirm without recalling {agent} (Imperial Privilege)"
+    )
+    assert "render.unavailable_imperial_privilege_recall" not in _ui_text()
+    assert "UNAVAILABLE_ROW_TEXT" not in (_STATIC / "render.js").read_text()
+
+
+def test_every_label_table_switches_language() -> None:
+    """A table left out of ``LABEL_TABLES`` stays Korean in English.
+
+    setLanguage() swaps only the tables i18n.js names; the mirror test above
+    checks that an English twin exists, not that anything ever reads it.
+    """
+    registered = re.search(
+        r"^const LABEL_TABLES = \{(.*?)\n\};",
+        (_STATIC / "i18n.js").read_text(),
+        re.S | re.M,
+    )
+    assert registered
+    names = set(re.findall(r"^\s+([A-Z_]+),", registered.group(1), re.M))
+    lists = {"SEAT_KINDS", "AGENT_ICON_GROUPS"}  # LABEL_LISTS, swapped apart
+    missing = sorted(set(_korean_tables()) - lists - names)
+    assert not missing, f"label tables setLanguage() never swaps: {missing}"
+
+
+def _scouts_payloads() -> dict[str, set[str]]:
+    """{key: the string literals its value can be} of every GameEvent payload
+    built in rules/scouts*.py (an id or a count holds none)."""
+    payloads: dict[str, set[str]] = {}
+    for path in sorted(_RULES.glob("scouts*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "GameEvent"
+            ):
+                continue
+            payload = next((k.value for k in node.keywords if k.arg == "payload"), None)
+            if not isinstance(payload, ast.Tuple):
+                continue
+            for pair in payload.elts:
+                assert isinstance(pair, ast.Tuple), ast.unparse(pair)
+                key, value = pair.elts
+                assert isinstance(key, ast.Constant), ast.unparse(pair)
+                assert isinstance(key.value, str), ast.unparse(pair)
+                payloads.setdefault(key.value, set()).update(
+                    inner.value
+                    for inner in ast.walk(value)
+                    if isinstance(inner, ast.Constant) and isinstance(inner.value, str)
+                )
+    return payloads
+
+
+def test_every_scouts_payload_key_and_word_has_a_label() -> None:
+    """An Arrakeen Scouts log line names each field and each engine word.
+
+    User report 2026-09-29: "Kind: mission", "Modifier:
+    any_faction_four_bonus", "Paid", "Place", "To", "Rounds" reached the
+    Korean log as the engine wrote them. Every key of a payload the Scouts
+    rules build has a PAYLOAD_KEY_LABELS row (LABELS_EN mirrors it, above),
+    and every word such a payload can hold is a rule term (TERMS), a
+    VALUE_LABELS row or an item kind the Scouts panel names; the rest of the
+    values are ids and numbers, which the catalog and fieldText() read.
+    scripts/e2e/log_words.py renders two Scouts games to check the result.
+    """
+
+    from dune_imperium.content.arrakeen_scouts.types import RoundModifier
+
+    payloads = _scouts_payloads()
+    assert len(payloads) > 30, "the Scouts events were not read"
+    tables = _korean_tables()
+    missing = sorted(set(payloads) - set(tables["PAYLOAD_KEY_LABELS"]))
+    assert not missing, f"Scouts payload keys with no label: {missing}"
+
+    labels = (_STATIC / "labels.js").read_text()
+    block = re.search(r"^const TERMS = \{(.*?)\n\};", labels, re.S | re.M)
+    assert block
+    terms = set(re.findall(r"^  ([a-z_]+): \{", block.group(1), re.M))
+    # Words, not a join's "," separator; then the words built from something
+    # else than a literal: the round modifier's enum value, and the auction
+    # slot (rules/scouts.py, the draw step's "mid_" / "late_" prefix).
+    words = {w for vs in payloads.values() for w in vs if re.fullmatch("[a-z_]+", w)}
+    words |= {modifier.value for modifier in RoundModifier} | {"mid", "late"}
+    items = build_catalog()["scouts_items"]
+    assert isinstance(items, dict)
+    kinds = {str(entry["kind"]) for entry in items.values() if isinstance(entry, dict)}
+    ui_text = _ui_text()
+    unnamed_kinds = sorted(k for k in kinds if f"panels.scouts_kind_{k}" not in ui_text)
+    assert not unnamed_kinds, f"Scouts item kinds with no name: {unnamed_kinds}"
+    unnamed = sorted(words - terms - set(tables["VALUE_LABELS"]) - kinds)
+    assert not unnamed, f"Scouts payload words with no label: {unnamed}"
+
+
+def test_static_page_keys_exist_and_match_the_korean() -> None:
+    table = _ui_text()
+    wrong = []
+    unmarked: list[str] = []
+    for page in _STATIC_PAGES:
+        html = (_STATIC / page).read_text()
+        for match in re.finditer(r'data-i18n="([^"]+)"[^>]*>([^<]*)<', html):
+            key, inline = match.group(1), " ".join(match.group(2).split())
+            if key not in table:
+                wrong.append(f"{page} {key}: no entry")
+            elif inline != " ".join(table[key]["ko"].split()):
+                wrong.append(f"{page} {key}: inline {inline!r} != {table[key]['ko']!r}")
+        leftover = [
+            " ".join(text.split())
+            for text in re.findall(r">([^<>]*[가-힣][^<>]*)<", html)
+        ]
+        marked = {
+            " ".join(m.group(2).split())
+            for m in re.finditer(r'data-i18n="([^"]+)"[^>]*>([^<]*)<', html)
+        }
+        unmarked += [f"{page}: {text}" for text in leftover if text not in marked]
+    assert not wrong, "; ".join(wrong[:10])
+    assert not unmarked, f"Korean text in a page without data-i18n: {unmarked[:8]}"
+
+
+def test_the_setup_screen_has_no_seat_shuffle_box() -> None:
+    # Shuffling the configured seats is a table convention, not a rule
+    # (server/seating.py): docs/rules does not seat players and the First
+    # Player comes from the Objective deal [Main p. 5]. The server's
+    # --seating alone decides it, so the setup screen offers no box (user
+    # decision 2026-11-01: a remote room's start seats the people at
+    # random anyway).
+    table = _ui_text()
+    for key in ("html.opt_shuffle_seats", "html.shuffle_seats_note"):
+        assert key not in table, key
+    html = (_STATIC / "index.html").read_text()
+    assert "opt-shuffle-seats" not in html
+
+
+def _prompts() -> set[str]:
+    """Every prompt literal a PlayerDecision can carry, f-strings as patterns.
+
+    Chance decisions ("Shuffle …", "Deal …") are resolved by the engine and
+    never shown to a person; they are left out by their ChanceDecision call.
+    """
+    prompts: set[str] = set()
+    for path in sorted(_RULES.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            # A prompt built by a helper (reveal_choice_prompt): every string
+            # it can return.
+            if isinstance(node, ast.FunctionDef) and node.name.endswith("_prompt"):
+                # A string the helper only compares against (a Reveal choice
+                # key, ``effect == "place_spy"``) is not one it returns.
+                compared = {
+                    id(piece)
+                    for test in ast.walk(node)
+                    if isinstance(test, ast.Compare)
+                    for piece in ast.walk(test)
+                }
+                for inner in ast.walk(node):
+                    if (
+                        isinstance(inner, ast.Constant)
+                        and isinstance(inner.value, str)
+                        and inner is not getattr(node.body[0], "value", None)
+                        and id(inner) not in compared
+                    ):
+                        prompts.add(inner.value)
+                continue
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func.id if isinstance(node.func, ast.Name) else getattr(
+                node.func, "attr", ""
+            )
+            if callee != "PlayerDecision":
+                continue
+            for keyword in node.keywords:
+                if keyword.arg != "prompt":
+                    continue
+                # Every string the value can be, a conditional's branches
+                # included ("… with Deep Cover" if deep_cover else "…"); an
+                # f-string counts whole, not as its literal pieces.
+                pieces = {
+                    id(piece)
+                    for joined in ast.walk(keyword.value)
+                    if isinstance(joined, ast.JoinedStr)
+                    for piece in joined.values
+                }
+                for value in ast.walk(keyword.value):
+                    if id(value) in pieces:
+                        continue
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        prompts.add(value.value)
+                    elif isinstance(value, ast.JoinedStr):
+                        parts = []
+                        for piece in value.values:
+                            if isinstance(piece, ast.Constant):
+                                parts.append(str(piece.value))
+                            else:
+                                parts.append("{}")
+                        prompts.add("".join(parts))
+    return prompts
+
+
+def test_every_person_facing_prompt_has_korean() -> None:
+    korean = _json_const("PROMPT_KO", "prompts_ko.js")
+    patterns = [
+        re.compile(source)
+        for source, _ in _json_const("PROMPT_KO_PATTERNS", "prompts_ko.js")
+    ]
+    missing = []
+    for prompt in sorted(_prompts()):
+        if prompt in korean:
+            continue
+        # An f-string hole holds a number or a resource name (combat.py's
+        # optional payment is spice or solari, .title()d).
+        holes = prompt.count("{}")
+        samples = [prompt]
+        for _ in range(holes):
+            samples = [
+                sample.replace("{}", value, 1)
+                for sample in samples
+                for value in ("3", "Spice", "Solari")
+            ]
+        if any(pattern.fullmatch(sample) for sample in samples for pattern in patterns):
+            continue
+        missing.append(prompt)
+    assert not missing, f"{len(missing)} prompts with no Korean: {missing[:8]}"
+    stray = sorted(key for key, text in korean.items() if not _HANGUL.search(text))
+    assert not stray, f"PROMPT_KO entries that are not Korean: {stray[:5]}"
+
+
+# What a player is never shown (user decision 2026-10-14): "플레이하는 사람
+# 입장에서는 OQ가 뭔지 상관 없으니까 그런 문구는 플레이 ui에서 빼자". An
+# open-question number, a repository path and a command-line argument mean
+# nothing at the table; comments and docs keep them.
+_DEVELOPER_TALK = re.compile(
+    r"\bOQ-?\d+|\b(?:docs|src|saves|checkpoints|scripts|tmp)/"
+    r"|(?<![\w-])--[a-z]|\.(?:py|md|pt)\b|\buv\b|\bextras?\b"
+)
+
+
+class _PageText(HTMLParser):
+    """The text and the readable attributes of index.html, scripts apart."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ("script", "style"):
+            self._skip += 1
+        for name, value in attrs:
+            if value and name in ("title", "placeholder", "aria-label", "alt"):
+                self.found.append(value)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style"):
+            self._skip -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip and data.strip():
+            self.found.append(" ".join(data.split()))
+
+
+def test_no_open_question_number_path_or_command_argument_reaches_a_player() -> None:
+    texts: list[tuple[str, str]] = []
+    for key, entry in _ui_text().items():
+        texts += [
+            (f"UI_TEXT.{key}.ko", entry["ko"]),
+            (f"UI_TEXT.{key}.en", entry["en"]),
+        ]
+    for table, rows in _korean_tables().items():
+        texts += [(f"{table}.{key}", text) for key, text in rows.items()]
+    for table, rows in _json_const("LABELS_EN", "labels_en.js").items():
+        texts += [(f"LABELS_EN.{table}.{key}", text) for key, text in rows.items()]
+    korean = _json_const("PROMPT_KO", "prompts_ko.js")
+    texts += [(f"PROMPT_KO.{key}", text) for key, text in korean.items()]
+    errors = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    texts += [(f"SERVER_ERROR_KO.{key}", text) for key, text in errors.items()]
+    texts += [
+        (f"SERVER_ERROR_KO_PATTERNS.{source}", text)
+        for source, text in _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js")
+    ]
+    page = _PageText()
+    page.feed((_STATIC / "index.html").read_text())
+    texts += [("index.html", text) for text in page.found]
+    texts += _house_ruling_texts(("title", "ruling", "sources"))
+    texts += _house_ruling_texts(("title_ko", "ruling_ko", "sources_ko"))
+    assert len(texts) > 1000, "the tables were not read"
+    # A hole's or a term's name is code, not what the player reads.
+    leaks = [
+        f"{where}: {text!r}"
+        for where, text in texts
+        if _DEVELOPER_TALK.search(re.sub(r"\{\{?[A-Za-z0-9_:]+\}?\}", " ", text))
+    ]
+    assert not leaks, "; ".join(leaks[:10])
+
+
+# The server's error messages (HTTP 400/403/404/409 `detail`), in Korean on
+# the Korean page (errors_ko.js, i18n.js serverErrorText; user decision
+# 2026-10-14: "서버 오류 문구"). The Python below mirrors that function.
+_ERROR_RAISERS = {
+    "SessionError",
+    "SaveError",
+    "UnknownGameError",
+    "UnknownSaveError",
+    "SeatAccessError",
+    "AdminAccessError",
+    "SeatTakenError",
+    "StaleRevisionError",
+    "GameNotStartedError",
+}
+_SERVER = _REPO / "src" / "dune_imperium" / "server"
+# What a `{field}` hole of a message names (persistence.py's version check).
+_ERROR_FIELDS = ("ruleset_version", "content_version", "action_codec_version")
+
+
+def _error_samples(
+    node: ast.expr, operations: tuple[str, ...] = ()
+) -> list[str]:
+    """The messages a literal or f-string can make, a hole read as 3.
+
+    ``[]`` for anything else (``str(error)`` passes another message on). The
+    hole named ``field`` is one of the stamps persistence.py compares, and
+    ``operation`` one of the words ``_require_remote`` is called with.
+    """
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if not isinstance(node, ast.JoinedStr):
+        return []
+    samples = [""]
+    for piece in node.values:
+        if isinstance(piece, ast.Constant):
+            samples = [sample + str(piece.value) for sample in samples]
+        elif isinstance(piece, ast.FormattedValue):
+            hole = piece.value
+            values: tuple[str, ...] = ("3",)
+            if isinstance(hole, ast.Name) and hole.id == "field":
+                values = _ERROR_FIELDS
+            elif isinstance(hole, ast.Name) and hole.id == "operation":
+                values = operations
+            samples = [sample + value for sample in samples for value in values]
+    return samples
+
+
+def _server_error_messages() -> set[str]:
+    """Every message the server answers a request with, as far as the source
+    shows it: the errors of sessions.py and persistence.py, a save step's
+    ``_step_error``, the Ruleset and replay checks they pass on."""
+
+    messages: set[str] = set()
+    sessions = ast.parse((_SERVER / "sessions.py").read_text())
+    operations = tuple(
+        str(node.args[0].value)
+        for node in ast.walk(sessions)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_require_remote"
+        and isinstance(node.args[0], ast.Constant)
+    )
+    assert len(operations) == 4, operations
+    for path in (_SERVER / "sessions.py", _SERVER / "persistence.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.id if isinstance(node.func, ast.Name) else ""
+            if name in _ERROR_RAISERS and node.args:
+                messages.update(_error_samples(node.args[0], operations))
+            elif name == "_step_error" and len(node.args) == 2:
+                messages.update(
+                    f"save step 3: {text}" for text in _error_samples(node.args[1])
+                )
+    # The listing's per-save error entry, not a raise.
+    persistence = (_SERVER / "persistence.py").read_text()
+    assert '"unreadable save file"' in persistence
+    messages.add("unreadable save file")
+    # The admin login's attempt limit (app.py), which the admin link's error
+    # line shows the host.
+    app = (_SERVER / "app.py").read_text()
+    assert 'detail=f"too many wrong admin keys; try again in {seconds} s"' in app
+    messages.add("too many wrong admin keys; try again in 3 s")
+    # GameReplay's own checks, which a save passes on as a SaveError.
+    replay = _REPO / "src" / "dune_imperium" / "core" / "replay.py"
+    for node in ast.walk(ast.parse(replay.read_text())):
+        if (
+            isinstance(node, ast.Raise)
+            and isinstance(node.exc, ast.Call)
+            and isinstance(node.exc.func, ast.Name)
+            and node.exc.func.id == "ValueError"
+        ):
+            messages.update(_error_samples(node.exc.args[0]))
+    # RulesetConfig's, which a new game and a save pass on.
+    from dune_imperium.config import RulesetConfig
+
+    tech = {"bloodlines": True, "tech_module": True}
+    for options in (
+        {"players": 3},
+        {"tech_module": True},
+        {"go_to_11": True},
+        # Part of Rise of Ix beside the Tech Module (plan 20.5 P8-1, OQ-165).
+        {"bloodlines": True, "ix_tech_tiles": True},
+        {**tech, "ix_tech_tiles": True, "rise_of_ix": True},
+        {**tech, "ix_leaders": True},
+        {**tech, "ix_tech_tiles": True, "arrakeen_scouts": True},
+    ):
+        try:
+            RulesetConfig(**options)
+        except ValueError as error:
+            messages.add(str(error))
+        else:
+            raise AssertionError(f"{options} should be refused")
+    # Setup's refusal of content not in the engine yet, which a new game and
+    # a save's restore pass on (sessions.py _reset): the original game
+    # with the CHOAM module, which it never takes (plan 19.4 P7-1); and the
+    # original cards' option on the original game, whose cards they are. The
+    # original game takes every other option since Arrakeen Scouts opened
+    # on it (stage P8b), so no "from stage" refusal is left.
+    from dune_imperium.config import BaseGame
+    from dune_imperium.rules import UprisingRulesEngine
+
+    for config in (
+        RulesetConfig(base_game=BaseGame.IMPERIUM, choam_module=True),
+        # Uprising with Rise of Ix takes every option since stage P7f-2.
+        RulesetConfig(base_game=BaseGame.IMPERIUM, imperium_cards=True),
+    ):
+        try:
+            UprisingRulesEngine().reset(config, 0)
+        except NotImplementedError as error:
+            messages.add(str(error))
+        else:
+            raise AssertionError(f"{config} should be refused")
+    return messages
+
+
+def _fill_groups(korean: str, match: re.Match[str]) -> str:
+    """$N: group N as written; #N: group N plus one (a seat's visible number)."""
+
+    def group(token: re.Match[str]) -> str:
+        text = match[int(token[2])]
+        return str(int(text) + 1) if token[1] == "#" else text
+
+    return re.sub(r"([$#])(\d)", group, korean)
+
+
+def _korean_error(message: str) -> str | None:
+    """serverErrorText() for a Korean page: the sentence, or None if unknown."""
+
+    exact = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    if message in exact:
+        return str(exact[message])
+    for source, korean in _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js"):
+        match = re.search(source, message)
+        if match:
+            return _fill_groups(str(korean), match)
+    return None
+
+
+def test_every_server_error_message_has_korean() -> None:
+    messages = _server_error_messages()
+    assert len(messages) > 60, "the server's errors were not read"
+    missing = sorted(m for m in messages if _korean_error(m) is None)
+    assert not missing, f"{len(missing)} server errors with no Korean: {missing[:8]}"
+    english = sorted(
+        message
+        for message in messages
+        if not _HANGUL.search(_korean_error(message) or "")
+        or re.search(r"[$#]\d", _korean_error(message) or "")
+    )
+    assert not english, f"server errors not turned into Korean: {english[:8]}"
+
+
+def test_the_server_error_tables_hold_no_dead_or_foreign_entry() -> None:
+    messages = _server_error_messages()
+    exact = _json_const("SERVER_ERROR_KO", "errors_ko.js")
+    dead = sorted(key for key in exact if key not in messages)
+    assert not dead, f"SERVER_ERROR_KO entries no server error makes: {dead[:5]}"
+    patterns = _json_const("SERVER_ERROR_KO_PATTERNS", "errors_ko.js")
+    unused = [
+        source
+        for source, _ in patterns
+        if not any(re.search(source, message) for message in messages)
+    ]
+    assert not unused, f"SERVER_ERROR_KO_PATTERNS no server error matches: {unused}"
+    # Korean, with the numbers of the match and AI -- no other English word.
+    texts = list(exact.values()) + [korean for _, korean in patterns]
+    leaks = []
+    for text in texts:
+        if not _HANGUL.search(text):
+            leaks.append(f"not Korean: {text!r}")
+        found = set(re.findall(r"[A-Za-z]+", re.sub(r"[$#]\d", " ", text)))
+        # A product's name stays as printed, as the Korean guides write it.
+        kept = {"AI", "Tailscale"}
+        if found - kept:
+            leaks.append(f"{sorted(found - kept)} in {text!r}")
+    assert not leaks, "; ".join(leaks[:8])
+
+
+def test_a_seat_in_a_server_error_is_named_by_its_visible_number() -> None:
+    """The engine's seat 0 is 플레이어1 on the page (i18n.js seatNumber)."""
+
+    assert _korean_error("seat 0 is already taken") == (
+        "플레이어1: 이미 다른 사람이 참여했습니다"
+    )
+    assert _korean_error("seat 3 may take back at most 2 step(s) now") == (
+        "플레이어4: 지금은 최대 2단계까지만 되돌릴 수 있습니다"
+    )
+    assert _korean_error("this client does not hold seat 2") == (
+        "플레이어3: 이 접속은 그 자리를 갖고 있지 않습니다"
+    )
+    # A message the tables do not know stays as the server wrote it.
+    assert _korean_error("some new message") is None
+
+
+def test_the_page_reads_the_server_errors_through_the_one_function() -> None:
+    """api() is where an HTTP error's detail becomes the text the page shows,
+    and a network failure (no status) is worded by the page, not the browser."""
+
+    core = (_STATIC / "core.js").read_text()
+    assert "serverErrorText(body.detail)" in core
+    assert "JSON.stringify(body.detail)" not in core
+    assert 't("core.server_unreachable")' in core
+    assert "errors_ko.js" in (_STATIC / "index.html").read_text()

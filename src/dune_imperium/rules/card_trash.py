@@ -1,0 +1,403 @@
+"""Shared personal-card trash transition and card-specific triggers."""
+
+from copy import replace
+
+from dune_imperium.content.core.abilities import Ability, single_resource
+from dune_imperium.content.core.effects import (
+    AcquireBankCommander,
+    AdvanceTleilaxu,
+    DrawIntrigueCards,
+    GainResources,
+    OnCardTrashed,
+    RecruitTroops,
+    Reward,
+)
+from dune_imperium.content.registry.card_abilities import trash_ability
+from dune_imperium.content.registry.imperium import imperium_card_for_instance
+from dune_imperium.content.registry.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
+from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    FrameKind,
+    turn_owner_of,
+    update_turn_recruits,
+)
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.intrigue_deck import triggered_intrigue_draw
+from dune_imperium.rules.unload import trigger_unload
+
+
+def trash_personal_card(
+    state: GameState,
+    player: int,
+    card_id: str,
+    *,
+    source: str,
+    allow_deck: bool = False,
+    unload_at_once: bool = False,
+) -> RuleResult:
+    """Remove one owned card from an eligible zone and resolve its trash trigger.
+
+    Deck trashing is an explicit exception used by card effects such as Long
+    Live the Fighters; ordinary trash callers remain limited to hand, discard,
+    and in-play cards. A Rise of Ix Unload card gives its Reveal box as it is
+    trashed, whatever trashes it (``rules.unload``; OQ-120): a cost's caller
+    passes ``unload_at_once`` so the box is paid before its arrow's reward.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("trash player must identify a configured seat")
+    if not card_id or not source:
+        raise ValueError("trash card and source IDs must not be empty")
+    if not isinstance(allow_deck, bool):
+        raise TypeError("allow_deck must be a boolean")
+    owner = state.players[player]
+    eligible = (*owner.hand, *owner.discard_pile, *owner.in_play)
+    if allow_deck:
+        eligible = (*owner.deck, *eligible)
+    if card_id not in eligible:
+        raise ValueError("trash card is not in an eligible owned zone")
+
+    reserve_card_id = _reserve_card_id(card_id)
+    next_owner = replace(
+        owner,
+        deck=(
+            tuple(candidate for candidate in owner.deck if candidate != card_id)
+            if allow_deck
+            else owner.deck
+        ),
+        hand=tuple(candidate for candidate in owner.hand if candidate != card_id),
+        discard_pile=tuple(
+            candidate for candidate in owner.discard_pile if candidate != card_id
+        ),
+        in_play=tuple(candidate for candidate in owner.in_play if candidate != card_id),
+        trashed=(
+            owner.trashed if reserve_card_id is not None else (*owner.trashed, card_id)
+        ),
+    )
+    reserve_stacks = state.reserve_stacks
+    if reserve_card_id is not None:
+        if reserve_card_id not in dict(reserve_stacks):
+            raise RuntimeError("trashed Reserve card has no matching stack")
+        reserve_stacks = tuple(
+            (
+                candidate_id,
+                count + 1 if candidate_id == reserve_card_id else count,
+            )
+            for candidate_id, count in reserve_stacks
+        )
+
+    intrigue_deck = state.intrigue_deck
+    events = [
+        GameEvent(
+            event_id=f"{source}:trash:{card_id}",
+            kind="card_trashed",
+            payload=(("card_id", card_id), ("player", player)),
+        )
+    ]
+    pending_intrigue_draws = state.pending_intrigue_draws
+    pending_skill_choices = state.pending_skill_choices
+    decision_stack = state.decision_stack
+    for _, (assassin,) in leader_triggers(
+        next_owner.leader_face_id or next_owner.leader_id, OnCardTrashed
+    ):
+        # Assassin: "Whenever you trash a card: 1 Solari" (personal cards
+        # only; not Intrigue cards [Bloodlines p. 12]), from its record.
+        if not isinstance(assassin, GainResources):
+            raise RuntimeError("Assassin pays Solari")
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources,
+                solari=next_owner.resources.solari + assassin.solari,
+            ),
+        )
+        # The ability is the Leader's: named after the Leader, its gain
+        # then its own event (cleanup-2c-4).
+        leader = (
+            f"round:{state.round_number}:player:{player}:leader:"
+            f"{next_owner.leader_id}"
+        )
+        events.extend(
+            (
+                resources_gained_event(leader, player, solari=assassin.solari),
+                GameEvent(
+                    event_id=f"{leader}:resolved",
+                    kind="leader_ability_resolved",
+                    payload=(
+                        ("leader_id", str(next_owner.leader_id)),
+                        ("player", player),
+                    ),
+                ),
+            )
+        )
+    rewards = _trash_rewards(card_id)
+    for reward in rewards:
+        match reward:
+            case RecruitTroops(count=count):
+                # Eliminate Allies: "When this card is trashed: 2 troops".
+                # Troops recruited during an Agent turn join that turn's
+                # deployable count [Main p. 10] [FAQ p. 4].
+                next_owner, recruited = recruit_troops(next_owner, count)
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:trash:{card_id}:troops",
+                        kind="personal_card_trash_effect_resolved",
+                        payload=(
+                            ("card_id", card_id),
+                            ("player", player),
+                            ("troops", recruited),
+                        ),
+                    )
+                )
+                events.extend(
+                    recruit_shortfall_events(
+                        f"{source}:trash:{card_id}", player, count, recruited
+                    )
+                )
+                decision_stack = _with_recruited_troops(
+                    decision_stack, player, recruited
+                )
+            case AcquireBankCommander():
+                # Sardaukar Standard: "acquire and recruit the Sardaukar
+                # Commander in the bank". The acquisition comes with a
+                # face-up Skill choice, or without a Skill when none is
+                # choosable (OQ-031); with an empty bank nothing is gained
+                # (OQ-035). The choice is queued rather than pushed here: the
+                # trashing effect still owns the top frame and rewrites it
+                # when it finishes, so the engine opens the Skill choice
+                # afterwards (``sardaukar``).
+                if state.sardaukar_commanders_bank > 0:
+                    pending_skill_choices = (
+                        *pending_skill_choices,
+                        (player, card_id, f"{source}:trash:{card_id}"),
+                    )
+                else:
+                    events.append(
+                        GameEvent(
+                            event_id=f"{source}:trash:{card_id}:commander_unavailable",
+                            kind="sardaukar_commander_unavailable",
+                            payload=(("card_id", card_id), ("player", player)),
+                        )
+                    )
+            case DrawIntrigueCards(count=count):
+                if count != 1:
+                    raise ValueError(f"{reward!r}: a trash box draws one card")
+                # Sardaukar Soldier's "when trashed" Intrigue card waits as
+                # the seat's own step in its turn, so the trash choice stays
+                # undoable (user ruling 2026-10-10, OQ-106).
+                next_owner, intrigue_deck, drawn, pending = triggered_intrigue_draw(
+                    state,
+                    next_owner,
+                    player,
+                    origin=f"card:{card_id}",
+                    source=f"{source}:trash:{card_id}:intrigue_draw",
+                )
+                events.extend(drawn)
+                if pending is not None:
+                    pending_intrigue_draws = (*pending_intrigue_draws, pending)
+            case AdvanceTleilaxu():
+                pass  # Once the card has moved (below).
+            case GainResources():
+                # Assassination Mission: "When this card is trashed: 4 Solari",
+                # whatever trashed it.
+                gained = single_resource(reward)
+                next_owner = replace(
+                    next_owner,
+                    resources=replace(
+                        next_owner.resources,
+                        solari=next_owner.resources.solari + reward.solari,
+                        spice=next_owner.resources.spice + reward.spice,
+                        water=next_owner.resources.water + reward.water,
+                    ),
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:trash:{card_id}:effect",
+                        kind="personal_card_trash_effect_resolved",
+                        payload=(("card_id", card_id), ("player", player), gained),
+                    )
+                )
+            case _:
+                raise TypeError(f"{reward!r} is not a trash box's reward")
+
+    players = tuple(
+        next_owner if candidate.player_id == player else candidate
+        for candidate in state.players
+    )
+    result = RuleResult(
+        state=replace(
+            state,
+            players=players,
+            reserve_stacks=reserve_stacks,
+            intrigue_deck=intrigue_deck,
+            pending_intrigue_draws=pending_intrigue_draws,
+            pending_skill_choices=pending_skill_choices,
+            decision_stack=decision_stack,
+        ),
+        events=tuple(events),
+    )
+    for reward in rewards:
+        if isinstance(reward, AdvanceTleilaxu):
+            # Replacement Eyes (Immortality): "When this card is trashed:
+            # Tleilaxu" [card face], once the card has moved. Imported here:
+            # the research modules import this one.
+            from dune_imperium.rules.immortality import advance_tleilaxu
+
+            advanced = advance_tleilaxu(result.state, player, reward.count)
+            result = RuleResult(
+                state=advanced.state, events=(*result.events, *advanced.events)
+            )
+    unloaded = trigger_unload(
+        result.state, player, card_id, source=source, at_once=unload_at_once
+    )
+    return RuleResult(state=unloaded.state, events=(*result.events, *unloaded.events))
+
+
+def with_recruited_units(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    *,
+    troops: int = 0,
+    commanders: int = 0,
+) -> tuple[DecisionFrame, ...]:
+    """Count units recruited mid-turn toward the owner's open Agent turn.
+
+    Sardaukar Commanders are counted apart from the troops
+    (``COMMANDERS_RECRUITED_KEY``): a recruited Commander's deploy slot is
+    kept for a Commander (OQ-070).
+    """
+
+    frames = _with_recruited_count(frames, player, "troops_recruited", troops)
+    return _with_recruited_count(
+        frames, player, COMMANDERS_RECRUITED_KEY, commanders
+    )
+
+
+def _with_recruited_troops(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Count troops recruited mid-turn toward the owner's open Agent turn."""
+
+    return _with_recruited_count(frames, player, "troops_recruited", recruited)
+
+
+def _with_recruited_count(
+    frames: tuple[DecisionFrame, ...],
+    player: int,
+    key: str,
+    recruited: int,
+) -> tuple[DecisionFrame, ...]:
+    """Add ``recruited`` to ``key`` on the owner's Agent-turn frame on top."""
+
+    if not recruited or not frames:
+        return frames
+    frame = frames[-1]
+    if frame.kind != FrameKind.AGENT_EFFECTS or not isinstance(
+        frame.decision, PlayerDecision
+    ):
+        return frames
+    if frame.decision.owner != player:
+        return frames
+    context = dict(frame.context)
+    previous = context.get(key, 0)
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context[key] = previous + recruited
+    return (*frames[:-1], replace(frame, context=tuple(sorted(context.items()))))
+
+
+def recruited_troops_from_trash(trashed: RuleResult) -> int:
+    """Sum the troops a ``trash_personal_card`` call recruited (Eliminate Allies).
+
+    "When this card is trashed: 2 troops" [Eliminate Allies card]; a troop
+    recruited during the owner's turn "from any source" may be deployed
+    [Main p. 10] [FAQ p. 4]. Every caller that needs to carry this credit
+    past ``trash_personal_card``'s own AGENT_EFFECTS-only crediting
+    (``_with_recruited_troops``) reads it from here instead of re-summing
+    ``trashed.events`` itself.
+    """
+
+    return sum(
+        troops
+        for event in trashed.events
+        if event.kind == "personal_card_trash_effect_resolved"
+        for troops in (dict(event.payload).get("troops", 0),)
+        if isinstance(troops, int) and not isinstance(troops, bool)
+    )
+
+
+def keep_trash_recruits(
+    context: dict[str, ActionValue], trashed: RuleResult
+) -> None:
+    """Carry troops a trash trigger recruited into the context written back.
+
+    Eliminate Allies: "When this card is trashed: 2 troops", and a troop
+    recruited during the turn "from any source" may be deployed [Main p. 10]
+    [FAQ p. 4]. ``trash_personal_card`` credits them to the Agent-turn effect
+    frame on top, which the caller's own context -- read before the trash --
+    then overwrites when it is written back (``advance_after_effect``,
+    ``replace(frame, context=...)``); the count goes into that context
+    instead so the write-back keeps it.
+    """
+
+    recruited = recruited_troops_from_trash(trashed)
+    if recruited:
+        previous = context.get("troops_recruited", 0)
+        if isinstance(previous, bool) or not isinstance(previous, int):
+            raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+        context["troops_recruited"] = previous + recruited
+
+
+def credit_trash_recruits(trashed: RuleResult, player: int) -> RuleResult:
+    """Credit ``player``'s open turn frame with troops a trash just recruited.
+
+    For a trash resolved while no Agent-turn effect frame is on top (a
+    Reveal-turn choice, an Intrigue choice) ``trash_personal_card``'s own
+    AGENT_EFFECTS-only crediting (``_with_recruited_troops``) never runs, so
+    Eliminate Allies' troops would otherwise reach the garrison uncounted.
+    Troops recruited during the owner's own turn "from any source" may be
+    deployed [Main p. 10] [FAQ p. 4]; a trash resolved outside ``player``'s
+    own turn (Combat, another seat's turn) is left uncredited, matching
+    ``update_turn_recruits``'s other callers.
+    """
+
+    recruited = recruited_troops_from_trash(trashed)
+    if not recruited or turn_owner_of(trashed.state) != player:
+        return trashed
+    return RuleResult(
+        state=update_turn_recruits(trashed.state, troops_recruited=recruited),
+        events=trashed.events,
+    )
+
+
+def _trash_record(card_id: str) -> Ability | None:
+    """The record of an Imperium card instance's trash box (composed A4a,
+    by card id); no other card prints one."""
+
+    if not card_id.startswith("imperium:"):
+        return None
+    return trash_ability(imperium_card_for_instance(card_id).card.card_id)
+
+
+def _trash_rewards(card_id: str) -> tuple[Reward, ...]:
+    """The rewards of the card's trash box, if it prints one."""
+
+    ability = _trash_record(card_id)
+    return () if ability is None else ability.sections[0].rewards
+
+
+def _reserve_card_id(instance_id: str) -> str | None:
+    parts = instance_id.split(":", 2)
+    if len(parts) != 3 or parts[0] != "reserve":
+        return None
+    card_id = parts[1]
+    return card_id if card_id in RESERVE_STACKS_BY_ID else None

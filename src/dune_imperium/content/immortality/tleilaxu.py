@@ -1,0 +1,465 @@
+"""The Tleilaxu deck, Reclaimed Forces, and their play data [Immortality pp. 8-9].
+
+Tleilaxu cards "are similar to Imperium cards. You acquire them during your
+Reveal turn ... You play them during an Agent turn or reveal them during a
+Reveal turn. However, Tleilaxu cards come from the Tleilaxu Row and cost
+specimens to acquire rather than persuasion" [Immortality p. 8]. They are
+therefore ``ImperiumCardEntry`` records with a specimen cost instead of a
+Persuasion cost, resolved from ``tleilaxu:<card>:<copy>`` instance IDs.
+
+Identities and copies: the rulebook's 18 Tleilaxu deck cards plus the
+Reclaimed Forces reserve card [Immortality p. 3]; the Dune Cards Hub catalog
+lists one copy of each. Printed text is transcribed from the card faces
+(asset repository ``cards/en/immortality/tleilaxu/``) slice by slice; a card
+whose play data is not complete stays out of the deck.
+"""
+
+from dataclasses import dataclass
+from typing import Final
+
+from dune_imperium.content.core.abilities import (
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+)
+from dune_imperium.content.core.cards import ImperiumCardEntry
+from dune_imperium.content.core.effects import AdvanceTleilaxu, RecruitTroops
+from dune_imperium.content.core.icons import AgentIcon, Faction
+from dune_imperium.content.core.kept import kept_by_id
+from dune_imperium.content.core.schema import (
+    CardDefinition,
+    GameOption,
+    SourceDocument,
+    SourceRef,
+)
+from dune_imperium.content.immortality.track_abilities import (
+    RECLAIMED_FORCES_ABILITY,
+)
+
+TLEILAXU_SOURCES: Final = (
+    SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 8, 9)),
+    SourceRef(SourceDocument.CARD_FACE, (1,)),
+)
+# Piter, Genius Advisor appears in no official document; the card face is
+# the source.
+PROMO_SOURCES: Final = (SourceRef(SourceDocument.CARD_FACE, (1,)),)
+
+
+@dataclass(frozen=True, slots=True)
+class TleilaxuCardEntry(ImperiumCardEntry):
+    """One Tleilaxu card: an Imperium-style card bought with specimens."""
+
+    # "paying the specimen cost shown in the top right corner" [Immortality
+    # p. 8].
+    specimen_cost: int = 0
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.specimen_cost < 1:
+            raise ValueError("Tleilaxu cards cost at least one specimen")
+        if self.acquisition_cost is not None:
+            raise ValueError("Tleilaxu cards have no Persuasion cost")
+
+
+def _entry(
+    catalog_id: int | None,
+    slug: str,
+    name: str,
+    specimen_cost: int,
+    *,
+    requires: frozenset[GameOption] = frozenset(),
+    graft: bool = False,
+    factions: tuple[Faction, ...] = (),
+    agent_icons: tuple[AgentIcon, ...] = (),
+    acquisition_bonus: bool = False,
+    reveal_persuasion: int = 0,
+    reveal_strength: int = 0,
+    play_data_complete: bool = False,
+) -> TleilaxuCardEntry:
+    return TleilaxuCardEntry(
+        card=CardDefinition(
+            card_id=slug.replace("-", "_"),
+            name=name,
+            sources=PROMO_SOURCES
+            if GameOption.PROMO_CARDS in requires
+            else TLEILAXU_SOURCES,
+            catalog_url=(
+                None
+                if catalog_id is None
+                else f"https://dunecardshub.com/cards/{catalog_id}/immortality-{slug}"
+            ),
+        ),
+        requires=requires | frozenset({GameOption.IMMORTALITY}),
+        specimen_cost=specimen_cost,
+        graft=graft,
+        factions=factions,
+        agent_icons=agent_icons,
+        has_acquisition_bonus=acquisition_bonus,
+        reveal_persuasion=reveal_persuasion,
+        reveal_strength=reveal_strength,
+        play_data_complete=play_data_complete,
+    )
+
+
+# The 18 Tleilaxu deck cards [Immortality p. 3], in catalog order. Play data
+# is transcribed from the card faces slice by slice.
+TLEILAXU_CARDS: Final[tuple[TleilaxuCardEntry, ...]] = (
+    # Beguiling Pheromones: City, Spice Trade; GRAFT: "If you sent an Agent
+    # to a Faction board space this turn, trash one of the grafted cards and
+    # gain an additional Influence with that Faction."; Reveal: 1 Persuasion,
+    # 1 sword [card face].
+    _entry(
+        403,
+        "beguiling-pheromones",
+        "Beguiling Pheromones",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Chairdog: City; GRAFT: "At the start of your Reveal turn, return the
+    # other grafted card from play to your hand"; Reveal: 1 Persuasion
+    # [card face].
+    _entry(
+        404,
+        "chairdog",
+        "Chairdog",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Contaminator (Fremen): Fremen icon; Agent: Tleilaxu; Reveal: 1
+    # Persuasion [card face].
+    _entry(
+        405,
+        "contaminator",
+        "Contaminator",
+        1,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Corrino Genes (Emperor): acquire box 2 Solari; Emperor icon; Agent:
+    # "If grafted: Tleilaxu"; Reveal: 1 Persuasion [card face].
+    _entry(
+        406,
+        "corrino-genes",
+        "Corrino Genes",
+        1,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        acquisition_bonus=True,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Face Dancer (Emperor, Guild, Fremen): three Faction icons; GRAFT: draw
+    # a card; Reveal: 1 Persuasion [card face].
+    _entry(
+        407,
+        "face-dancer",
+        "Face Dancer",
+        2,
+        graft=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Face Dancer Initiate (Emperor, Guild, Fremen): three Faction icons;
+    # GRAFT with an empty box; Reveal: 1 Persuasion [card face].
+    _entry(
+        408,
+        "face-dancer-initiate",
+        "Face Dancer Initiate",
+        1,
+        graft=True,
+        factions=(Faction.EMPEROR, Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # From the Tanks: Landsraad icon; Agent: 2 troops; Reveal: 1 Persuasion
+    # [card face].
+    _entry(
+        409,
+        "from-the-tanks",
+        "From the Tanks",
+        2,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Ghola: City; GRAFT: "This card has the same Agent box as the other
+    # grafted card" (``rules.effects.active_agent_card`` borrows the
+    # partner's box); Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        410,
+        "ghola",
+        "Ghola",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Guild Impersonator (Spacing Guild): Guild icon; GRAFT: "If you gained
+    # spice this turn: Spacing Guild Influence"; Reveal: 1 Persuasion [card
+    # face].
+    _entry(
+        411,
+        "guild-impersonator",
+        "Guild Impersonator",
+        2,
+        graft=True,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Industrial Espionage: Landsraad; Agent: "Draw a card. If grafted:
+    # Research and a specimen"; Reveal: 1 Persuasion [card face].
+    _entry(
+        412,
+        "industrial-espionage",
+        "Industrial Espionage",
+        1,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Scientific Breakthrough: Landsraad, City, Spice Trade; Agent:
+    # "Research. [two genetic markers]: trash this card -> 1 Victory Point";
+    # Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        414,
+        "scientific-breakthrough",
+        "Scientific Breakthrough",
+        3,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Slig Farmer: Landsraad; GRAFT: "1 Solari per Agent icon on the other
+    # grafted card. 5 Solari -> Tleilaxu"; Reveal: 1 Persuasion [card face].
+    _entry(
+        415,
+        "slig-farmer",
+        "Slig Farmer",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Stitched Horror: City; GRAFT: "Choose two: water, troop, trash,
+    # Tleilaxu"; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        416,
+        "stitched-horror",
+        "Stitched Horror",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Subject X-137: acquire box Tleilaxu; Landsraad and Spice Trade icons;
+    # Agent: "[one genetic marker]: Tleilaxu"; Reveal: 1 Persuasion [card
+    # face].
+    _entry(
+        417,
+        "subject-x-137",
+        "Subject X-137",
+        2,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        acquisition_bonus=True,
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Tleilaxu Infiltrator: City; GRAFT: enemy Agents do not block, draw a
+    # card, and at two genetic markers an Intrigue card; Reveal: 1
+    # Persuasion [card face].
+    _entry(
+        418,
+        "tleilaxu-infiltrator",
+        "Tleilaxu Infiltrator",
+        2,
+        graft=True,
+        agent_icons=(AgentIcon.CITY,),
+        reveal_persuasion=1,
+        play_data_complete=True,
+    ),
+    # Twisted Mentat: Landsraad, City; GRAFT: may recall the Agent sent this
+    # turn; Reveal: 1 Persuasion, 1 sword, a specimen [card face].
+    _entry(
+        419,
+        "twisted-mentat",
+        "Twisted Mentat",
+        4,
+        graft=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Unnatural Reflexes: Spice Trade; GRAFT: at one genetic marker draw two
+    # cards; Reveal: 1 Persuasion, 1 sword [card face].
+    _entry(
+        420,
+        "unnatural-reflexes",
+        "Unnatural Reflexes",
+        3,
+        graft=True,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Usurp: no Agent icons; GRAFT: "You may graft this to a card in the
+    # Imperium Row without acquiring it. If you do, trash that card at the
+    # end of your turn." (``rules.graft``); Reveal: 1 Persuasion, 1 sword,
+    # a specimen [card face].
+    _entry(
+        421,
+        "usurp",
+        "Usurp",
+        4,
+        graft=True,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # Promo card in the Tleilaxu layout (asset repository
+    # ``cards/en/immortality/promo/``): joins the Tleilaxu deck only with
+    # ``promo_cards`` as well.
+    # Piter, Genius Advisor: Landsraad, Spice Trade; Agent: "Lose a troop
+    # -> draw two cards and Research"; Reveal: 1 Persuasion, 1 sword [card
+    # face].
+    _entry(
+        None,
+        "piter-genius-advisor",
+        "Piter, Genius Advisor",
+        3,
+        requires=frozenset({GameOption.PROMO_CARDS}),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+)
+TLEILAXU_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in TLEILAXU_CARDS}
+
+# "The Reclaimed Forces card is never removed from the Tleilaxu Row. When a
+# player 'acquires' it, they choose one of its effects (to recruit two
+# troops, or advance their Tleilaxu token one space on the Tleilaxu track),
+# but leave the card in place" [Immortality p. 9]. Not a deck card: it never
+# enters a player's deck, so it carries no play data.
+RECLAIMED_FORCES: Final = TleilaxuCardEntry(
+    card=CardDefinition(
+        card_id="reclaimed_forces",
+        name="Reclaimed Forces",
+        sources=(
+            SourceRef(SourceDocument.IMMORTALITY_RULEBOOK, (3, 4, 9)),
+            SourceRef(SourceDocument.CARD_FACE, (1,)),
+        ),
+        catalog_url="https://dunecardshub.com/cards/413/immortality-reclaimed-forces",
+    ),
+    requires=frozenset({GameOption.IMMORTALITY}),
+    specimen_cost=3,
+)
+
+
+def _reclaimed_forces_choices() -> tuple[
+    tuple[str, RecruitTroops | AdvanceTleilaxu], ...
+]:
+    """Reclaimed Forces' lines from its record (composed A7c), each under
+    the ``choice`` argument that names it: ``"troops"`` for the recruit,
+    ``"tleilaxu"`` for the advance."""
+
+    record = RECLAIMED_FORCES_ABILITY
+    if (
+        record.timing is not AbilityTiming.ACQUIRE
+        or record.structure is not AbilityStructure.ONE_OF
+        or record.mark is not AbilityMark.MANDATORY
+        or record.requirement is not None
+        or record.trigger is not None
+        or record.hook is not None
+    ):
+        raise ValueError("Reclaimed Forces chooses one of its lines")
+    choices: list[tuple[str, RecruitTroops | AdvanceTleilaxu]] = []
+    for line in record.sections:
+        if line.condition is not None or line.costs:
+            raise ValueError("Reclaimed Forces' lines are free")
+        match line.rewards:
+            case (RecruitTroops() as reward,):
+                choices.append(("troops", reward))
+            case (AdvanceTleilaxu() as reward,):
+                choices.append(("tleilaxu", reward))
+            case _:
+                raise ValueError(f"no Reclaimed Forces choice holds {line!r}")
+    if len({choice for choice, _ in choices}) != len(choices):
+        raise ValueError("Reclaimed Forces prints each choice once")
+    return tuple(choices)
+
+
+RECLAIMED_FORCES_CHOICES: Final = tuple(
+    choice for choice, _ in _reclaimed_forces_choices()
+)
+
+
+def reclaimed_forces_reward(choice: str) -> RecruitTroops | AdvanceTleilaxu:
+    """The reward of the Reclaimed Forces line ``choice`` names, read from
+    its record."""
+
+    return dict(_reclaimed_forces_choices())[choice]
+
+
+def tleilaxu_cards_for(promo_cards: bool = False) -> tuple[TleilaxuCardEntry, ...]:
+    """Return the Tleilaxu deck entries the selected setup shuffles.
+
+    Only cards with complete play data join the deck (an incomplete card
+    would be inert in a hand); the promo needs ``promo_cards``.
+    """
+
+    return tuple(
+        entry
+        for entry in TLEILAXU_CARDS
+        if entry.play_data_complete
+        and (promo_cards or GameOption.PROMO_CARDS not in entry.requires)
+    )
+
+
+def tleilaxu_deck_instance_ids(promo_cards: bool = False) -> tuple[str, ...]:
+    """Return stable IDs for every physical Tleilaxu deck card copy."""
+
+    return tuple(
+        f"tleilaxu:{entry.card.card_id}:{copy}"
+        for entry in tleilaxu_cards_for(promo_cards)
+        for copy in range(entry.copies)
+    )
+
+
+@kept_by_id
+def tleilaxu_card_for_instance(instance_id: str) -> TleilaxuCardEntry:
+    """Resolve a stable Tleilaxu deck instance ID to its definition."""
+
+    prefix = "tleilaxu:"
+    if not instance_id.startswith(prefix):
+        raise ValueError("not a Tleilaxu-card instance ID")
+    try:
+        card_id, copy_text = instance_id.removeprefix(prefix).rsplit(":", maxsplit=1)
+        copy = int(copy_text)
+        entry = TLEILAXU_CARDS_BY_ID[card_id]
+    except (KeyError, ValueError) as error:
+        raise ValueError("unknown Tleilaxu-card instance ID") from error
+    if copy < 0 or copy >= entry.copies:
+        raise ValueError("Tleilaxu-card copy index is out of range")
+    return entry

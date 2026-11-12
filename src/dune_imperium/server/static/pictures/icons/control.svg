@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="101" viewBox="0 0 87 100">
+  <!-- Control: a grey banner with two broad arches over a disc. Drawn by hand for the public build. -->
+  <defs><linearGradient id="flag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d0d0d0"/><stop offset="1" stop-color="#8a8a8a"/></linearGradient></defs>
+  <path d="M6,4 Q6,2 9,2 H78 Q81,2 81,4 V96 L43.5,79 L6,96 Z" fill="url(#flag)" stroke="#232323" stroke-width="3" stroke-linejoin="round"/><rect x="14" y="8" width="59" height="11" fill="#000" opacity=".16"/><path d="M13.5,64 A30,30 0 0 1 73.5,64" fill="none" stroke="#f4f4f4" stroke-width="8"/><path d="M24.5,64 A19,19 0 0 1 62.5,64" fill="none" stroke="#f4f4f4" stroke-width="4.5" opacity=".8"/><circle cx="43.5" cy="57" r="7.5" fill="#5a5a5a" stroke="#232323" stroke-width="1.8"/>
+</svg>

@@ -1,0 +1,636 @@
+"""Automatic transitions between top-level Uprising round phases."""
+
+from copy import replace
+from typing import Final
+
+from dune_imperium.content.core.effects import DrawTwistedIntrigueCards, OnRoundStart
+from dune_imperium.content.core.tech import TechAbility
+from dune_imperium.content.registry.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.registry.tech import has_tech
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.dreadnoughts import space_controller
+from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.one_step_ahead import push_set_aside
+from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
+from dune_imperium.rules.tech import apply_endgame_tech_effects
+
+
+def _twisted_round_draw() -> int:
+    """Twisted Genius' "Round start: draw a Twisted Intrigue card", from the
+    record (composed A6e); the deck is the setup's (OQ-072, OQ-097)."""
+
+    ((_, (draw,)),) = leader_triggers("piter_de_vries", OnRoundStart)
+    if not isinstance(draw, DrawTwistedIntrigueCards):
+        raise ValueError("Twisted Genius draws a Twisted Intrigue card")
+    return draw.count
+
+
+TWISTED_ROUND_DRAW: Final = _twisted_round_draw()
+# Rise of Ix's Round Start Tech lines: Holtzman Engine's card and Shuttle
+# Fleet's Solari (docs/rules/rise-of-ix.md 4, OQ-122).
+HOLTZMAN_ROUND_DRAW: Final = 1
+SHUTTLE_FLEET_SOLARI: Final = 2
+
+
+def _ix_round_start_effects(state: GameState) -> RuleResult:
+    """Pay the held Tech tiles' "Round Start:" lines: Holtzman Engine's card
+    and Shuttle Fleet's 2 Solari.
+
+    "Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
+    Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기 →
+    첫 turn. 좌석 사이는 First Player부터." (docs/rules/rise-of-ix.md 4,
+    OQ-122, user ruling 2026-10-23). They decide nothing, so they run in
+    seat order from the First Player after Piter's draw. Holtzman Engine's
+    card may need the discard pile shuffled: that is the in-turn personal
+    draw's chance step (``draw_or_request_personal_cards``), pushed on the
+    stack the first turn (or the Scouts step) opens on.
+    """
+
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    working = state
+    events: list[GameEvent] = []
+    seats = state.config.players
+    for offset in range(seats):
+        seat = (state.first_player + offset) % seats
+        source = f"round:{state.round_number}:player:{seat}:tech"
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.HOLTZMAN_ENGINE) and (
+            owner.deck or owner.discard_pile
+        ):
+            drawn = draw_or_request_personal_cards(
+                working,
+                seat,
+                HOLTZMAN_ROUND_DRAW,
+                source=f"{source}:holtzman_engine",
+            )
+            working = drawn.state
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:holtzman_engine:draw",
+                    kind="cards_drawn",
+                    payload=(("count", HOLTZMAN_ROUND_DRAW), ("player", seat)),
+                )
+            )
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.ROUND_START_TWO_SOLARI):
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari + SHUTTLE_FLEET_SOLARI,
+                ),
+            )
+            working = replace(
+                working, players=replace_player(working.players, paid)
+            )
+            events.append(
+                resources_gained_event(
+                    f"{source}:shuttle_fleet", seat, solari=SHUTTLE_FLEET_SOLARI
+                )
+            )
+    return RuleResult(state=working, events=tuple(events))
+
+
+def begin_round(state: GameState) -> RuleResult:
+    """Reveal the round's Conflict, then offer the Control defense or draw.
+
+    "Each round begins by revealing a new Conflict card from the top of the
+    Conflict Deck. ... Next, each player draws five cards from their own
+    deck, forming their hand for the round." [Main p. 8]. The defensive
+    bonus is triggered by the reveal: "When a Conflict card is revealed for
+    a space that you already control, you receive a defensive bonus: you
+    may deploy one troop from your supply to the Conflict." [Main p. 10]
+    [Main p. 20]. So the controller answers between the reveal and the draw
+    (docs/rules/setup-and-game-flow.md section 5): with a defender this
+    returns in Round Start with only the ``CONTROL_DEFENSE`` frame on the
+    stack, and the answer (``apply_control_defense_action``) pauses before
+    the draw (``rules/pauses.py``), whose answer draws; without one the draw
+    (``draw_round_hands``) follows in this same transition. A Round Start
+    state with an empty stack is therefore always before the reveal.
+
+    Any discard pile needed to complete the draw must already have been
+    shuffled beneath the remaining draw deck by ``prepare_round_start``; the
+    defense only moves a troop, so shuffling before the reveal draws the
+    same cards.
+    """
+
+    if state.phase is not GamePhase.ROUND_START:
+        raise ValueError("a round can begin only during the Round Start phase")
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    if state.decision_stack:
+        raise ValueError("Round Start cannot begin with a pending decision")
+    if not state.conflict_deck:
+        raise ValueError("a round cannot begin without a Conflict card")
+    if any(len(player.deck) < 5 and player.discard_pile for player in state.players):
+        raise ValueError("Round Start draw requires a discard reshuffle transition")
+
+    round_number = state.round_number + 1
+    conflict_id = state.conflict_deck[0]
+    players = state.players
+    mentat_events: tuple[GameEvent, ...] = ()
+    if state.mentat_owed_to is not None:
+        # Sort Through the Chaos: "you take the Mentat at the start of the
+        # next round" [FAQ p. 4], "keep it as an Agent for next round"
+        # [DI p. 16]. Where in Round Start is unobservable (P0 sweep C7).
+        taker = players[state.mentat_owed_to]
+        players = replace_player(
+            players,
+            replace(taker, mentat=True, agents_available=taker.agents_available + 1),
+        )
+        mentat_events = (
+            GameEvent(
+                event_id=f"round:{round_number}:mentat_taken",
+                kind="mentat_taken",
+                payload=(("player", taker.player_id),),
+            ),
+        )
+    defense = _control_defense_frame(
+        state,
+        conflict_id,
+        round_number,
+        immortality=state.config.immortality,
+    )
+    revealed = replace(
+        state,
+        # Arrakeen Scouts: last round's rule change ends with the round.
+        scouts_round_modifier="",
+        scouts_discount_used=False,
+        round_number=round_number,
+        reveal_order=(),
+        players=players,
+        mentat_owed_to=None,
+        conflict_deck=state.conflict_deck[1:],
+        current_conflict_ids=(*state.current_conflict_ids, conflict_id),
+        conflict_first_place_influence_bonus=0,
+        combat_intrigue_complete=False,
+        combat_rewards_resolved=False,
+        combat_rewards_paid=0,
+        combat_end_triggers_offered=False,
+        combat_intrigue_players=(),
+        decision_stack=() if defense is None else (defense,),
+    )
+    event = GameEvent(
+        event_id=f"round:{round_number}:conflict",
+        kind="conflict_revealed",
+        payload=(("conflict_id", conflict_id), ("round", round_number)),
+    )
+    if defense is not None:
+        return RuleResult(state=revealed, events=(event, *mentat_events))
+    drawn = draw_round_hands(revealed)
+    return RuleResult(state=drawn.state, events=(event, *mentat_events, *drawn.events))
+
+
+def draw_round_hands(state: GameState) -> RuleResult:
+    """Draw up to five cards each and open the first turn (or the Scouts step).
+
+    "Next, each player draws five cards from their own deck, forming their
+    hand for the round." [Main p. 8]. This is Round Start's last step: it
+    runs once the Conflict is revealed (``begin_round``) and any Control
+    defense is answered (``apply_control_defense_action``).
+    """
+
+    if state.phase is not GamePhase.ROUND_START:
+        raise ValueError("the Round Start draw happens only during Round Start")
+    if state.decision_stack:
+        raise ValueError("the Round Start draw cannot run with a pending decision")
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    if any(len(player.deck) < 5 and player.discard_pile for player in state.players):
+        raise ValueError("Round Start draw requires a discard reshuffle transition")
+
+    round_number = state.round_number
+    draw_counts = tuple(min(5, len(player.deck)) for player in state.players)
+    players = tuple(
+        replace(
+            _draw_cards(player, count),
+            units_deployed_turn=0,
+            units_deployed_peak=0,
+            units_deployed_committed=0,
+            masterstroke_sandworms_turn=0,
+            masterstroke_revealed_turn=False,
+            spice_at_turn_start=player.resources.spice,
+            spice_spent_turn=0,
+            # Hungry for Spice is judged once per turn, and a recall made on a
+            # seat's last (Reveal) turn must not reach its next turn's "If
+            # you recalled a Spy this turn" (OQ-044 (d)): every seat's clear
+            # here, before an Arrakeen Scouts step; the First Player's turn
+            # then opens with reset_turn_counters (below, or after the step).
+            hungry_for_spice_granted_turn=False,
+            spies_recalled_turn=0,
+            # Urgent Shigawire's boost lasts "this round" only.
+            bene_gesserit_boost_pending=False,
+            # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.
+            reveal_persuasion_round_bonus=0,
+            # Recruitment Mission's deck-top option lasts "this round" only.
+            acquire_to_deck_top_round=False,
+            # Chairdog's return and Usurp's borrowed card never outlive the
+            # round (both are consumed earlier in ordinary play).
+            chairdog_return_card_ids=(),
+            usurped_row_card_id="",
+            # Flipped Tech tiles return face up at Round Start
+            # [Bloodlines pp. 7, 12].
+            tech_flipped=(),
+            # One Step Ahead counts Ilesa Ecaz's turns of this round
+            # (``rules.one_step_ahead``).
+            turns_finished_round=0,
+            set_aside_returned_turn=False,
+        )
+        for player, count in zip(state.players, draw_counts, strict=True)
+    )
+    # Twisted Genius: "Round Start: Draw a Twisted Intrigue card" [Piter De
+    # Vries card]; it is an Intrigue card in hand from then on. The rules do
+    # not order a leader's Round Start effect against the defensive bonus;
+    # by project convention it comes with the hand, after the defense, so a
+    # defending Piter decides on what he held at the reveal (OQ-072).
+    twisted_draws = tuple(player.player_id for player in players if player.twisted_deck)
+    players = tuple(
+        replace(
+            player,
+            intrigue_cards=(
+                *player.intrigue_cards,
+                *player.twisted_deck[:TWISTED_ROUND_DRAW],
+            ),
+            twisted_deck=player.twisted_deck[TWISTED_ROUND_DRAW:],
+        )
+        if player.twisted_deck
+        else player
+        for player in players
+    )
+    # Arrakeen Scouts: the round's Scouts step runs after the whole Round
+    # Start (the reveal, any Control defense, the draw) and before the first
+    # turn (OQ-072), driven by the engine's automatic advance
+    # (``rules.scouts``), which then opens the first turn itself.
+    scouts = state.config.arrakeen_scouts
+    opening = () if scouts else (turn_frame(round_number, state.first_player),)
+    if not scouts:
+        # The first turn opens here, so it restarts the First Player's
+        # per-turn counters as every other turn does (``rules.scouts`` does
+        # the same after its step): "If you completed a contract this turn"
+        # [Mercantile Affairs card] must not see a contract of the seat's
+        # last Reveal turn, a different turn [Main p. 8] (OQ-044 (d)).
+        players = reset_turn_counters(players, state.first_player)
+    next_state = replace(
+        state,
+        phase=GamePhase.PLAYER_TURNS,
+        scouts_opening=scouts,
+        players=players,
+        decision_stack=opening,
+    )
+    events = (
+        *(
+            # The draw count is public: zone sizes are visible at the table
+            # (OQ-010) and the payload carries no card identity.
+            GameEvent(
+                event_id=f"round:{round_number}:player:{player.player_id}:draw",
+                kind="cards_drawn",
+                payload=(("count", count), ("player", player.player_id)),
+            )
+            for player, count in zip(players, draw_counts, strict=True)
+            if count > 0
+        ),
+        *(
+            GameEvent(
+                event_id=f"round:{round_number}:player:{seat}:twisted_draw",
+                kind="intrigue_card_drawn",
+                payload=(
+                    ("count", TWISTED_ROUND_DRAW),
+                    ("player", seat),
+                    ("twisted", 1),
+                ),
+            )
+            for seat in twisted_draws
+        ),
+    )
+    if state.config.ix_tech_in_play:
+        ix = _ix_round_start_effects(next_state)
+        next_state = ix.state
+        events = (*events, *ix.events)
+    if state.config.ix_leaders_in_play:
+        # Ilesa Ecaz's set-aside, after the lines that decide nothing and
+        # before the Arrakeen Scouts step or the first turn: "… → Ilesa Ecaz의
+        # 따로 두기 (Holtzman Engine으로 뽑은 카드까지 든 손에서 고른다) → Scouts
+        # 또는 First Player의 첫 turn" (OQ-122, user ruling 2026-10-23;
+        # ``rules.one_step_ahead``).
+        next_state = push_set_aside(next_state)
+    return RuleResult(state=next_state, events=events)
+
+
+def prepare_round_start(state: GameState) -> RuleResult:
+    """Request required discard shuffles or begin the round immediately."""
+
+    if state.phase is not GamePhase.ROUND_START:
+        raise ValueError("only Round Start can be prepared")
+    if state.decision_stack:
+        raise ValueError("Round Start preparation requires no pending decision")
+    for player in state.players:
+        if len(player.deck) >= 5 or not player.discard_pile:
+            continue
+        decision_id = (
+            f"round:{state.round_number + 1}:player:{player.player_id}:discard_shuffle"
+        )
+        frame = DecisionFrame(
+            kind=FrameKind.ROUND_START_RESHUFFLE,
+            frame_id=f"{decision_id}:round_start",
+            decision=ChanceDecision(
+                decision_id=decision_id,
+                prompt=f"Shuffle player {player.player_id}'s discard pile",
+                options=player.discard_pile,
+                count=len(player.discard_pile),
+            ),
+            context=(("player", player.player_id),),
+        )
+        return RuleResult(state=state.push_decision(frame))
+    return begin_round(state)
+
+
+def apply_round_start_reshuffle(
+    state: GameState,
+    outcome: ChanceOutcome,
+) -> RuleResult:
+    """Append one recorded discard permutation beneath the remaining deck."""
+
+    if not state.decision_stack:
+        raise ValueError("there is no pending Round Start reshuffle")
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.ROUND_START_RESHUFFLE or not isinstance(
+        frame.decision, ChanceDecision
+    ):
+        raise ValueError("the current chance decision is not a Round Start reshuffle")
+    player = dict(frame.context).get("player")
+    if isinstance(player, bool) or not isinstance(player, int):
+        raise RuntimeError("Round Start reshuffle has invalid player context")
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        deck=(*owner.deck, *outcome.values),
+        discard_pile=(),
+    )
+    players = tuple(
+        next_owner if candidate.player_id == player else candidate
+        for candidate in state.players
+    )
+    prepared = prepare_round_start(replace(state.pop_decision(), players=players))
+    # Public like the in-turn reshuffle (``card_draw``): the payload carries
+    # only the count, and "장수·수량만 담는 이벤트는 전원 공개다" (OQ-010
+    # ruling 3; general rules audit 2026-10-25).
+    event = GameEvent(
+        event_id=f"round:{state.round_number + 1}:player:{player}:discard_shuffled",
+        kind="personal_discard_shuffled",
+        payload=(("count", len(outcome.values)), ("player", player)),
+    )
+    return RuleResult(state=prepared.state, events=(event, *prepared.events))
+
+
+def legal_control_defense_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the controller's optional one-troop defensive deployment."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    decision = frame.decision
+    if (
+        frame.kind != FrameKind.CONTROL_DEFENSE
+        or not isinstance(decision, PlayerDecision)
+        or decision.owner != player
+    ):
+        return ()
+    decline = DomainAction(action_id="decline_control_defense", actor=player)
+    if state.players[player].troops_supply < 1:
+        # With no supply troop only declining is left: the frame opened
+        # for a controller with Immortality specimens (one can be returned
+        # for the troop first, OQ-050), or an effect resolved in the same
+        # step (an Earn Any Alliance completion) emptied the supply since.
+        return (decline,)
+    return (decline, DomainAction(action_id="deploy_control_defense", actor=player))
+
+
+def apply_control_defense_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Resolve the optional deployment, then pause before the round's draw.
+
+    The defense answers the reveal, before the draw [Main p. 8] [Main p. 20]
+    (``begin_round``). Deploying or declining both stop at a pause
+    (``rules/pauses.py``) whose answer runs the Round Start draw
+    (``draw_round_hands``), which opens the First Player's turn or the
+    Arrakeen Scouts step: the draw reveals hands, and the defender may take
+    its answer back before it at the play server.
+    """
+
+    if action not in legal_control_defense_actions(state, action.actor):
+        raise ValueError("action is not a legal Control defense choice")
+    if state.first_player is None:
+        raise RuntimeError("Control defense requires a First Player")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        raise RuntimeError("Control defense frame has invalid space ID")
+    deployed = action.action_id == "deploy_control_defense"
+    owner = state.players[action.actor]
+    if deployed and owner.troops_supply == 0:
+        raise RuntimeError("Control defender has no troop in supply")
+    next_owner = replace(
+        owner,
+        troops_supply=owner.troops_supply - int(deployed),
+        troops_conflict=owner.troops_conflict + int(deployed),
+    )
+    players = tuple(
+        next_owner if player.player_id == action.actor else player
+        for player in state.players
+    )
+    defended = replace(
+        state,
+        players=players,
+        decision_stack=state.decision_stack[:-1],
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:control_defense:{space_id}:{action.actor}"
+        ),
+        kind=("control_defense_deployed" if deployed else "control_defense_declined"),
+        payload=(
+            ("player", action.actor),
+            ("space_id", space_id),
+            ("troops", int(deployed)),
+        ),
+    )
+    paused = push_pause(defended, ROUND_DRAW, f"round:{state.round_number}")
+    return RuleResult(state=paused.state, events=(event, *paused.events))
+
+
+def _draw_cards(player: PlayerState, count: int) -> PlayerState:
+    return replace(
+        player,
+        deck=player.deck[count:],
+        hand=(*player.hand, *player.deck[:count]),
+    )
+
+
+def _control_defense_frame(
+    state: GameState,
+    conflict_id: str,
+    round_number: int,
+    *,
+    immortality: bool = False,
+) -> DecisionFrame | None:
+    """Return the Control defense the revealed Conflict offers, if any.
+
+    "When a Conflict card is revealed for a space that you already control,
+    you may deploy one troop from your supply to the Conflict." [Main p. 20]
+    [Main p. 10]. With no troop in the controller's supply there is nothing
+    to ask, unless Immortality's specimens can be returned for one "at any
+    time" [Immortality p. 8] (OQ-050). The frame carries no ``turn_owner``:
+    the defense is part of Round Start (Phase 1), before any turn opens
+    [Main p. 8]. The controller is the owner of the dreadnought on the space,
+    else of its Control marker (``dreadnoughts.space_controller``) [Rise of
+    Ix p. 6].
+    """
+
+    conflict = CONFLICTS_BY_ID[conflict_id]
+    control_space_id = conflict.control_space_id
+    if control_space_id is None:
+        return None
+    controller_seat = space_controller(state, control_space_id)
+    if controller_seat is None:
+        return None
+    controller = state.players[controller_seat]
+    if controller.troops_supply == 0 and not (
+        # With Immortality a specimen can be returned to the supply for the
+        # defending troop "at any time" [Immortality p. 8] (OQ-050).
+        immortality and controller.specimens > 0
+    ):
+        return None
+    return DecisionFrame(
+        kind=FrameKind.CONTROL_DEFENSE,
+        frame_id=f"round:{round_number}:control_defense",
+        decision=PlayerDecision(
+            owner=controller.player_id,
+            prompt="Deploy one troop from supply to defend your location?",
+        ),
+        context=(("space_id", control_space_id),),
+    )
+
+
+def turn_frame(round_number: int, player: int) -> DecisionFrame:
+    """Return the frame that opens ``player``'s turn in ``round_number``."""
+
+    return DecisionFrame(
+        kind=FrameKind.TURN,
+        frame_id=f"round:{round_number}:turn:{player}",
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose an Agent turn or Reveal turn",
+        ),
+        context=(
+            ("round", round_number),
+            ("turn_owner", player),
+        ),
+    )
+
+
+def resolve_makers(state: GameState) -> RuleResult:
+    """Add spice to every unoccupied Maker space and open Recall."""
+
+    if state.phase is not GamePhase.MAKERS:
+        raise ValueError("Makers can resolve only during the Makers phase")
+    if state.decision_stack:
+        raise ValueError("Makers cannot resolve with a pending decision")
+    occupied = {
+        space_id for player in state.players for space_id in player.agent_locations
+    }
+    maker_bonus_spice = tuple(
+        (space_id, amount if space_id in occupied else amount + 1)
+        for space_id, amount in state.maker_bonus_spice
+    )
+    next_state = replace(
+        state,
+        phase=GamePhase.RECALL_OR_ENDGAME,
+        maker_bonus_spice=maker_bonus_spice,
+    )
+    events = tuple(
+        GameEvent(
+            event_id=f"round:{state.round_number}:maker:{space_id}",
+            kind="maker_spice_added",
+            payload=(("space_id", space_id),),
+        )
+        for space_id, _ in state.maker_bonus_spice
+        if space_id not in occupied
+    )
+    return RuleResult(state=next_state, events=events)
+
+
+def resolve_recall_or_endgame(state: GameState) -> RuleResult:
+    """Enter Endgame or recall Agents and prepare the next Round Start."""
+
+    if state.phase is not GamePhase.RECALL_OR_ENDGAME:
+        raise ValueError("Recall can resolve only after Makers")
+    if state.first_player is None:
+        raise ValueError("Recall requires a First Player")
+    if state.decision_stack:
+        raise ValueError("Recall cannot resolve with a pending decision")
+    if any(
+        player.units_in_conflict > 0 or player.combat_strength > 0
+        for player in state.players
+    ):
+        raise ValueError("Combat cleanup must finish before Recall")
+
+    # Ten Victory Points [Main p. 15]; twelve in Epic Game Mode
+    # [Rise of Ix p. 10], whatever the Score markers started on (OQ-093).
+    endgame_score = state.config.endgame_victory_points
+    if not state.conflict_deck or any(
+        player.victory_points >= endgame_score for player in state.players
+    ):
+        next_state = replace(state, phase=GamePhase.ENDGAME)
+        event = GameEvent(
+            event_id=f"round:{state.round_number}:endgame",
+            kind="endgame_started",
+        )
+        # Tech tiles with an Endgame line pay as the Endgame opens (OQ-040).
+        tech = apply_endgame_tech_effects(next_state)
+        return RuleResult(state=tech.state, events=(event, *tech.events))
+
+    # The original game: "Return the Mentat to its designated space in the
+    # Landsraad (if it's not already there)", then the Agents [DI p. 13].
+    players = tuple(
+        replace(
+            player,
+            agents_available=3 if player.swordmaster_acquired else 2,
+            agent_locations=(),
+            has_revealed=False,
+            mentat=False,
+            # The Voice's blocks end with the round (OQ-116), and an
+            # Infiltrate played in a last Reveal turn never reaches the next.
+            voice_blocked_space_ids=(),
+            enemy_agents_ignored_turn=False,
+        )
+        for player in state.players
+    )
+    first_player = (state.first_player + 1) % state.config.players
+    next_state = replace(
+        state,
+        phase=GamePhase.ROUND_START,
+        first_player=first_player,
+        players=players,
+    )
+    event = GameEvent(
+        event_id=f"round:{state.round_number}:recall",
+        kind="agents_recalled",
+        payload=(("first_player", first_player),),
+    )
+    return RuleResult(state=next_state, events=(event,))

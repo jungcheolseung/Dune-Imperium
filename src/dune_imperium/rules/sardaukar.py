@@ -1,0 +1,771 @@
+"""Sardaukar Commanders and their Skills (Bloodlines, ``docs/rules/bloodlines.md`` §3).
+
+Three decision points are added when the option is on:
+
+- The Commander waiting on a visited board space is one more freely ordered
+  effect of the visit: pay 2 Solari to acquire and recruit it and choose one
+  face-up Skill (``acquire_sardaukar_commander``) [Bloodlines p. 4]; left
+  unused it lapses when the turn ends (OQ-095 (2)). Without a choosable
+  Skill the Commander is acquired without one (OQ-031).
+- A Commander a card effect acquires (Sardaukar Standard's bank Commander,
+  OQ-035) and Plasteel Blades' extra Skill open a Skill choice
+  (``SKILL_CHOICE``). With no choosable Skill it still opens (user ruling
+  2026-10-02, L2-Q3 (1)): the bank Commander's offers only
+  ``resolve_commander_without_skill``, Plasteel Blades' only
+  ``decline_skill``.
+- Once per turn, Agent or Reveal, 2 Solari recruit one Commander from the
+  supply to the garrison without a new Skill
+  (``recruit_sardaukar_commander``) [Bloodlines p. 4].
+- Desperate's "Reveal Turn: Trash this -> 3 swords" is an optional arrow of
+  the Reveal turn while a Commander is in the Conflict
+  (``trash_skill_for_strength``) [Desperate Skill tile].
+
+The basic deployment of a recruited or garrisoned Commander lives in
+``combat_deployment`` and its strength in ``strength``.
+"""
+
+from copy import replace
+from enum import StrEnum
+
+from dune_imperium.content.bloodlines.sardaukar import (
+    COMMANDER_COST_SOLARI,
+    SKILLS_BY_ID,
+    skill_for_instance,
+)
+from dune_imperium.content.core.tech import TechAbility
+from dune_imperium.content.registry.tech import has_tech
+from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.card_trash import (
+    with_recruited_units,
+)
+from dune_imperium.rules.effects import (
+    BOARD_ICON_COMMANDER,
+    OptionalBlockKind,
+    OptionalEffectBlock,
+    advance_after_effect,
+    board_icon_is_pending,
+    current_agent_effect_context,
+    finish_board_icon,
+    short_of,
+)
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    FrameKind,
+    context_str,
+    owned_top_frame,
+    recruited_commander_count,
+    replace_player,
+    turn_owner_of,
+    update_turn_recruits,
+)
+from dune_imperium.rules.reveal_turn import (
+    add_reveal_optional_sword_strength,
+    add_reveal_strength,
+)
+
+_FRAME_LABEL = "Agent-turn effect frame"
+
+
+def _owned_effect_context(
+    state: GameState,
+    player: int,
+) -> dict[str, ActionValue] | None:
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return None
+    return context
+
+
+def _credit_commander(context: dict[str, ActionValue]) -> None:
+    """Count one Commander recruited this turn on the Agent-turn effect frame.
+
+    Kept apart from ``troops_recruited``: "commander 소집했으면 커맨더를
+    배치해야지, troop이 그 배치 몫을 차지하면 안 되지" (user ruling
+    2026-09-26, OQ-070), so the recruited Commander's deploy slot is a
+    Commander's (``combat_deployment.deployment_rooms``).
+    """
+
+    context[COMMANDERS_RECRUITED_KEY] = (
+        recruited_commander_count(context, COMMANDERS_RECRUITED_KEY) + 1
+    )
+
+
+def commander_cost(owner: PlayerState) -> int:
+    """Return the Solari a Commander costs the owner this turn.
+
+    2 Solari [Bloodlines p. 4], less Honor Guard's discount for the turn
+    (Intrigue card face), never below zero.
+    """
+
+    # Sardaukar High Command: "Recruiting a Sardaukar Commander (including
+    # when you acquire one) costs you 1 less" [Tech tile face].
+    high_command = int(has_tech(owner.tech_ids, TechAbility.COMMANDER_DISCOUNT))
+    return max(0, COMMANDER_COST_SOLARI - owner.commander_discount_turn - high_command)
+
+
+PLASTEEL_BLADES_CARD_ID = "tech:plasteel_blades"
+
+
+def queue_plasteel_blades(state: GameState, player: int, source: str) -> GameState:
+    """Plasteel Blades: "Whenever you recruit a Sardaukar Commander: trash
+    this -> gain an additional Skill" [Tech tile face].
+
+    The optional trash opens as a Skill choice once the recruiting effect
+    has finished with the decision stack (the same queue Sardaukar Standard
+    uses); acquiring a Commander recruits it [Bloodlines p. 4].
+    """
+
+    if not has_tech(state.players[player].tech_ids, TechAbility.PLASTEEL_BLADES):
+        return state
+    return replace(
+        state,
+        pending_skill_choices=(
+            *state.pending_skill_choices,
+            (player, PLASTEEL_BLADES_CARD_ID, f"{source}:plasteel_blades"),
+        ),
+    )
+
+
+def _skill_identity(instance_id: str) -> str:
+    return skill_for_instance(instance_id).skill_id
+
+
+class SkillChoiceBlock(StrEnum):
+    """Why a face-up Skill cannot be chosen (``skill_choice_block``)."""
+
+    HELD = "held"
+
+
+def skill_choice_block(owner: PlayerState, skill_id: str) -> SkillChoiceBlock | None:
+    """Why ``owner`` cannot choose the face-up Skill ``skill_id``, or None.
+
+    "You cannot choose a copy of a Sardaukar Commander Skill already in your
+    supply" [Bloodlines p. 4]. Every Skill choice offers a face-up Skill
+    exactly when this is None (``eligible_face_up_skill_ids``), and the page
+    greys out the others with it (``display.unavailable``).
+    """
+
+    held = {_skill_identity(instance_id) for instance_id in owner.skill_ids}
+    return SkillChoiceBlock.HELD if skill_id in held else None
+
+
+def face_up_skill_identities(state: GameState) -> tuple[str, ...]:
+    """The distinct Skills face up, in row order: two copies are one Skill."""
+
+    seen: list[str] = []
+    for instance_id in state.skill_face_up:
+        skill_id = _skill_identity(instance_id)
+        if skill_id not in seen:
+            seen.append(skill_id)
+    return tuple(seen)
+
+
+def eligible_face_up_skill_ids(state: GameState, owner: PlayerState) -> tuple[str, ...]:
+    """Return the face-up Skill identities the owner may still choose.
+
+    Those ``skill_choice_block`` lets through; two face-up copies of one
+    Skill are one choice. An empty result means the Commander comes without
+    a Skill (OQ-031).
+    """
+
+    return tuple(
+        skill_id
+        for skill_id in face_up_skill_identities(state)
+        if skill_choice_block(owner, skill_id) is None
+    )
+
+
+def legal_sardaukar_commander_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the visited space's Commander for 2 Solari.
+
+    Buying it is optional [Bloodlines p. 4]: it needs no refusal, and left
+    unused the offer lapses when the turn ends (OQ-095 (2), user ruling
+    2026-10-14).
+    """
+
+    if not state.config.bloodlines:
+        return ()
+    context = _owned_effect_context(state, player)
+    if context is None or not board_icon_is_pending(context, BOARD_ICON_COMMANDER):
+        return ()
+    owner = state.players[player]
+    if _commander_offer_block(state, owner, context) is not None:
+        return ()
+    skills = eligible_face_up_skill_ids(state, owner)
+    if not skills:
+        # OQ-031 (user decision 2026-09-07): every face-up Skill is one the
+        # owner already holds, so the Commander is bought without a Skill.
+        return (DomainAction(action_id="acquire_sardaukar_commander", actor=player),)
+    return tuple(
+        DomainAction(
+            action_id="acquire_sardaukar_commander",
+            actor=player,
+            arguments=(("skill_id", skill_id),),
+        )
+        for skill_id in skills
+    )
+
+
+def _commander_offer_block(
+    state: GameState, owner: PlayerState, context: dict[str, ActionValue]
+) -> OptionalEffectBlock | None:
+    """The visited space's Commander is gone, or its Solari are short."""
+
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
+    if space_id not in state.sardaukar_commander_space_ids:
+        return OptionalEffectBlock(OptionalBlockKind.COMMANDER_GONE)
+    cost = commander_cost(owner)
+    return short_of(OptionalBlockKind.SOLARI, cost, owner.resources.solari)
+
+
+def sardaukar_commander_block(
+    state: GameState, player: int
+) -> OptionalEffectBlock | None:
+    """Why the visit's pending Commander purchase is not offered, or None.
+
+    ``legal_sardaukar_commander_actions`` offers the purchase exactly when
+    this is None while the offer is pending: a Commander still on the
+    space and its Solari (``commander_cost``) [Bloodlines p. 4]. None when
+    no offer is pending for ``player``. The page greys the offer out with
+    this (``display.unavailable``, OQ-095 (2)).
+    """
+
+    if not state.config.bloodlines:
+        return None
+    context = _owned_effect_context(state, player)
+    if context is None or not board_icon_is_pending(context, BOARD_ICON_COMMANDER):
+        return None
+    return _commander_offer_block(state, state.players[player], context)
+
+
+def _take_face_up_skill(
+    state: GameState,
+    owner: PlayerState,
+    skill_id: str,
+) -> tuple[GameState, PlayerState, str, str | None]:
+    """Move one face-up copy of ``skill_id`` to the owner and refill the row."""
+
+    instance_id = next(
+        candidate
+        for candidate in state.skill_face_up
+        if _skill_identity(candidate) == skill_id
+    )
+    face_up = [
+        candidate for candidate in state.skill_face_up if candidate != instance_id
+    ]
+    revealed: str | None = None
+    stack = state.skill_stack
+    if stack:
+        revealed = stack[0]
+        face_up.append(revealed)
+        stack = stack[1:]
+    next_state = replace(state, skill_face_up=tuple(face_up), skill_stack=stack)
+    next_owner = replace(owner, skill_ids=(*owner.skill_ids, instance_id))
+    return next_state, next_owner, instance_id, revealed
+
+
+def apply_sardaukar_commander_action(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Buy the space's Commander (recruiting it to the garrison) or decline."""
+
+    if action not in legal_sardaukar_commander_actions(state, action.actor):
+        raise ValueError("action is not a legal Sardaukar Commander choice")
+    _, context = current_agent_effect_context(state)
+    player = action.actor
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
+    source = f"round:{state.round_number}:player:{player}:board:{space_id}"
+    finish_board_icon(context, BOARD_ICON_COMMANDER)
+    owner = state.players[player]
+    cost = commander_cost(owner)
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - cost),
+        commanders_garrison=owner.commanders_garrison + 1,
+    )
+    working = replace(
+        state,
+        sardaukar_commander_space_ids=tuple(
+            candidate
+            for candidate in state.sardaukar_commander_space_ids
+            if candidate != space_id
+        ),
+    )
+    skill_value = dict(action.arguments).get("skill_id")
+    skill_id = str(skill_value) if skill_value is not None else ""
+    working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
+    # The Commander is recruited this turn, so it may join the turn's basic
+    # deployment like a recruited troop [Bloodlines p. 4]; its slot is kept
+    # for a Commander (user ruling OQ-070).
+    _credit_commander(context)
+    players = replace_player(working.players, next_owner)
+    next_state = queue_plasteel_blades(
+        advance_after_effect(replace(working, players=players), context, players),
+        player,
+        source,
+    )
+    events.insert(
+        0,
+        GameEvent(
+            event_id=f"{source}:{BOARD_ICON_COMMANDER}",
+            kind="sardaukar_commander_acquired",
+            payload=(
+                ("player", player),
+                ("skill_id", skill_id),
+                ("solari", cost),
+                ("space_id", space_id),
+            ),
+        ),
+    )
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _gain_skill(
+    state: GameState,
+    owner: PlayerState,
+    skill_id: str,
+    source: str,
+) -> tuple[GameState, PlayerState, list[GameEvent]]:
+    """Take the chosen face-up Skill; an empty ``skill_id`` takes none (OQ-031)."""
+
+    if not skill_id:
+        return state, owner, []
+    state, owner, instance_id, revealed = _take_face_up_skill(state, owner, skill_id)
+    events = [
+        GameEvent(
+            event_id=f"{source}:skill:{instance_id}",
+            kind="skill_gained",
+            payload=(
+                ("player", owner.player_id),
+                ("skill_id", skill_id),
+                ("skill_instance_id", instance_id),
+            ),
+        )
+    ]
+    if revealed is not None:
+        events.append(
+            GameEvent(
+                event_id=f"{source}:skill_revealed:{revealed}",
+                kind="skill_revealed",
+                payload=(
+                    ("skill_id", _skill_identity(revealed)),
+                    ("skill_instance_id", revealed),
+                ),
+            )
+        )
+    return state, owner, events
+
+
+def _acquire_bank_commander(
+    state: GameState,
+    player: int,
+    card_id: str,
+    skill_id: str,
+    *,
+    source: str,
+) -> RuleResult:
+    """Move the bank's Commander to the garrison with ``skill_id`` (or none)."""
+
+    if state.sardaukar_commanders_bank < 1:
+        raise RuntimeError("no Sardaukar Commander is left in the bank")
+    owner = state.players[player]
+    working = replace(
+        state, sardaukar_commanders_bank=state.sardaukar_commanders_bank - 1
+    )
+    next_owner = replace(owner, commanders_garrison=owner.commanders_garrison + 1)
+    working, next_owner, events = _gain_skill(working, next_owner, skill_id, source)
+    players = replace_player(working.players, next_owner)
+    # Recruited this turn: it may join an open Agent turn's basic deployment
+    # like a recruited troop [Bloodlines p. 4], in a slot kept for a
+    # Commander (user ruling OQ-070). This box's own Skill choice
+    # is queued and opened by the engine (``begin_skill_choice``), so
+    # anything -- a Reveal, an Intrigue choice, another stacked frame -- can
+    # sit on top by the time it resolves; ``with_recruited_units`` only
+    # credits an AGENT_EFFECTS frame directly on top, so a Reveal-turn
+    # acquisition (or one reached through a choice frame) would otherwise
+    # never join a deploy allowance at all.
+    top = working.decision_stack[-1] if working.decision_stack else None
+    credited_in_place = (
+        top is not None
+        and top.kind == FrameKind.AGENT_EFFECTS
+        and isinstance(top.decision, PlayerDecision)
+        and top.decision.owner == player
+    )
+    if credited_in_place:
+        decision_stack = with_recruited_units(
+            working.decision_stack, player, commanders=1
+        )
+    else:
+        decision_stack = working.decision_stack
+        if turn_owner_of(working) == player:
+            # ``update_turn_recruits`` finds the owner's Reveal (or bare
+            # turn) frame directly instead, guarded the same way
+            # ``credit_trash_recruits`` guards a trash reward: nothing is
+            # credited outside the owner's own turn [Main p. 10] [FAQ p. 4].
+            working = update_turn_recruits(working, commanders_recruited=1)
+            decision_stack = working.decision_stack
+    events.insert(
+        0,
+        GameEvent(
+            event_id=f"{source}:commander",
+            kind="sardaukar_commander_acquired",
+            payload=(
+                ("card_id", card_id),
+                ("player", player),
+                ("skill_id", skill_id),
+                ("solari", 0),
+            ),
+        ),
+    )
+    return RuleResult(
+        state=queue_plasteel_blades(
+            replace(working, players=players, decision_stack=decision_stack),
+            player,
+            source,
+        ),
+        events=tuple(events),
+    )
+
+
+def skill_choice_is_queued(state: GameState) -> bool:
+    """Return whether an owed Commander acquisition can open its choice now."""
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    return bool(state.pending_skill_choices) and (
+        frame is None or not isinstance(frame.decision, ChanceDecision)
+    )
+
+
+def begin_skill_choice(state: GameState) -> RuleResult:
+    """Open the oldest owed Skill choice, or drop it if nothing can be gained.
+
+    The choice opens even when no face-up Skill can be chosen (user ruling
+    2026-10-02, L2-Q3: "①②는 확인 창" -- (1) a bank Commander gained with no
+    choosable Skill opens a confirm window, the outcome unchanged: the
+    Commander without a Skill, OQ-031, OQ-035 (b)). Plasteel Blades' extra
+    Skill likewise opens with only its ``decline_skill``. Nothing opens
+    when there is nothing to gain or to confirm: Plasteel Blades has left
+    play, or the bank is empty (``sardaukar_commander_unavailable``).
+    """
+
+    if not state.pending_skill_choices:
+        raise ValueError("there is no pending Skill choice")
+    player, card_id, source = state.pending_skill_choices[0]
+    remaining = replace(state, pending_skill_choices=state.pending_skill_choices[1:])
+    if card_id == PLASTEEL_BLADES_CARD_ID:
+        owner = remaining.players[player]
+        if not has_tech(owner.tech_ids, TechAbility.PLASTEEL_BLADES):
+            # The tile left play: its trigger source is gone, nothing to ask.
+            return RuleResult(state=remaining)
+        frame = DecisionFrame(
+            kind=FrameKind.SKILL_CHOICE,
+            frame_id=f"{source}:skill_choice",
+            decision=PlayerDecision(
+                owner=player,
+                prompt="Trash Plasteel Blades for an additional Skill, or keep it",
+            ),
+            context=(("card_id", card_id), ("player", player), ("source", source)),
+        )
+        return RuleResult(state=remaining.push_decision(frame))
+    if remaining.sardaukar_commanders_bank < 1:
+        # The bank emptied while the trash effect finished (OQ-035).
+        return RuleResult(
+            state=remaining,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:commander_unavailable",
+                    kind="sardaukar_commander_unavailable",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    # Nothing changes the Skill row or the seat's Skills while this frame is
+    # on top, so the prompt chosen now matches what the window offers.
+    choosable = eligible_face_up_skill_ids(remaining, remaining.players[player])
+    frame = DecisionFrame(
+        kind=FrameKind.SKILL_CHOICE,
+        frame_id=f"{source}:skill_choice",
+        decision=PlayerDecision(
+            owner=player,
+            prompt=(
+                "Choose the Skill for the acquired Sardaukar Commander"
+                if choosable
+                else "Gain the Sardaukar Commander without a Skill"
+            ),
+        ),
+        context=(
+            ("card_id", card_id),
+            ("player", player),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=remaining.push_decision(frame))
+
+
+def legal_skill_choice_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the choosable Skills for a Commander acquired by a card effect.
+
+    A bank Commander must take a Skill while one can be chosen (OQ-031);
+    with none, the owner confirms the Commander without one
+    (``resolve_commander_without_skill``, user ruling 2026-10-02). Plasteel
+    Blades' trash is an optional arrow, so ``decline_skill`` is always
+    offered, alone when no Skill can be gained.
+    """
+
+    frame = owned_top_frame(state, FrameKind.SKILL_CHOICE, player)
+    if frame is None:
+        return ()
+    plasteel = dict(frame.context).get("card_id") == PLASTEEL_BLADES_CARD_ID
+    choices = tuple(
+        DomainAction(
+            action_id="choose_skill",
+            actor=player,
+            arguments=(("skill_id", skill_id),),
+        )
+        for skill_id in eligible_face_up_skill_ids(state, state.players[player])
+    )
+    if plasteel:
+        return (DomainAction(action_id="decline_skill", actor=player), *choices)
+    if not choices:
+        return (
+            DomainAction(action_id="resolve_commander_without_skill", actor=player),
+        )
+    return choices
+
+
+def apply_skill_choice(state: GameState, action: DomainAction) -> RuleResult:
+    """Take the bank's Commander into the garrison with the chosen Skill."""
+
+    if action not in legal_skill_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Skill choice")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    source = context_str(context, "source", owner="Skill choice frame")
+    card_id = context_str(context, "card_id", owner="Skill choice frame")
+    popped = state.pop_decision()
+    if action.action_id == "decline_skill":
+        return RuleResult(
+            state=popped,
+            events=(
+                # One kind for a refused optional trash (cleanup-2c-6).
+                GameEvent(
+                    event_id=f"{source}:trash_declined",
+                    kind="optional_trash_declined",
+                    payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
+                ),
+            ),
+        )
+    if action.action_id == "resolve_commander_without_skill":
+        # No face-up Skill can be chosen: the Commander comes without one
+        # (OQ-031, OQ-035 (b)), which the owner has now confirmed.
+        return _acquire_bank_commander(popped, action.actor, card_id, "", source=source)
+    skill_id = str(dict(action.arguments)["skill_id"])
+    if card_id == PLASTEEL_BLADES_CARD_ID:
+        owner = popped.players[action.actor]
+        trashed = replace(
+            owner,
+            tech_ids=tuple(
+                held for held in owner.tech_ids if held != "plasteel_blades"
+            ),
+            tech_flipped=tuple(
+                held for held in owner.tech_flipped if held != "plasteel_blades"
+            ),
+        )
+        # One replace: the tile must never sit in two zones between steps.
+        working = replace(
+            popped,
+            players=replace_player(popped.players, trashed),
+            tech_trash=(*popped.tech_trash, "plasteel_blades"),
+        )
+        working, trashed, events = _gain_skill(working, trashed, skill_id, source)
+        return RuleResult(
+            state=replace(working, players=replace_player(working.players, trashed)),
+            events=(
+                GameEvent(
+                    event_id=f"{source}:tech_trashed",
+                    kind="tech_trashed",
+                    payload=(("player", action.actor), ("tech_id", "plasteel_blades")),
+                ),
+                *events,
+            ),
+        )
+    return _acquire_bank_commander(
+        popped, action.actor, card_id, skill_id, source=source
+    )
+
+
+def _can_pay_commander_recruit(owner: PlayerState) -> bool:
+    return (
+        not owner.commander_recruited_turn
+        and owner.commanders_supply > 0
+        and owner.resources.solari >= commander_cost(owner)
+    )
+
+
+def legal_commander_recruit_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the once-per-turn paid recruit of a Commander from the supply.
+
+    Available in the Agent turn (its effect frame) and in the Reveal turn
+    [Bloodlines p. 4]; the Commander goes to the garrison and, in an Agent
+    turn, counts as recruited this turn for the basic deployment.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.config.bloodlines:
+        return ()
+    if (
+        _owned_effect_context(state, player) is None
+        and owned_top_frame(state, FrameKind.REVEAL, player) is None
+    ):
+        return ()
+    if not _can_pay_commander_recruit(state.players[player]):
+        return ()
+    return (DomainAction(action_id="recruit_sardaukar_commander", actor=player),)
+
+
+def apply_commander_recruit(state: GameState, action: DomainAction) -> RuleResult:
+    """Pay 2 Solari to move one Commander from the supply to the garrison."""
+
+    if action not in legal_commander_recruit_actions(state, action.actor):
+        raise ValueError("action is not a legal Commander recruit")
+    player = action.actor
+    owner = state.players[player]
+    cost = commander_cost(owner)
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - cost),
+        commanders_supply=owner.commanders_supply - 1,
+        commanders_garrison=owner.commanders_garrison + 1,
+        commander_recruited_turn=True,
+    )
+    players = replace_player(state.players, next_owner)
+    next_state = replace(state, players=players)
+    context = _owned_effect_context(state, player)
+    if context is not None:
+        _credit_commander(context)
+        next_state = advance_after_effect(next_state, context, players)
+    elif turn_owner_of(next_state) == player:
+        # "Once per turn, Agent or Reveal" [Bloodlines p. 4]: in a Reveal
+        # turn no AGENT_EFFECTS frame sits on top, so the in-place credit
+        # above never fires. ``update_turn_recruits`` finds the owner's
+        # Reveal (or bare turn) frame directly instead; troops recruited
+        # "from any source" this turn join its deploy allowance
+        # [Main p. 10] [FAQ p. 4], and the Combat 아이콘 deploys "이번
+        # turn에 recruit한 유닛 전부와 garrison에서 최대 두 개" regardless
+        # of an Agent or Reveal turn [Bloodlines pp. 5, 12]. The
+        # ``turn_owner_of`` check is the same no-op-outside-the-owner's-
+        # turn guard ``credit_trash_recruits`` uses; this is a direct
+        # player action resolved from the frame ``legal_commander_recruit_
+        # actions`` already required, so it never reaches a stale reopened
+        # turn frame the way a queued follow-up could.
+        next_state = update_turn_recruits(next_state, commanders_recruited=1)
+    recruit_source = (
+        f"round:{state.round_number}:player:{player}:recruit_commander:"
+        f"{next_owner.commanders_total - next_owner.commanders_supply}"
+    )
+    next_state = queue_plasteel_blades(next_state, player, recruit_source)
+    event = GameEvent(
+        event_id=recruit_source,
+        kind="sardaukar_commander_recruited",
+        payload=(("player", player), ("solari", cost)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def legal_skill_trash_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer Desperate's optional trash for three swords in the Reveal turn."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.config.bloodlines:
+        return ()
+    if owned_top_frame(state, FrameKind.REVEAL, player) is None:
+        return ()
+    owner = state.players[player]
+    if owner.commanders_conflict <= 0:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="trash_skill_for_strength",
+            actor=player,
+            arguments=(("skill_id", _skill_identity(instance_id)),),
+        )
+        for instance_id in owner.skill_ids
+        if skill_for_instance(instance_id).trash_for_strength
+    )
+
+
+def apply_skill_trash(state: GameState, action: DomainAction) -> RuleResult:
+    """Trash Desperate for its printed swords during the Reveal turn."""
+
+    if action not in legal_skill_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Skill trash")
+    player = action.actor
+    owner = state.players[player]
+    skill_id = str(dict(action.arguments)["skill_id"])
+    instance_id = next(
+        candidate
+        for candidate in owner.skill_ids
+        if _skill_identity(candidate) == skill_id
+    )
+    swords = SKILLS_BY_ID[skill_id].trash_for_strength
+    # A Commander is in the Conflict, so the swords count at once [Main p. 12].
+    next_owner = replace(
+        owner,
+        skill_ids=tuple(
+            candidate for candidate in owner.skill_ids if candidate != instance_id
+        ),
+        combat_strength=owner.combat_strength + swords,
+    )
+    frames = add_reveal_optional_sword_strength(state.decision_stack, swords)
+    frames = add_reveal_strength(frames, swords)
+    next_state = replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        skill_trash=(*state.skill_trash, instance_id),
+        decision_stack=frames,
+    )
+    source = f"round:{state.round_number}:player:{player}:skill:{instance_id}"
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:trashed",
+                kind="skill_trashed",
+                payload=(
+                    ("player", player),
+                    ("skill_id", skill_id),
+                    ("skill_instance_id", instance_id),
+                ),
+            ),
+            GameEvent(
+                event_id=f"{source}:strength",
+                kind="reveal_strength_gained",
+                payload=(("amount", swords), ("player", player)),
+            ),
+        ),
+    )

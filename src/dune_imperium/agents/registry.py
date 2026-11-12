@@ -1,0 +1,389 @@
+"""Named, seed-constructible baseline agents for evaluation tooling."""
+
+import math
+from collections.abc import Callable
+from typing import Final
+
+from dune_imperium.agents.app_ai import AppAIAgent
+from dune_imperium.agents.base import Agent
+from dune_imperium.agents.heuristic_agent import (
+    SPACE_BONUSES_BEFORE_DEMOTION,
+    SPACE_BONUSES_BEFORE_ESPIONAGE,
+    SPACE_BONUSES_BEFORE_ORIGINAL_TWINS,
+    SPACE_BONUSES_BEFORE_RETUNE,
+    SPACE_BONUSES_DEMOTED_TO_FLOOR,
+    SPACE_BONUSES_MEDIAN_DEMOTION,
+    SPACE_BONUSES_SPLIT_DEMOTION,
+    UNIFORM_TIES,
+    HeuristicAgent,
+)
+from dune_imperium.agents.random_agent import RandomAgent
+from dune_imperium.agents.rollout_agent import RolloutAgent
+from dune_imperium.config import RulesetConfig
+
+type AgentFactory = Callable[[int], Agent]
+
+
+def _random(seed: int) -> Agent:
+    return RandomAgent(seed=seed)
+
+
+def _heuristic(seed: int) -> Agent:
+    return HeuristicAgent(seed=seed)
+
+
+def _app_ai(seed: int) -> Agent:
+    """The Steam app's computer opponent at Hard (``agents/app_ai``)."""
+
+    return AppAIAgent(seed=seed, level=2)
+
+
+def _app_ai_medium(seed: int) -> Agent:
+    """The Steam app's computer opponent at Medium."""
+
+    return AppAIAgent(seed=seed, level=1)
+
+
+def _app_ai_easy(seed: int) -> Agent:
+    """The Steam app's computer opponent at Easy."""
+
+    return AppAIAgent(seed=seed, level=0)
+
+
+def _heuristic_untuned(seed: int) -> Agent:
+    """The heuristic with the board space ranking from before 2026-09-10.
+
+    A retune of the score tables is only believable against the ranking it
+    replaced, on the same seeds and seat rotations. Registering the old table
+    here keeps that A/B reproducible from the committed tree; the 2026-09-09
+    retune had to register a scratch module at runtime because the registry
+    had no slot for a variant.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_RETUNE)
+
+
+def _heuristic_flat_cards(seed: int) -> Agent:
+    """The heuristic before the 2026-09-10 spent-card ranking.
+
+    Every card that reaches a board space cost the same to send, so the choice
+    among them fell to the tie-break RNG. Pinning that here keeps the paired
+    A/B for the Reveal-box pricing reproducible from the committed tree, the
+    way ``heuristic_untuned`` does for the board space table.
+    """
+
+    return HeuristicAgent(seed=seed, spent_card_value=None)
+
+
+def _heuristic_uprising_table(seed: int) -> Agent:
+    """The heuristic with the rubric-priced space ranking of 2026-09-10.
+
+    That ranking priced every space on one rubric and beat the two-entry table
+    on base+CHOAM, Bloodlines and Immortality but lost on the Tech Module
+    (docs/evaluation/baseline-2026-09-10.md sections 13 to 16). Demoting its
+    three most-visited spaces (Imperial Basin, Secrets, Arrakeen) beats it on
+    every ruleset (section 18), so the demoted table is ``heuristic`` now and
+    this variant pins the rubric-priced one for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_DEMOTION)
+
+
+def _heuristic_floor_table(seed: int) -> Agent:
+    """The heuristic with the three demoted spaces at the floor (2026-09-11).
+
+    The demotion was first committed at 0.3, below every other yield. Measured
+    one ruleset axis at a time, the median (0.6) beats that floor on base,
+    CHOAM and Immortality and loses only on the Tech Module without CHOAM
+    (docs/evaluation/baseline-2026-09-10.md section 18(h)), so the median is
+    ``heuristic`` now and this variant pins the floor for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_DEMOTED_TO_FLOOR)
+
+
+def _heuristic_median_table(seed: int) -> Agent:
+    """The heuristic with the three demoted spaces at the median (2026-09-16 am).
+
+    Ablating that table one space at a time showed Imperial Basin alone at
+    the floor beats it on every axis while Arrakeen wants to be higher
+    (docs/evaluation/baseline-2026-09-10.md sections 18(i) and 18(j)), so the
+    split table is ``heuristic`` now and this variant pins the median one for
+    the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_MEDIAN_DEMOTION)
+
+
+def _heuristic_split_table(seed: int) -> Agent:
+    """The heuristic with the split table of 2026-09-16 noon.
+
+    Imperial Basin at the floor and Arrakeen above every one-shot yield, with
+    Deliver Supplies still at its rubric price; its own ablation then sent
+    Deliver Supplies down (docs/evaluation/baseline-2026-09-10.md section
+    18(l)), so this variant pins the split table for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_SPLIT_DEMOTION)
+
+
+def _heuristic_supplies_table(seed: int) -> Agent:
+    """The heuristic with the Deliver Supplies table of 2026-09-16 afternoon.
+
+    Espionage still at its rubric price; that table's own ablation then sent
+    Espionage down (docs/evaluation/baseline-2026-09-10.md section 18(m)), so
+    this variant pins it for the paired A/B.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_ESPIONAGE)
+
+
+def _heuristic_before_original_twins(seed: int) -> Agent:
+    """The heuristic before the original game's twin spaces took their
+    Uprising twins' values (2026-10-30).
+
+    The original game's Swordmaster, High Council, Heighliner, Sietch Tabr,
+    Hagga Basin and Research Station have ids of their own (``imperium_*``)
+    and were priced 0; this variant pins that for the paired A/B at original
+    tables. At Uprising tables it plays as ``heuristic``.
+    """
+
+    return HeuristicAgent(seed=seed, space_bonuses=SPACE_BONUSES_BEFORE_ORIGINAL_TWINS)
+
+
+def _heuristic_uniform_ties(seed: int) -> Agent:
+    """The heuristic before the 2026-09-16 within-family tie-breaks.
+
+    A Faction to gain Influence with, a card to trash or discard, and one of
+    two same-cost cards to buy all fell to the tie-break RNG. Pinning that
+    here keeps the paired A/B of docs/evaluation/baseline-2026-09-16.md
+    section 14 reproducible from the committed tree.
+    """
+
+    return HeuristicAgent(seed=seed, tie_breaks=UNIFORM_TIES)
+
+
+def _rollout(seed: int) -> Agent:
+    return RolloutAgent(seed=seed)
+
+
+def _rollout_untuned(seed: int) -> Agent:
+    """The rollout search with its 2026-09-06 knobs.
+
+    Two sampled worlds, six candidates and fresh playout seeds; re-tuned on
+    2026-09-16 when the strengthened heuristic left it near parity
+    (docs/evaluation/baseline-2026-09-16.md section 13). Pinned here so the
+    paired A/B against the current defaults reruns from the committed tree.
+    """
+
+    return RolloutAgent(
+        seed=seed,
+        rollouts=2,
+        candidates=6,
+        horizon_rounds=1,
+        paired_playouts=False,
+        opponent_reference="max",
+        deck_by_value=False,
+    )
+
+
+def _rollout_count_max(seed: int) -> Agent:
+    """The rollout search with the 2026-09-16 evening value function.
+
+    Playouts read against the strongest opponent and the deck counted by
+    card; re-measured on 2026-09-16 night against three tie-break heuristics
+    (docs/evaluation/baseline-2026-09-16.md section 15), where the mean
+    reference with the printed-value deck won. Pinned here so the paired
+    A/B reruns from the committed tree.
+    """
+
+    return RolloutAgent(seed=seed, opponent_reference="max", deck_by_value=False)
+
+
+def _rollout_strong(seed: int) -> Agent:
+    """The rollout search at twice the default budget.
+
+    Eight sampled worlds over three candidates with common random numbers:
+    60% against three heuristics on base at about 150 ms a decision on an M4
+    (docs/evaluation/baseline-2026-09-16.md section 13), a stronger table
+    opponent for the play server and for evaluations that can afford it.
+    """
+
+    return RolloutAgent(
+        seed=seed, rollouts=8, candidates=3, horizon_rounds=1, paired_playouts=True
+    )
+
+
+# Every baseline an evaluation can name on the command line. A factory takes
+# the per-seat policy seed and returns a fresh agent; new baselines (rollout,
+# search, checkpointed policies) register here so tournaments and reports
+# refer to them by one stable name.
+BASELINE_AGENT_FACTORIES: Final[dict[str, AgentFactory]] = {
+    "random": _random,
+    "heuristic": _heuristic,
+    "app_ai": _app_ai,
+    "app_ai_medium": _app_ai_medium,
+    "app_ai_easy": _app_ai_easy,
+    "heuristic_untuned": _heuristic_untuned,
+    "heuristic_flat_cards": _heuristic_flat_cards,
+    "heuristic_uprising_table": _heuristic_uprising_table,
+    "heuristic_floor_table": _heuristic_floor_table,
+    "heuristic_median_table": _heuristic_median_table,
+    "heuristic_split_table": _heuristic_split_table,
+    "heuristic_supplies_table": _heuristic_supplies_table,
+    "heuristic_uniform_ties": _heuristic_uniform_ties,
+    "heuristic_before_original_twins": _heuristic_before_original_twins,
+    "rollout": _rollout,
+    "rollout_untuned": _rollout_untuned,
+    "rollout_count_max": _rollout_count_max,
+    "rollout_strong": _rollout_strong,
+}
+
+
+# A trained policy enters by file: ``checkpoint:<path>``. Worker processes
+# resolve the path themselves, so no runtime registration has to cross a
+# process boundary. The training package (torch) is imported only then.
+CHECKPOINT_PREFIX: Final = "checkpoint:"
+# The same file, played with determinized search around it instead of one
+# greedy forward pass: ``search:<path>``
+# (``agents.network_search_agent``; docs/evaluation/m10-2026-09-22.md
+# section 12). It costs about 2s a decision against 4ms, and wins 58% of a
+# one-against-three table against three greedy copies of its own checkpoint.
+SEARCH_PREFIX: Final = "search:"
+# ``search:<policy path>::value=<value path>`` searches with one file's policy
+# and another file's value head at the leaves (``NetworkSearchAgent``).
+SEARCH_VALUE_SEPARATOR: Final = "::value="
+# Measurement options of a search seat, after the path in any order:
+# ``::value=<path>`` (above), ``::flip=<margin>``, ``::prior=<weight>`` and
+# ``::halving=<candidates>`` (``NetworkSearchAgent``'s ``flip_margin``,
+# ``prior_weight`` and ``halving``: experiments E1 and E3 of the 2026-10-21
+# order), ``::draft=network`` (``network_draft``: the network picks the
+# Leader, 2026-10-24), ``::horizon=<rounds>`` (``horizon_rounds``: how many
+# round ends a playout runs to, 2026-10-30), and ``::turn_worlds=<worlds>`` or
+# ``::turn_extend=<worlds>`` (Agent turns' worlds, fixed or extended when eight
+# do not settle the choice, 2026-11-04), and ``::batch=off`` or ``::batch=on``
+# (``batch_playouts``: whether the playouts step together and read the
+# network in batches, on by default for a current-codec file since
+# 2026-11-10). A table seat takes only the flip margin and the Agent-turn
+# extension (``server.sessions``).
+SEARCH_OPTION_SEPARATOR: Final = "::"
+
+
+def _draft_option(text: str) -> bool:
+    if text != "network":
+        raise ValueError(f"the draft option is ::draft=network, not {text!r}")
+    return True
+
+
+def _batch_option(text: str) -> bool:
+    if text not in ("on", "off"):
+        raise ValueError(f"the batch option is ::batch=on or ::batch=off, not {text!r}")
+    return text == "on"
+
+
+_SEARCH_OPTIONS: Final[dict[str, tuple[str, Callable[[str], object]]]] = {
+    "value": ("value_path", str),
+    "flip": ("flip_margin", float),
+    "prior": ("prior_weight", float),
+    "halving": ("halving", int),
+    "draft": ("network_draft", _draft_option),
+    "horizon": ("horizon_rounds", int),
+    "turn_worlds": ("turn_worlds", int),
+    "turn_extend": ("turn_extend", int),
+    "batch": ("batch_playouts", _batch_option),
+}
+
+# A file of an older codec played greedily over the whole actions a current
+# decision stands for, by its own head rows: ``older:<path>``
+# (``training.older_teacher``; the stage B retrain's teacher, 2026-10-21).
+OLDER_PREFIX: Final = "older:"
+
+
+def is_background_agent_kind(kind: str) -> bool:
+    """Return whether a play-server seat of ``kind`` thinks in the background.
+
+    A search seat's decision costs about 1.4s on the browser's default rules
+    (p90 3.3s, up to 7s), so the play server answers it on a worker thread
+    instead of inside the request that handed the decision over; every
+    other kind answers in milliseconds and keeps playing synchronously.
+    """
+
+    return kind.startswith(SEARCH_PREFIX)
+
+
+def parse_search_kind(kind: str) -> tuple[str, dict[str, object]]:
+    """A ``search:`` seat's file and its options as ``NetworkSearchAgent``
+    keyword arguments; raises ``ValueError`` for a malformed one."""
+
+    path, *parts = kind[len(SEARCH_PREFIX) :].split(SEARCH_OPTION_SEPARATOR)
+    if not path:
+        raise ValueError("search agent kind needs a path")
+    options: dict[str, object] = {}
+    for part in parts:
+        name, equals, text = part.partition("=")
+        if name == "value" and equals and not text:
+            raise ValueError("search agent kind needs a path after ::value=")
+        if name not in _SEARCH_OPTIONS or not equals or not text:
+            raise ValueError(f"unknown or empty search option: {part!r}")
+        keyword, kind_of = _SEARCH_OPTIONS[name]
+        if keyword in options:
+            raise ValueError(f"search option given twice: {name!r}")
+        value = kind_of(text)
+        if isinstance(value, float) and not (math.isfinite(value) and value >= 0):
+            raise ValueError(f"search option must be finite and not negative: {part!r}")
+        if name == "halving" and isinstance(value, int) and (value == 1 or value < 0):
+            raise ValueError(f"halving is 0 (off) or at least 2 candidates: {part!r}")
+        options[keyword] = value
+    return path, options
+
+
+def is_agent_kind(kind: str) -> bool:
+    """Return whether ``make_agent`` can build ``kind``."""
+
+    if kind.startswith(SEARCH_PREFIX):
+        try:
+            parse_search_kind(kind)
+        except ValueError:
+            return False
+        return True
+    return (
+        kind in BASELINE_AGENT_FACTORIES
+        or (kind.startswith(CHECKPOINT_PREFIX) and len(kind) > len(CHECKPOINT_PREFIX))
+        or (kind.startswith(OLDER_PREFIX) and len(kind) > len(OLDER_PREFIX))
+    )
+
+
+def make_agent(kind: str, seed: int, config: RulesetConfig | None = None) -> Agent:
+    """Instantiate the named baseline (or a checkpoint or search) with ``seed``.
+
+    ``config`` is the game the agent will play: a checkpoint or search seat
+    answers for that game's action catalog (``load_network_agent``), so a
+    file trained on another ruleset can sit at, say, an Epic Game Mode game.
+    Baselines ignore it. A checkpoint seat hands a decision made only of
+    templates it was never trained on to a heuristic seeded with ``seed``.
+    """
+
+    if kind.startswith(CHECKPOINT_PREFIX):
+        path = kind[len(CHECKPOINT_PREFIX) :]
+        if not path:
+            raise ValueError("checkpoint agent kind needs a path")
+        from dune_imperium.training.torch_policy import load_network_agent
+
+        return load_network_agent(path, config, seed=seed)
+    if kind.startswith(OLDER_PREFIX):
+        path = kind[len(OLDER_PREFIX) :]
+        if not path:
+            raise ValueError("older agent kind needs a path")
+        from dune_imperium.training.older_teacher import load_older_agent
+
+        return load_older_agent(path, seed=seed)
+    if kind.startswith(SEARCH_PREFIX):
+        path, options = parse_search_kind(kind)
+        from dune_imperium.agents.network_search_agent import NetworkSearchAgent
+
+        return NetworkSearchAgent(path, seed=seed, config=config, **options)  # type: ignore[arg-type]
+    try:
+        factory = BASELINE_AGENT_FACTORIES[kind]
+    except KeyError:
+        raise ValueError(f"unknown agent kind: {kind!r}") from None
+    return factory(seed)

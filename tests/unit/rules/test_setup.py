@@ -1,0 +1,339 @@
+"""Tests for rules-backed player setup constructors."""
+
+import json
+from dataclasses import replace
+
+import pytest
+
+from dune_imperium import RulesetConfig
+from dune_imperium.content.core.icons import ConflictTier
+from dune_imperium.content.core.schema import GameOption
+from dune_imperium.content.registry.conflicts import CONFLICTS
+from dune_imperium.content.registry.contracts import contract_instance_ids
+from dune_imperium.content.uprising.objectives import objectives_for_players
+from dune_imperium.core import ChanceReplayError, ChanceResolver, GamePhase, PlayerState
+from dune_imperium.core.state import _canonicalize, canonical_state_hash
+from dune_imperium.rules.setup import (
+    apply_starting_deck_shuffle,
+    assign_objectives,
+    build_conflict_setup,
+    conflict_setup_decisions,
+    create_draft_initial_state,
+    create_initial_state,
+    create_unshuffled_players,
+    objective_setup_decision,
+    starting_deck_shuffle_decision,
+)
+
+SELECTED_LEADERS = (
+    "feyd_rautha_harkonnen",
+    "gurney_halleck",
+    "lady_amber_metulli",
+    "lady_jessica",
+)
+
+
+def test_four_players_start_with_official_resources_and_components() -> None:
+    players = create_unshuffled_players()
+
+    assert tuple(player.player_id for player in players) == (0, 1, 2, 3)
+    for player in players:
+        assert player.victory_points == 1
+        assert player.resources.solari == 0
+        assert player.resources.spice == 0
+        assert player.resources.water == 1
+        assert player.agents_available == 2
+        assert player.swordmaster_acquired is False
+        assert player.troops_supply == 9
+        assert player.troops_garrison == 3
+        assert player.troops_conflict == 0
+        assert player.spies_supply == 3
+        assert player.influence.emperor == 0
+        assert player.influence.spacing_guild == 0
+        assert player.influence.bene_gesserit == 0
+        assert player.influence.fremen == 0
+        assert player.combat_strength == 0
+        assert len(player.deck) == 10
+        assert player.hand == ()
+
+
+def test_troop_conservation_is_enforced() -> None:
+    with pytest.raises(ValueError, match="all 12 troops"):
+        PlayerState(player_id=0, troops_supply=8)
+
+
+def test_agent_conservation_accounts_for_the_swordmaster() -> None:
+    with pytest.raises(ValueError, match="active agents"):
+        PlayerState(player_id=0, agents_available=3)
+
+    acquired = PlayerState(
+        player_id=0,
+        agents_available=3,
+        swordmaster_acquired=True,
+    )
+    assert acquired.agents_available == 3
+
+
+def test_spy_conservation_is_enforced() -> None:
+    with pytest.raises(ValueError, match="three spies"):
+        PlayerState(player_id=0, spies_supply=2)
+
+
+def test_conflict_setup_builds_tiered_deck_and_tracks_unused_cards() -> None:
+    resolver = ChanceResolver(seed=123)
+    outcomes = tuple(
+        resolver.resolve(decision) for decision in conflict_setup_decisions()
+    )
+
+    setup = build_conflict_setup(outcomes)
+    tier_by_id = {
+        conflict.card.card_id: conflict.tier
+        for conflict in CONFLICTS
+        if GameOption.BLOODLINES not in conflict.requires
+        and GameOption.EPIC_GAME not in conflict.requires
+    }
+
+    assert len(setup.deck) == 10
+    assert len(set(setup.unused)) == 6
+    assert tuple(tier_by_id[card_id] for card_id in setup.deck) == (
+        ConflictTier.ONE,
+        *(ConflictTier.TWO for _ in range(5)),
+        *(ConflictTier.THREE for _ in range(4)),
+    )
+    assert set(setup.deck) | set(setup.unused) == set(tier_by_id)
+
+
+def test_bloodlines_adds_its_two_conflicts_to_the_tier_pools() -> None:
+    # One Conflict I and one Conflict II join the pools; the deck keeps its
+    # 1/5/4 shape [Bloodlines p. 3].
+    resolver = ChanceResolver(seed=123)
+    decisions = conflict_setup_decisions(RulesetConfig(bloodlines=True))
+    assert "skirmish_wild" in decisions[2].options
+    assert "storms_in_the_south" in decisions[1].options
+    outcomes = tuple(resolver.resolve(decision) for decision in decisions)
+
+    setup = build_conflict_setup(outcomes, RulesetConfig(bloodlines=True))
+    assert len(setup.deck) == 10
+    assert len(set(setup.unused)) == 8
+    assert set(setup.deck) | set(setup.unused) == {
+        conflict.card.card_id
+        for conflict in CONFLICTS
+        if GameOption.EPIC_GAME not in conflict.requires
+    }
+    with pytest.raises(ValueError):
+        build_conflict_setup(outcomes)
+
+
+def test_same_seed_repeats_conflict_setup() -> None:
+    decisions = conflict_setup_decisions()
+
+    first = ChanceResolver(seed=99)
+    second = ChanceResolver(seed=99)
+
+    assert build_conflict_setup(
+        tuple(first.resolve(decision) for decision in decisions)
+    ) == build_conflict_setup(tuple(second.resolve(decision) for decision in decisions))
+
+
+def test_objectives_are_dealt_once_and_determine_first_player() -> None:
+    players = create_unshuffled_players()
+    resolver = ChanceResolver(seed=321)
+
+    assigned, first_player = assign_objectives(
+        players,
+        resolver.resolve(objective_setup_decision()),
+    )
+
+    dealt = tuple(player.objective_ids[0] for player in assigned)
+    expected = {objective.objective_id for objective in objectives_for_players(4)}
+    assert set(dealt) == expected
+    assert assigned[first_player].objective_ids == ("objective_desert_mouse",)
+
+
+def test_seat_zero_takes_the_first_player_objective_with_the_option() -> None:
+    # OQ-132 project convention (user decision 2026-10-25): "Player 1"
+    # starts round 1 and holds the Desert Mouse with the First Player
+    # marker; the other three Objectives are dealt at random to seats 1-3.
+    # The printed deal gives each player a random one [Main p. 5].
+    config = RulesetConfig(first_player_seat_zero=True)
+    others = {
+        objective.objective_id
+        for objective in objectives_for_players(4)
+        if not objective.grants_first_player
+    }
+    orders = set()
+    for seed in range(40):
+        decision = objective_setup_decision(config)
+        assert set(decision.options) == others
+        assert decision.count == 3
+        assigned, first_player = assign_objectives(
+            create_unshuffled_players(),
+            ChanceResolver(seed=seed).resolve(decision),
+            config,
+        )
+        assert first_player == 0
+        assert assigned[0].objective_ids == ("objective_desert_mouse",)
+        rest = tuple(player.objective_ids[0] for player in assigned[1:])
+        assert set(rest) == others
+        orders.add(rest)
+    # Seats 1-3 still get theirs at random.
+    assert len(orders) == 6
+
+
+@pytest.mark.parametrize("draft", [False, True])
+def test_both_setups_seat_the_first_player_at_zero_with_the_option(
+    draft: bool,
+) -> None:
+    on = RulesetConfig(leader_draft=draft, first_player_seat_zero=True)
+    for seed in range(12):
+        result = (
+            create_draft_initial_state(on, seed)
+            if draft
+            else create_initial_state(on, seed, SELECTED_LEADERS)
+        )
+        assert result.state.first_player == 0
+        assert result.state.players[0].objective_ids == ("objective_desert_mouse",)
+    # Without it the printed deal still seats the marker anywhere.
+    off = RulesetConfig(leader_draft=draft)
+    firsts = {
+        (
+            create_draft_initial_state(off, seed)
+            if draft
+            else create_initial_state(off, seed, SELECTED_LEADERS)
+        ).state.first_player
+        for seed in range(12)
+    }
+    assert len(firsts) > 1
+
+
+def test_the_option_leaves_the_hash_of_games_without_it_alone() -> None:
+    # Saves and records hold canonical state hashes taken before the option
+    # existed: at its default it is left out of the hash
+    # (RulesetConfig.HASH_OMITTED_AT_DEFAULT), and on it counts.
+    state = create_initial_state(RulesetConfig(), 5, SELECTED_LEADERS).state
+    on = replace(state, config=RulesetConfig(first_player_seat_zero=True))
+    assert canonical_state_hash(on) != canonical_state_hash(state)
+    assert "first_player_seat_zero" not in json.dumps(_canonicalize(state))
+    assert '"first_player_seat_zero": true' in json.dumps(_canonicalize(on))
+
+
+def test_starting_deck_shuffle_is_a_full_recorded_permutation() -> None:
+    player = create_unshuffled_players()[0]
+    before = player.deck
+    resolver = ChanceResolver(seed=456)
+
+    shuffled = apply_starting_deck_shuffle(
+        player,
+        resolver.resolve(starting_deck_shuffle_decision(player)),
+    )
+
+    assert set(shuffled.deck) == set(before)
+    assert len(shuffled.deck) == 10
+    assert shuffled.deck != before
+
+
+@pytest.mark.parametrize("seed", (0, 1, 17, 2026, 2**32))
+def test_complete_base_setup_populates_every_shared_and_player_zone(seed: int) -> None:
+    result = create_initial_state(
+        RulesetConfig(),
+        seed=seed,
+        leader_ids=SELECTED_LEADERS,
+    )
+    state = result.state
+
+    assert state.phase is GamePhase.ROUND_START
+    assert state.round_number == 0
+    assert state.first_player in range(4)
+    assert tuple(player.leader_id for player in state.players) == SELECTED_LEADERS
+    assert all(len(player.deck) == 10 and player.hand == () for player in state.players)
+    assert all(len(player.objective_ids) == 1 for player in state.players)
+    assert len(state.conflict_deck) == 10
+    assert len(state.unused_conflict_ids) == 6
+    assert state.current_conflict_ids == ()
+    assert state.shield_wall_present is True
+    assert len(state.imperium_row) == 5
+    assert len(state.imperium_deck) == 60
+    assert len(state.intrigue_deck) == 40
+    assert state.reserve_stacks == (
+        ("prepare_the_way", 8),
+        ("the_spice_must_flow", 10),
+    )
+    assert len(result.chance_outcomes) == 10
+
+
+def test_complete_setup_repeats_from_seed_and_from_recorded_chance() -> None:
+    first = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    repeated = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    replayed = create_initial_state(
+        RulesetConfig(),
+        seed=999,
+        leader_ids=SELECTED_LEADERS,
+        recorded_outcomes=first.chance_outcomes,
+    )
+
+    assert repeated == first
+    assert replace(replayed.state, seed=first.state.seed) == first.state
+    assert replayed.chance_outcomes == first.chance_outcomes
+
+
+def test_choam_setup_shuffles_twenty_contracts_and_exposes_two() -> None:
+    first = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+    replayed = create_initial_state(
+        RulesetConfig(choam_module=True),
+        seed=999,
+        leader_ids=SELECTED_LEADERS,
+        recorded_outcomes=first.chance_outcomes,
+    )
+
+    assert len(first.state.face_up_contract_ids) == 2
+    assert len(first.state.contract_bank) == 18
+    assert set((*first.state.face_up_contract_ids, *first.state.contract_bank)) == set(
+        contract_instance_ids()
+    )
+    assert len(first.chance_outcomes) == 11
+    assert replace(replayed.state, seed=first.state.seed) == first.state
+    assert replayed.chance_outcomes == first.chance_outcomes
+
+
+def test_complete_setup_rejects_invalid_leader_selections() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=1,
+            leader_ids=(SELECTED_LEADERS[0],) * 4,
+        )
+
+    with pytest.raises(ValueError, match="not available"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=1,
+            leader_ids=(*SELECTED_LEADERS[:3], "shaddam_corrino_iv"),
+        )
+
+
+def test_complete_setup_rejects_trailing_recorded_chance() -> None:
+    first = create_initial_state(
+        RulesetConfig(),
+        seed=55,
+        leader_ids=SELECTED_LEADERS,
+    )
+
+    with pytest.raises(ChanceReplayError, match="unused"):
+        create_initial_state(
+            RulesetConfig(),
+            seed=55,
+            leader_ids=SELECTED_LEADERS,
+            recorded_outcomes=(*first.chance_outcomes, first.chance_outcomes[-1]),
+        )

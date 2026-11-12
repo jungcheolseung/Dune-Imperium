@@ -1,0 +1,892 @@
+"""The M10 training loop: collect self-play, update, checkpoint, evaluate.
+
+Every iteration plays ``games_per_iteration`` seeded games through the
+lockstep runner with the learner in every seat (or, with an opponent kind,
+the learner rotating through ``learner_seats`` seats of a table of that
+baseline, in every game or in ``opponent_games`` of them), keeps
+the learner's own decisions, applies one learner update, appends a JSON
+line of statistics, and saves ``latest.pt`` plus, every ``checkpoint_every``
+iterations, a numbered checkpoint (78 MB each for the full-expansion
+catalog, so an overnight run keeps one in every few dozen).
+Every ``eval_every`` iterations the latest checkpoint enters an in-process
+tournament against the evaluation opponent so progress is measured with
+the same tool as every other baseline. Training seeds start far above the
+tournament's default seeds so evaluation never replays a training game.
+
+With a kickstart teacher (``training.kickstart``) the update also pulls the
+learner toward the teacher with a weight that starts at
+``kickstart_weight`` on the run's first iteration (a resumed run's too) and
+falls linearly to 0 over ``kickstart_iterations``; only the iterations with
+a positive weight ask the teacher anything.
+
+Stage 3 of docs/entity-self-play-plan.md (section 4.3) adds, all off by
+default: a starting file (``init``), the user's opponent mix
+(``mix``: ``training.table_mix``, with past copies of the learner kept every
+``past_every`` iterations, the old server network ``x_opponent`` and the app
+AI) and dealt Leaders (``dealt_share``), the graded reward (``reward_step``),
+a fixed critic (``critic``: a file whose value measures every step, given to
+the learner as baselines) with round-level targets (``round_targets``: a
+step in round r aims at the lambda-return from the start of round r + 1, as
+the stage-1 value was fitted), and a frozen value branch (``freeze_value``).
+With ``round_baseline`` a step is measured against the critic's value of
+the seat's last round start before it instead of its own observation: the
+stage-1 value was fitted at round starts only, and mid-round it explains
+the targets worse than a constant (2026-11-02 root-cause analysis, plan
+4.3). A step before the seat's first round start (the draft) gets 0.
+"""
+
+import json
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+
+from dune_imperium.agents.app_ai.family_atomics import FAMILY_ATOMICS_DECIDERS
+from dune_imperium.agents.registry import CHECKPOINT_PREFIX, is_agent_kind
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.evaluation import (
+    AgentSummary,
+    TournamentSummary,
+    run_tournament,
+    summarize,
+    tournament_specs,
+)
+from dune_imperium.evaluation.tournament import rotated_leader_ids
+from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
+from dune_imperium.training.collect import CollectionResult, Collector
+from dune_imperium.training.kickstart import kickstart_weight
+from dune_imperium.training.learner import Learner, LearnerConfig, UpdateStats
+from dune_imperium.training.network import DEFAULT_HIDDEN, PolicyValueNetwork
+from dune_imperium.training.older_teacher import cached_older_network
+from dune_imperium.training.selfplay import (
+    Episode,
+    SelfPlayRunner,
+    SelfPlaySpec,
+    apply_step_penalty,
+    select_policy_steps,
+)
+from dune_imperium.training.table_mix import PastSelves, TableMix, parse_shares
+from dune_imperium.training.torch_policy import resolve_device
+
+LEARNER = "learner"
+TRAINING_SEED_BASE = 2_000_000
+# Where the in-training evaluation's seeds start. Between the tournament
+# tool's usual small seeds and TRAINING_SEED_BASE, so a run's evaluation
+# games are legible as their own range and never replay a training game.
+EVAL_SEED_BASE = 1_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class TrainConfig:
+    out_dir: Path
+    iterations: int = 10
+    games_per_iteration: int = 32
+    seed: int = 0
+    device: str = "cpu"
+    # Worker processes for collection; 1 collects in-process.
+    workers: int = 1
+    # The base game (Uprising or the original Dune: Imperium) and Rise of Ix.
+    base_game: BaseGame = BaseGame.UPRISING
+    rise_of_ix: bool = False
+    choam_module: bool = False
+    # Shuffle the promo Imperium cards into the deck (see RulesetConfig).
+    promo_cards: bool = False
+    # Play with the Bloodlines expansion (docs/rules/bloodlines.md).
+    bloodlines: bool = False
+    # The Bloodlines Tech Module; requires bloodlines.
+    tech_module: bool = False
+    # Play with the Immortality expansion (docs/rules/immortality.md).
+    immortality: bool = False
+    # Immortality's Go to 11 variant; requires immortality.
+    go_to_11: bool = False
+    # Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md).
+    epic_game: bool = False
+    # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
+    arrakeen_scouts: bool = False
+    # The OQ-007 six-Leader draft: every seat picks its Leader, so the
+    # learner learns the picks too. Not part of the ruleset identifier.
+    leader_draft: bool = False
+    # Deal each game a random four-Leader roster (the tournament's
+    # --rotate-leaders derivation) instead of the engine's fixed default
+    # four, so the learner meets every Leader. Not with leader_draft.
+    rotate_leaders: bool = False
+    hidden: tuple[int, ...] = DEFAULT_HIDDEN
+    # The network a fresh run builds: "mlp" (the flat MLP) or "entity" (the
+    # entity network, docs/entity-network-plan.md). A resumed run keeps the
+    # checkpoint's own.
+    arch: str = "mlp"
+    learner: LearnerConfig = field(default_factory=LearnerConfig)
+    # Baseline kind seated in the non-learner seats during collection; None
+    # means pure self-play with the learner in every seat.
+    opponent: str | None = None
+    # Seats the learner holds at each table when ``opponent`` is set (1-3).
+    # One learner seat against three frozen ones yields a quarter of the
+    # learner rows of self-play per game (measured 6,103 against 24,805 a
+    # 32-game iteration, 2026-09-22), so a fixed opponent is cheaper to
+    # learn against at two seats each.
+    learner_seats: int = 1
+    # Games per iteration seated against ``opponent``; the others are pure
+    # self-play. None seats every game against it. The opponent games are
+    # spread evenly through the iteration, and the collector deals every
+    # worker its share of them (``collect.deal``).
+    opponent_games: int | None = None
+    temperature: float = 1.0
+    # Pay the finishing order instead of winner-take-all during collection
+    # (training.selfplay.rank_reward); a learning-side reward transform.
+    rank_rewards: bool = False
+    # Pay each seat its own final Victory Points instead (score_reward); an
+    # experiment arm, exclusive with rank_rewards.
+    score_rewards: bool = False
+    # "app": the network seats of collection spend Family Atomics by the app
+    # AI's rule and the policy never chooses it (Collector); "network": the
+    # policy decides it like every other action.
+    family_atomics: str = "network"
+    # Learning-side shaping: cost per own decision charged against the
+    # terminal reward (see apply_step_penalty); 0 disables it.
+    step_penalty: float = 0.0005
+    # Decisions per training game before truncation (reward 0). A normal
+    # game takes about 650; the cap bounds a policy that learns to loop.
+    max_steps: int = 4_000
+    eval_every: int = 0
+    eval_games: int = 10
+    eval_opponent: str = "heuristic"
+    # Keep a numbered checkpoint every N iterations; ``latest.pt`` is
+    # rewritten every iteration regardless.
+    checkpoint_every: int = 1
+    resume: Path | None = None
+    # Let ``resume`` load a checkpoint trained on another ruleset: its
+    # policy head moves onto this run's catalog by template identity and a
+    # template it never saw starts at zero (load_checkpoint's retarget).
+    # Off by default, so a resume with mistyped options still fails loudly.
+    retarget: bool = False
+    # Kickstarting (training.kickstart): an older-codec network read through
+    # training.older_teacher, the weight of KL(teacher || learner) at this
+    # run's first iteration, and the iterations over which it falls to 0.
+    # A weight of 0 (the default) turns it off.
+    kickstart_teacher: Path | None = None
+    kickstart_weight: float = 0.0
+    kickstart_iterations: int = 0
+    # Stage 3 (module docstring). A file whose weights start the run at
+    # iteration 0 with a fresh optimizer (``resume`` continues one instead).
+    init: Path | None = None
+    # The opponent mix as shares, "self=5,past=3,x=1,app=1" (the user's,
+    # 2026-10-30); exclusive with ``opponent``.
+    mix: str | None = None
+    # The "x" tables' opponent (the user's plan: the old server network,
+    # greedy) and the "app" tables'.
+    x_opponent: str | None = None
+    app_opponent: str = "app_ai"
+    # Past copies of the learner for the "past" tables: one every
+    # ``past_every`` iterations, the newest ``past_keep`` (``PastSelves``).
+    past_every: int = 200
+    past_keep: int = 8
+    # The share of games whose Leaders are dealt instead of drafted.
+    dealt_share: float = 0.0
+    # The graded reward's step (``pettingzoo_env.graded_reward``); None keeps
+    # the rewards above.
+    reward_step: float | None = None
+    # A file whose value is every step's baseline (a fixed critic).
+    critic: Path | None = None
+    # With a critic: a step's return is the lambda-return from its next
+    # round start instead of the final reward.
+    round_targets: bool = False
+    lam: float = 0.8
+    # With a critic: the baseline is the critic's value of the seat's last
+    # round start before the step (round_start_baselines), not of the step.
+    round_baseline: bool = False
+    # Leave the value parts of the network untrained (a value branch, its
+    # auxiliary heads, or the shared value head).
+    freeze_value: bool = False
+
+    @property
+    def ruleset(self) -> RulesetConfig:
+        return RulesetConfig(
+            base_game=self.base_game,
+            rise_of_ix=self.rise_of_ix,
+            choam_module=self.choam_module,
+            promo_cards=self.promo_cards,
+            bloodlines=self.bloodlines,
+            tech_module=self.tech_module,
+            immortality=self.immortality,
+            go_to_11=self.go_to_11,
+            epic_game=self.epic_game,
+            arrakeen_scouts=self.arrakeen_scouts,
+            leader_draft=self.leader_draft,
+        )
+
+    def __post_init__(self) -> None:
+        if self.iterations < 1 or self.games_per_iteration < 1:
+            raise ValueError("iterations and games_per_iteration must be positive")
+        if self.opponent is not None and not is_agent_kind(self.opponent):
+            raise ValueError(f"unknown opponent kind: {self.opponent!r}")
+        if self.eval_every and not is_agent_kind(self.eval_opponent):
+            raise ValueError(f"unknown evaluation opponent: {self.eval_opponent!r}")
+        if self.eval_every < 0 or self.eval_games < 1:
+            raise ValueError("eval_every must not be negative; eval_games positive")
+        if self.checkpoint_every < 1:
+            raise ValueError("checkpoint_every must be positive")
+        if self.workers < 1:
+            raise ValueError("workers must be positive")
+        if self.step_penalty < 0.0:
+            raise ValueError("step_penalty must not be negative")
+        if self.arch not in ("mlp", "entity"):
+            raise ValueError(f"unknown network architecture: {self.arch!r}")
+        if self.family_atomics not in FAMILY_ATOMICS_DECIDERS:
+            raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
+        if not 1 <= self.learner_seats <= 3:
+            raise ValueError("learner_seats must be between 1 and 3")
+        if self.learner_seats != 1 and self.opponent is None:
+            raise ValueError(
+                "learner_seats needs an opponent (self-play seats all four)"
+            )
+        if self.opponent_games is not None:
+            if self.opponent is None:
+                raise ValueError("opponent_games needs an opponent")
+            if not 1 <= self.opponent_games <= self.games_per_iteration:
+                raise ValueError(
+                    "opponent_games must be between 1 and games_per_iteration"
+                )
+        if self.rotate_leaders and self.leader_draft:
+            raise ValueError("rotate_leaders cannot be combined with leader_draft")
+        if self.rotate_leaders and self.base_game is not BaseGame.UPRISING:
+            # rotated_leader_ids deals from Uprising's rosters only.
+            raise ValueError("rotate_leaders deals Uprising Leaders only")
+        if self.retarget and self.resume is None:
+            raise ValueError("retarget needs a checkpoint to resume")
+        if self.kickstart_weight < 0.0 or self.kickstart_iterations < 0:
+            raise ValueError("kickstart options must not be negative")
+        if self.kickstart_weight > 0.0:
+            if self.kickstart_teacher is None:
+                raise ValueError("kickstart_weight needs a kickstart_teacher")
+            if self.kickstart_iterations < 1:
+                raise ValueError("kickstart_weight needs kickstart_iterations")
+        elif self.kickstart_teacher is not None or self.kickstart_iterations:
+            raise ValueError("a kickstart teacher needs a positive kickstart_weight")
+        if self.init is not None and self.resume is not None:
+            raise ValueError("init starts a run; resume continues one; not both")
+        if self.mix is not None:
+            if self.opponent is not None or self.rotate_leaders:
+                raise ValueError("mix replaces opponent and rotate_leaders")
+            shares = parse_shares(self.mix)
+            if shares["x"] and (
+                self.x_opponent is None or not is_agent_kind(self.x_opponent)
+            ):
+                raise ValueError("an x share needs a valid x_opponent")
+            if shares["app"] and not is_agent_kind(self.app_opponent):
+                raise ValueError(f"unknown app opponent: {self.app_opponent!r}")
+        if self.past_every < 1 or self.past_keep < 1:
+            raise ValueError("past_every and past_keep must be positive")
+        if not 0.0 <= self.dealt_share <= 1.0:
+            raise ValueError("dealt_share lies between 0 and 1")
+        if self.dealt_share and self.mix is None:
+            raise ValueError("dealt_share deals the mix's games; it needs a mix")
+        if self.reward_step is not None and (self.rank_rewards or self.score_rewards):
+            raise ValueError(
+                "reward_step, rank_rewards and score_rewards are exclusive"
+            )
+        if self.round_targets and self.critic is None:
+            raise ValueError("round_targets read the critic's values; give a critic")
+        if self.round_baseline and self.critic is None:
+            raise ValueError("round_baseline reads the critic's values; give a critic")
+        if not 0.0 <= self.lam <= 1.0:
+            raise ValueError("lam lies between 0 and 1")
+        self.ruleset  # noqa: B018 - reject an invalid option mix here
+
+
+@dataclass(frozen=True, slots=True)
+class IterationRecord:
+    iteration: int
+    games: int
+    learner_steps: int
+    learner_win_rate: float
+    learner_mean_reward: float
+    mean_rounds: float
+    truncated: int
+    collect_seconds: float
+    update_seconds: float
+    decisions_per_second: float
+    update: UpdateStats
+    eval_win_rate: float | None = None
+    eval_mean_rank: float | None = None
+    # Evaluation matches that raised instead of finishing. The rates above
+    # cover the finished matches only, so a non-zero count is a defect to
+    # look at (the messages go to ``eval_failures.log``), not noise.
+    eval_failures: int | None = None
+    # The learner seats' win rate in the games against ``opponent`` alone
+    # (``learner_win_rate`` folds in the self-play games, 25% by design);
+    # None when the iteration had no opponent game.
+    opponent_win_rate: float | None = None
+    # With a mix: the learner seats' win rate by table kind.
+    table_win_rates: dict[str, float] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TrainResult:
+    records: tuple[IterationRecord, ...]
+    latest_checkpoint: Path
+    log_path: Path
+
+
+__all__ = [
+    "TrainConfig",
+    "IterationRecord",
+    "TrainResult",
+    "select_policy_steps",
+    "train",
+]
+
+
+def _iteration_specs(
+    config: TrainConfig, iteration: int, past: Sequence[str] = ()
+) -> tuple[SelfPlaySpec, ...]:
+    players = 4
+    first = (
+        TRAINING_SEED_BASE
+        + config.seed * 1_000_000
+        + iteration * config.games_per_iteration
+    )
+    if config.mix is not None:
+        return _mixed_specs(config, iteration, first, past)
+    specs = []
+    opponent_game = 0
+    for offset in range(config.games_per_iteration):
+        seed = first + offset
+        lineup: tuple[str, ...] = (LEARNER,) * players
+        if config.opponent is not None and _is_opponent_game(config, offset):
+            # Counted over the opponent games alone, so the learner seats
+            # still visit every position equally often among them.
+            learner = _learner_seats(opponent_game, config.learner_seats, players)
+            opponent_game += 1
+            lineup = tuple(
+                LEARNER if index in learner else config.opponent
+                for index in range(players)
+            )
+        leader_ids = (
+            rotated_leader_ids(
+                seed, config.choam_module, config.bloodlines, config.tech_module
+            )
+            if config.rotate_leaders
+            else None
+        )
+        specs.append(SelfPlaySpec(game_seed=seed, lineup=lineup, leader_ids=leader_ids))
+    return tuple(specs)
+
+
+def _mixed_specs(
+    config: TrainConfig, iteration: int, first: int, past: Sequence[str]
+) -> tuple[SelfPlaySpec, ...]:
+    """An iteration's tables by the mix (``TableMix``), counted across the
+    run so the cycle carries on from one iteration to the next."""
+
+    assert config.mix is not None
+    mix = TableMix.from_shares(parse_shares(config.mix), dealt_share=config.dealt_share)
+    pool: tuple[str, ...] = ()
+    if config.dealt_share:
+        undrafted = replace(config.ruleset, leader_draft=False)
+        pool = tuple(leader.leader_id for leader in content_for(undrafted).leaders)
+    specs = []
+    for offset in range(config.games_per_iteration):
+        seed = first + offset
+        table = mix.table(
+            iteration * config.games_per_iteration + offset,
+            seed,
+            learner=LEARNER,
+            x=config.x_opponent or "",
+            app=config.app_opponent,
+            past=past,
+            leader_pool=pool,
+        )
+        specs.append(
+            SelfPlaySpec(game_seed=seed, lineup=table.agents, leader_ids=table.leaders)
+        )
+    return tuple(specs)
+
+
+def round_targets(
+    result: CollectionResult, start_values: np.ndarray, lam: float
+) -> np.ndarray:
+    """Each learner step's round-level lambda-return (module docstring).
+
+    A seat's round starts k = 1..K (values ``start_values``) carry the
+    stage-1 fit's targets: G_K = the seat's reward, G_k = (1 - lam) V_{k+1} +
+    lam G_{k+1}. A step taken in round r aims at (1 - lam) V_k + lam G_k for
+    the seat's first start k after round r, or at the reward when the game
+    ended before another round began.
+    """
+
+    starts = result.round_starts
+    batch = result.batch
+    if starts is None or batch.rounds is None:
+        raise ValueError("round targets need the round starts and step rounds")
+    targets = np.zeros(batch.actions.shape[0], dtype=np.float32)
+    groups: dict[tuple[int, int], list[int]] = {}
+    for row, key in enumerate(
+        zip(starts.episode_ids.tolist(), starts.seats.tolist(), strict=True)
+    ):
+        groups.setdefault(key, []).append(row)
+    steps: dict[tuple[int, int], list[int]] = {}
+    for row, key in enumerate(
+        zip(batch.episode_ids.tolist(), batch.seats.tolist(), strict=True)
+    ):
+        steps.setdefault(key, []).append(row)
+    for key, rows in steps.items():
+        episode_id, seat = key
+        reward = result.episodes[episode_id].rewards[seat]
+        mine = sorted(groups.get(key, []), key=lambda row: int(starts.rounds[row]))
+        rounds = np.asarray([int(starts.rounds[row]) for row in mine], dtype=np.int64)
+        values = np.asarray([float(start_values[row]) for row in mine])
+        returns = np.zeros(len(mine))
+        following = float(reward)
+        for index in range(len(mine) - 1, -1, -1):
+            returns[index] = following
+            following = (1.0 - lam) * values[index] + lam * returns[index]
+        for row in rows:
+            k = int(np.searchsorted(rounds, int(batch.rounds[row]), side="right"))
+            if k >= len(mine):
+                targets[row] = reward
+            else:
+                targets[row] = (1.0 - lam) * values[k] + lam * returns[k]
+    return targets
+
+
+def round_start_baselines(
+    result: CollectionResult, start_values: np.ndarray
+) -> np.ndarray:
+    """Each learner step's baseline: the value of its seat's last round start
+    before it (module docstring).
+
+    A step's ``after_starts`` names that start's round; a step before the
+    seat's first start (the draft) gets 0, the four-seat graded reward's
+    mean. The start precedes the step, so the baseline does not depend on
+    the step's action.
+    """
+
+    starts = result.round_starts
+    batch = result.batch
+    if starts is None or batch.after_starts is None:
+        raise ValueError("round-start baselines need the round starts and steps")
+    values: dict[tuple[int, int, int], float] = {
+        (int(episode), int(seat), int(round_number)): float(value)
+        for episode, seat, round_number, value in zip(
+            starts.episode_ids.tolist(),
+            starts.seats.tolist(),
+            starts.rounds.tolist(),
+            start_values.tolist(),
+            strict=True,
+        )
+    }
+    baselines = np.zeros(batch.actions.shape[0], dtype=np.float32)
+    for row, (episode, seat, after) in enumerate(
+        zip(
+            batch.episode_ids.tolist(),
+            batch.seats.tolist(),
+            batch.after_starts.tolist(),
+            strict=True,
+        )
+    ):
+        if after:
+            baselines[row] = values[(int(episode), int(seat), int(after))]
+    return baselines
+
+
+def _value_parts(network: PolicyValueNetwork) -> list[torch.nn.Parameter]:
+    """The parameters only the value reads: a value branch and its heads,
+    or (without a branch) the value head."""
+
+    parts: list[torch.nn.Module] = [network.value_head]
+    for name in ("value_body", "vp_head", "rank_head"):
+        module = getattr(network, name, None)
+        if isinstance(module, torch.nn.Module):
+            parts.append(module)
+    return [parameter for module in parts for parameter in module.parameters()]
+
+
+def _critic_values(
+    critic: PolicyValueNetwork, observations: np.ndarray, chunk: int = 4096
+) -> np.ndarray:
+    out = np.zeros(observations.shape[0], dtype=np.float32)
+    with torch.no_grad():
+        for start in range(0, observations.shape[0], chunk):
+            rows = observations[start : start + chunk].astype(np.int32)
+            out[start : start + chunk] = critic.values(torch.from_numpy(rows)).numpy()
+    return out
+
+
+def _table_win_rates(
+    episodes: Sequence[Episode], past: Sequence[str]
+) -> dict[str, float] | None:
+    """The learner seats' win rate by table: "self", "past", or the
+    opponent's name. None without a mixed table."""
+
+    seats: dict[str, list[int]] = {}
+    for episode in episodes:
+        others = {name for name in episode.lineup if name != LEARNER}
+        kind = (
+            "self"
+            if not others
+            else "past"
+            if others <= set(past)
+            else "/".join(sorted(others))
+        )
+        for seat, name in enumerate(episode.lineup):
+            if name == LEARNER:
+                seats.setdefault(kind, []).append(int(episode.ranks[seat] == 1))
+    if set(seats) <= {"self"}:
+        return None
+    return {kind: float(np.mean(wins)) for kind, wins in sorted(seats.items())}
+
+
+def _is_opponent_game(config: TrainConfig, offset: int) -> bool:
+    """Whether the ``offset``-th game of an iteration seats the opponent.
+
+    ``opponent_games`` of the ``games_per_iteration`` games, spread evenly
+    (a line-drawing step): 16 of 32 alternate, 8 of 32 take every fourth.
+    """
+
+    if config.opponent_games is None:
+        return True
+    games, chosen = config.games_per_iteration, config.opponent_games
+    return (offset + 1) * chosen // games > offset * chosen // games
+
+
+def _learner_seats(offset: int, count: int, players: int) -> frozenset[int]:
+    """Which seats the learner holds in the ``offset``-th game of an iteration.
+
+    The learner seats are spread evenly and the pattern rotates with the
+    game, so over an iteration every seat position is the learner's equally
+    often: one seat walks 0, 1, 2, 3; two seats alternate {0, 2} and {1, 3},
+    the interleaved table the 2:2 evaluation mirror also uses.
+    """
+
+    step = players // count
+    return frozenset((offset + index * step) % players for index in range(count))
+
+
+def _learner_outcomes(
+    episodes: tuple[Episode, ...],
+) -> tuple[float, float, float | None]:
+    """Return the learner seats' win rate and mean reward over the episodes,
+    and their win rate in the opponent games alone (None without any)."""
+
+    rewards: list[float] = []
+    wins = 0
+    opponent_seats = opponent_wins = 0
+    for episode in episodes:
+        against_opponent = any(name != LEARNER for name in episode.lineup)
+        for seat, name in enumerate(episode.lineup):
+            if name != LEARNER:
+                continue
+            won = int(episode.ranks[seat] == 1)
+            rewards.append(episode.rewards[seat])
+            wins += won
+            if against_opponent:
+                opponent_seats += 1
+                opponent_wins += won
+    return (
+        wins / len(rewards) if rewards else 0.0,
+        float(np.mean(rewards)),
+        opponent_wins / opponent_seats if opponent_seats else None,
+    )
+
+
+def _evaluate(
+    config: TrainConfig, checkpoint: Path, iteration: int
+) -> tuple[float, float, tuple[str, ...]]:
+    """Win rate and mean rank of the checkpoint vs the opponent, plus failures.
+
+    ``eval_games`` counts seeds; every seed plays the four seat rotations,
+    so the sample is four times that many matches.
+
+    Each evaluation takes its own block of seeds. Leaving ``start_seed`` at
+    the default replayed seeds 0..eval_games-1 at every evaluation of every
+    run, so a whole run's series was one small fixed sample measured over
+    and over: on 2026-09-21 a 1,000-iteration run read 24.5% against its
+    own starting checkpoint across ten evaluations of the same 25 seeds,
+    while 350 fresh seeds put the same checkpoint at 32.4% against a 25%
+    null. Averaging those ten did not help, because they were the same
+    games. Disjoint blocks cost the comparability of two consecutive
+    readings and buy an unbiased series; the instrument that decides
+    anything is the post-hoc tournament, not this tripwire.
+    """
+
+    # One checkpoint seat against three opponents (a two-kind lineup would
+    # cycle to two checkpoint seats and cap the win rate at 50%).
+    tested = f"{CHECKPOINT_PREFIX}{checkpoint}"
+    specs = tournament_specs(
+        agents=(tested, *(config.eval_opponent,) * 3),
+        games=config.eval_games,
+        rulesets=(config.choam_module,),
+        start_seed=EVAL_SEED_BASE + iteration * config.eval_games,
+        # A drafted run is measured drafting; the draft deals its own pool.
+        # The rotated rosters are Uprising's, so the original game keeps
+        # its engine's default Leaders.
+        rotate_leaders=(
+            not config.leader_draft and config.base_game is BaseGame.UPRISING
+        ),
+        leader_draft=config.leader_draft,
+        base_game=config.base_game,
+        rise_of_ix=config.rise_of_ix,
+        promo_cards=config.promo_cards,
+        bloodlines=config.bloodlines,
+        tech_module=config.tech_module,
+        immortality=config.immortality,
+        go_to_11=config.go_to_11,
+        epic_game=config.epic_game,
+        arrakeen_scouts=config.arrakeen_scouts,
+    )
+    # Collection is finished by the time an evaluation runs, so the same
+    # worker budget is free; leaving this at the default of one process
+    # played the whole evaluation in the training process (about 95s for 200
+    # matches on a 4-core run against about 48s across four).
+    summary = summarize(run_tournament(specs, workers=config.workers))
+    entry = evaluated_entry(summary, tested)
+    return entry.win_rate, entry.mean_rank, summary.failure_messages
+
+
+def evaluated_entry(summary: TournamentSummary, tested: str) -> AgentSummary:
+    """Return the summary row of the checkpoint under test, by its exact name.
+
+    This used to take the first row whose name started with ``checkpoint:``.
+    With the default opponent (``heuristic``) that was the only one, but a
+    checkpoint opponent starts with the same prefix, and ``summarize`` sorts
+    rows by name, so whichever path sorted first won: an older opponent
+    directory sorted before the run's own and the evaluation read the
+    OPPONENT's row. That row holds three seats, so it reported
+    (1 - true win rate) / 3 -- identical at parity, and falling as the tested
+    checkpoint got stronger. Measured on 2026-09-22: the evaluation logged
+    21.3% at iteration 4000 where the same checkpoint, opponent and seeds
+    replayed through the tournament CLI read 36.0%, and (100 - 36.0) / 3 is
+    21.3.
+    """
+
+    matches = [agent for agent in summary.agents if agent.agent == tested]
+    if len(matches) != 1:
+        raise ValueError(f"no single summary row for the tested agent {tested!r}")
+    return matches[0]
+
+
+def train(
+    config: TrainConfig,
+    *,
+    progress: Callable[[IterationRecord], None] | None = None,
+) -> TrainResult:
+    """Run the loop and return every iteration's record."""
+
+    device = resolve_device(config.device)
+    ruleset = config.ruleset
+    codec = SelfPlayRunner(ruleset, record=False).codec
+    codec_size = codec.size
+    start_iteration = 0
+    resumed_optimizer: Mapping[str, Any] | None = None
+    network: PolicyValueNetwork
+    if config.resume is not None:
+        # Resuming keeps the checkpoint's architecture (an ``mlp_slots`` file
+        # made by ``dune-imperium-checkpoint widen`` resumes as one); a fresh
+        # run builds ``config.arch``.
+        network, info = load_checkpoint(
+            config.resume, ruleset=ruleset if config.retarget else None
+        )
+        if info.ruleset != ruleset.identifier:
+            if not config.retarget:
+                raise ValueError(
+                    "resumed checkpoint belongs to a different ruleset "
+                    "(retarget moves it onto this one)"
+                )
+            print(
+                f"retargeted {config.resume} from {info.ruleset} "
+                f"onto {ruleset.identifier}"
+            )
+        if info.migration is not None:
+            print(f"migrated {config.resume}: {info.migration.describe()}")
+        start_iteration = info.iteration
+        resumed_optimizer = info.optimizer_state
+    elif config.init is not None:
+        # A file's weights at iteration 0 with a fresh optimizer.
+        network, info = load_checkpoint(config.init, ruleset=ruleset)
+        if info.migration is not None:
+            print(f"migrated {config.init}: {info.migration.describe()}")
+    else:
+        torch.manual_seed(config.seed)
+        if config.arch == "entity":
+            from dune_imperium.training.entity_network import EntityNetwork
+
+            network = EntityNetwork(ruleset, hidden=config.hidden)
+        else:
+            network = PolicyValueNetwork(codec_size, hidden=config.hidden)
+    if config.kickstart_teacher is not None:
+        # Fail on an unreadable teacher before any game is played; a serial
+        # collection reuses this cached copy.
+        cached_older_network(config.kickstart_teacher)
+        print(
+            f"kickstarting from {config.kickstart_teacher}: weight "
+            f"{config.kickstart_weight:g} falling to 0 over "
+            f"{config.kickstart_iterations} iterations"
+        )
+    if config.freeze_value:
+        for parameter in _value_parts(network):
+            parameter.requires_grad_(False)
+    critic: PolicyValueNetwork | None = None
+    if config.critic is not None:
+        critic, _ = load_checkpoint(config.critic, ruleset=ruleset)
+        critic.eval()
+    past_pool = PastSelves(
+        config.out_dir / "past", every=config.past_every, size=config.past_keep
+    )
+    learner = Learner(network, device, config.learner, seed=config.seed)
+    if resumed_optimizer is not None:
+        learner.restore_optimizer(resumed_optimizer)
+    collector = Collector(
+        ruleset,
+        workers=config.workers,
+        max_steps=config.max_steps,
+        temperature=config.temperature,
+        rank_rewards=config.rank_rewards,
+        score_rewards=config.score_rewards,
+        family_atomics=config.family_atomics,
+        opponent=config.opponent,
+        # A game stuck on a decision without legal actions (an engine
+        # defect) is kept here and ends truncated instead of ending the run;
+        # its count shows in the record's ``truncated``.
+        stall_dir=config.out_dir / "stalls",
+        kickstart_teacher=config.kickstart_teacher,
+        reward_step=config.reward_step,
+        record_round_starts=config.round_targets or config.round_baseline,
+    )
+
+    config.out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = config.out_dir / "training.jsonl"
+    latest = config.out_dir / "latest.pt"
+    records: list[IterationRecord] = []
+    with log_path.open("a") as log, collector:
+        for iteration in range(start_iteration, start_iteration + config.iterations):
+            weight = kickstart_weight(
+                config.kickstart_weight,
+                config.kickstart_iterations,
+                iteration - start_iteration,
+            )
+            past = (
+                tuple(f"{CHECKPOINT_PREFIX}{path}" for path in past_pool.paths())
+                if config.mix is not None
+                else ()
+            )
+            specs = _iteration_specs(config, iteration, past)
+            opponents = sorted(
+                {name for spec in specs for name in spec.lineup} - {LEARNER}
+            )
+            result = collector.collect(
+                learner.network,
+                device,
+                specs,
+                policy_seed=config.seed + 1 + iteration * 1_000,
+                opponent_seed=config.seed + 2 + iteration * 1_000,
+                teacher=weight > 0.0,
+                opponents=opponents,
+            )
+            if weight > 0.0 and result.batch.teacher is None:
+                raise RuntimeError("a kickstarted iteration collected no teacher rows")
+            collect_seconds = result.duration_seconds
+            batch = result.batch
+            start_values: np.ndarray | None = None
+            if critic is not None and (config.round_targets or config.round_baseline):
+                assert result.round_starts is not None
+                start_values = _critic_values(critic, result.round_starts.observations)
+            if config.round_targets:
+                assert start_values is not None
+                batch = replace(
+                    batch, returns=round_targets(result, start_values, config.lam)
+                )
+            batch = apply_step_penalty(batch, config.step_penalty)
+            if config.round_baseline:
+                assert start_values is not None
+                batch = replace(
+                    batch, baselines=round_start_baselines(result, start_values)
+                )
+            elif critic is not None:
+                batch = replace(
+                    batch, baselines=_critic_values(critic, batch.observations)
+                )
+            started = time.perf_counter()
+            stats = learner.update(batch, kickstart_weight=weight)
+            update_seconds = time.perf_counter() - started
+            win_rate, mean_reward, opponent_win_rate = _learner_outcomes(
+                result.episodes
+            )
+            save_checkpoint(
+                latest,
+                learner.network,
+                ruleset=ruleset.identifier,
+                iteration=iteration + 1,
+                metadata={
+                    "config": _config_document(config),
+                    "arch": learner.network.arch_spec(),
+                },
+                optimizer_state=learner.optimizer_state(),
+                codec=codec,
+            )
+            if config.mix is not None:
+                past_pool.keep(iteration + 1, latest)
+            if (iteration + 1) % config.checkpoint_every == 0:
+                save_checkpoint(
+                    config.out_dir / f"iteration_{iteration + 1:05d}.pt",
+                    learner.network,
+                    ruleset=ruleset.identifier,
+                    iteration=iteration + 1,
+                    codec=codec,
+                )
+            eval_win_rate = eval_mean_rank = None
+            eval_failures: int | None = None
+            if config.eval_every and (iteration + 1) % config.eval_every == 0:
+                eval_win_rate, eval_mean_rank, failures = _evaluate(
+                    config, latest, iteration + 1
+                )
+                eval_failures = len(failures)
+                if failures:
+                    with (config.out_dir / "eval_failures.log").open("a") as handle:
+                        for message in failures:
+                            handle.write(f"iteration {iteration + 1}: {message}\n")
+            record = IterationRecord(
+                iteration=iteration + 1,
+                games=len(result.episodes),
+                learner_steps=stats.steps,
+                learner_win_rate=win_rate,
+                learner_mean_reward=mean_reward,
+                mean_rounds=float(np.mean([e.rounds for e in result.episodes])),
+                truncated=sum(e.truncated for e in result.episodes),
+                collect_seconds=collect_seconds,
+                update_seconds=update_seconds,
+                decisions_per_second=(
+                    result.decisions / collect_seconds if collect_seconds else 0.0
+                ),
+                update=stats,
+                eval_win_rate=eval_win_rate,
+                eval_mean_rank=eval_mean_rank,
+                eval_failures=eval_failures,
+                opponent_win_rate=opponent_win_rate,
+                table_win_rates=_table_win_rates(result.episodes, past),
+            )
+            records.append(record)
+            log.write(json.dumps(asdict(record)) + "\n")
+            log.flush()
+            if progress is not None:
+                progress(record)
+    return TrainResult(
+        records=tuple(records), latest_checkpoint=latest, log_path=log_path
+    )
+
+
+def _config_document(config: TrainConfig) -> dict[str, object]:
+    document = asdict(config)
+    # A checkpoint loads with ``weights_only``: every path and the base
+    # game go in as text.
+    for key, value in document.items():
+        if isinstance(value, Path):
+            document[key] = str(value)
+        elif isinstance(value, BaseGame):
+            document[key] = value.value
+    document["hidden"] = list(config.hidden)
+    return document

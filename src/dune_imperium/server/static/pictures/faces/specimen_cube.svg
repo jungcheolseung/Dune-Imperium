@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 112">
+  <!-- A Tleilaxu specimen: a green cube in a silver hexagon. Drawn by hand for the card faces. -->
+  <polygon points="50,3 96,29 96,83 50,109 4,83 4,29" fill="#2a2a2a" stroke="#d9d9d9" stroke-width="6"/>
+  <polygon points="50,15 84,34 50,53 16,34" fill="#c4f55a"/>
+  <polygon points="16,34 50,53 50,97 16,78" fill="#86d424"/>
+  <polygon points="50,53 84,34 84,78 50,97" fill="#5aa814"/>
+  <circle cx="66" cy="70" r="3.5" fill="#2f6a0a"/>
+  <circle cx="73" cy="62" r="2.5" fill="#2f6a0a"/>
+  <circle cx="62" cy="80" r="2.5" fill="#2f6a0a"/>
+</svg>

@@ -1,0 +1,195 @@
+"""Batched policy contract for self-play and the baseline adapters.
+
+A ``BatchPolicy`` answers many pending decisions at once: the self-play
+runner gathers one ``PolicyRequest`` per game that waits on a seat this
+policy controls and calls ``act`` once per policy per lockstep round, so a
+neural policy can run a single forward pass over the whole batch. Each
+request carries both the learning-side arrays (the versioned observation
+encoding and the fixed-width legal-action mask) and the engine-side objects
+(``PlayerView``, legal ``DomainAction`` tuple, and the authoritative state
+for ``StateAgent`` search baselines) so rule-based and learned policies
+share one interface. The answer is one catalog index per request and must
+be a legal one; the runner rejects anything else.
+
+``without_undo_actions`` is one restriction of that legal set a policy may
+be given: it drops the pure-undo actions (``UNDO_ACTION_IDS``), which no
+policy needs and a sampled policy learns to loop on (docs/rl-environment.md,
+"정책에 주지 않는 되돌리기 행동"). The other is
+``without_window_specimen_return`` (``agents.window_returns``): a specimen's
+return in the windows the engine offers it since 2026-11-09.
+
+``encoded_view`` is the int32 observation array a network reads, built
+without NumPy's per-element conversion.
+"""
+
+import random
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Final, Protocol
+
+import numpy as np
+
+from dune_imperium.adapters.observation_encoding import (
+    encode_player_view,
+    encode_player_view_bytes,
+)
+from dune_imperium.agents import Agent, StateAgent, make_agent
+from dune_imperium.agents.window_returns import (
+    without_window_specimen_return as without_window_specimen_return,
+)
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
+
+# Pure-undo actions that training and checkpoint play never offer a policy.
+# OQ-029 lets a player take this turn's basic deployment back because
+# deploying may come after every other effect of the Agent turn [Main p. 9];
+# a policy can simply deploy last, so it loses no reachable outcome. Offered
+# to a sampled policy, the pair is a free loop inside one turn: on
+# 2026-09-17 a full-expansion run spent 80% of its decisions on it and hit
+# the decision cap in 13 of 32 games (docs/rl-environment.md). The engine,
+# the rules and human play keep both actions. Rise of Ix's dreadnoughts are a
+# third kind of unit with the same deploy/withdraw pair [Rise of Ix p. 6]
+# (OQ-121, ``rules.combat_deployment``), so its withdrawal is withheld too.
+UNDO_ACTION_IDS: Final = frozenset(
+    {"withdraw_troops", "withdraw_commanders", "withdraw_dreadnoughts"}
+)
+
+
+def decision_kind_of(state: GameState) -> str | None:
+    """The pending frame's kind, as a player view reports it
+    (``PlayerView.decision_kind``)."""
+
+    return str(state.decision_stack[-1].kind) if state.decision_stack else None
+
+
+def without_undo_actions(
+    legal_actions: tuple[DomainAction, ...],
+) -> tuple[DomainAction, ...]:
+    """Drop the pure-undo actions, unless nothing else is legal."""
+
+    kept = tuple(
+        action for action in legal_actions if action.action_id not in UNDO_ACTION_IDS
+    )
+    return kept or legal_actions
+
+
+def encoded_view(view: PlayerView) -> np.ndarray:
+    """``view``'s observation encoding as a new int32 array.
+
+    The same array as ``np.asarray(encode_player_view(view), dtype=np.int32)``
+    at a fifteenth of the cost: NumPy converts the encoding's 5,732 Python
+    ints one at a time (about 150us on the Mac mini), while ``bytes`` packs
+    them in about 10us when every value fits a byte, as the counts and flags
+    of an observation do. A value outside 0..255 takes the slow conversion.
+    A search seat encodes every playout step, so the conversion was about 8%
+    of its time (ai-speedup, 2026-10-27).
+
+    The encoder writes the bytes itself when it can
+    (``encode_player_view_bytes``, 2026-11 engine speed round 3): the same
+    bytes as ``bytes(encode_player_view(view))`` without the tuple and its
+    conversion. When it cannot, the path below is the one this function
+    always took.
+    """
+
+    packed_now = encode_player_view_bytes(view)
+    if packed_now is not None:
+        return np.frombuffer(packed_now, dtype=np.uint8).astype(np.int32)
+    values = encode_player_view(view)
+    try:
+        packed = bytes(values)
+    except (TypeError, ValueError):
+        return np.asarray(values, dtype=np.int32)
+    return np.frombuffer(packed, dtype=np.uint8).astype(np.int32)
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyRequest:
+    """One pending decision of one seat in one self-play game."""
+
+    game: int
+    seat: int
+    state: GameState
+    view: PlayerView
+    # The actions offered to the policy: the engine's legal set, minus the
+    # pure-undo actions when the runner withholds them.
+    legal_actions: tuple[DomainAction, ...]
+    # Catalog index of every legal action, parallel to ``legal_actions``.
+    # The sampled network policy reads these, not ``mask``
+    # (``TorchBatchPolicy.distribution``): restrict a request through both.
+    legal_indices: tuple[int, ...]
+    observation: np.ndarray
+    mask: np.ndarray
+
+
+class BatchPolicy(Protocol):
+    """Anything that answers a batch of requests with one legal index each."""
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        """Return one catalog index per request, in order."""
+        ...
+
+
+@dataclass(slots=True)
+class RandomBatchPolicy:
+    """Pick a uniformly random legal index for every request."""
+
+    seed: int
+    _rng: random.Random = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.seed < 0:
+            raise ValueError("policy seed must not be negative")
+        self._rng = random.Random(self.seed)
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        return tuple(self._rng.choice(request.legal_indices) for request in requests)
+
+
+class AgentBatchPolicy:
+    """Drive seats with a named baseline ``Agent`` (one instance per seat).
+
+    Each (game, seat) pair gets its own agent seeded from ``seed`` so the
+    per-seat tie-break streams stay independent and reproducible, matching
+    how the tournament seeds its seats. ``StateAgent`` baselines receive the
+    request's state and search from it.
+    """
+
+    def __init__(self, kind: str, seed: int, *, players: int = 4) -> None:
+        if seed < 0:
+            raise ValueError("policy seed must not be negative")
+        self.kind = kind
+        self.seed = seed
+        self._players = players
+        self._agents: dict[tuple[int, int], tuple[Agent, StateAgent | None]] = {}
+
+    def _agent(self, game: int, seat: int) -> tuple[Agent, StateAgent | None]:
+        """Return the seat's agent, and the same agent narrowed to ``StateAgent``.
+
+        The narrowing is cached with the agent because isinstance() against the
+        runtime-checkable ``StateAgent`` Protocol costs about 5us, which
+        collection would otherwise pay once per decision.
+        """
+
+        key = (game, seat)
+        entry = self._agents.get(key)
+        if entry is None:
+            agent = make_agent(self.kind, self.seed + game * self._players + seat)
+            entry = (agent, agent if isinstance(agent, StateAgent) else None)
+            self._agents[key] = entry
+        return entry
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        answers: list[int] = []
+        for request in requests:
+            agent, searcher = self._agent(request.game, request.seat)
+            action = (
+                searcher.choose_action_with_state(
+                    request.state, request.view, request.legal_actions
+                )
+                if searcher is not None
+                else agent.choose_action(request.view, request.legal_actions)
+            )
+            position = request.legal_actions.index(action)
+            answers.append(request.legal_indices[position])
+        return tuple(answers)

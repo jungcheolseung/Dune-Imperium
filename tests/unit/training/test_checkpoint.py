@@ -1,0 +1,1477 @@
+"""Checkpoint formats 2 and 3: identities, migration, stamping, widening."""
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support.observation_growth import (
+    GROWN_COLUMNS,
+    NEW_SEGMENTS,
+    V38_SIZE,
+    V39_NEW_SEGMENTS,
+    V39_SIZE,
+    V41_MISSIONS,
+    V41_NEW_SEGMENTS,
+    V41_SCOUTS_ITEMS,
+    V41_SECRET_EVENTS,
+    V42_NEW_SEGMENTS,
+    V43_SET_ASIDE_SEGMENTS,
+    growth_after_v38,
+    growth_in_v40,
+    growth_in_v41,
+    growth_in_v42,
+    growth_in_v43,
+    growth_since_v34,
+    v38_layout,
+    v39_layout,
+    v40_layout,
+    v41_layout,
+    v42_layout,
+)
+
+torch = pytest.importorskip("torch")
+
+from torch import Tensor  # noqa: E402
+
+from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium.adapters.action_codec import (  # noqa: E402
+    ACTION_CODEC_VERSION,
+    ActionCodec,
+    ActionTemplate,
+)
+from dune_imperium.adapters.observation_encoding import (  # noqa: E402
+    CONTRACT_IDS,
+    CONTRACT_SEGMENTS,
+    OBSERVATION_SEGMENTS,
+    OBSERVATION_SIZE,
+    OBSERVATION_VERSION,
+    segment_slice,
+)
+from dune_imperium.cli.checkpoint import main as checkpoint_main  # noqa: E402
+from dune_imperium.content.registry.contracts import CONTRACTS_BY_ID  # noqa: E402
+from dune_imperium.core.engine import Transition  # noqa: E402
+from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
+from dune_imperium.rules.reveal_turn import SOURCED_REVEAL_ACTION_IDS  # noqa: E402
+from dune_imperium.training import (  # noqa: E402
+    RandomBatchPolicy,
+    SelfPlayRunner,
+    SelfPlaySpec,
+    stack_episodes,
+)
+from dune_imperium.training import checkpoint as checkpoint_module  # noqa: E402
+from dune_imperium.training.checkpoint import (  # noqa: E402
+    _CONTRACT_IDS_BEFORE_V21,
+    ARCH_CHECKPOINT_FORMAT,
+    CHECKPOINT_FORMAT,
+    load_checkpoint,
+    save_checkpoint,
+    stamp_checkpoint,
+    widen_checkpoint,
+)
+from dune_imperium.training.learner import Learner, LearnerConfig  # noqa: E402
+from dune_imperium.training.network import (  # noqa: E402
+    MlpSlotsNetwork,
+    PolicyValueNetwork,
+)
+from dune_imperium.training.slots import PAD_ROW, SLOT_KEYS  # noqa: E402
+
+_CPU = torch.device("cpu")
+
+
+def _trained(
+    codec: ActionCodec, *, slots: bool = False
+) -> tuple[PolicyValueNetwork, Learner]:
+    """A base-ruleset network with Adam moments from one tiny update."""
+
+    torch.manual_seed(0)
+    network = (
+        MlpSlotsNetwork(codec.size, hidden=(16,))
+        if slots
+        else PolicyValueNetwork(codec.size, hidden=(16,))
+    )
+    learner = Learner(network, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    runner = SelfPlayRunner(codec.config, max_steps=24)
+    result = runner.run(
+        {"r": RandomBatchPolicy(seed=1)},
+        (SelfPlaySpec(game_seed=2, lineup=("r",) * 4),),
+    )
+    learner.update(stack_episodes(result.episodes, action_size=runner.codec.size))
+    return network, learner
+
+
+def _forge_older(
+    document: dict[str, Any], *, drop_action: int, drop_column: int
+) -> dict[str, Any]:
+    """Pretend the file predates one template and one observation column.
+
+    The template at ``drop_action`` and the column ``drop_column`` (inside the
+    first segment) are removed as if they never existed, a template the
+    current code does not know is appended, and the codec version goes down
+    by one. The observation version stays: the smaller size already forces
+    the migration, and a version before 21 would also re-link the Contract
+    columns by the v20 identities, which this file (the current network)
+    does not have.
+    """
+
+    forged = dict(document)
+    keep_rows = [i for i in range(int(document["action_size"])) if i != drop_action]
+    keep_cols = [i for i in range(OBSERVATION_SIZE) if i != drop_column]
+    rows = torch.tensor(keep_rows)
+    cols = torch.tensor(keep_cols)
+    state = dict(document["state_dict"])
+    fake_row = torch.full((1, state["policy_head.weight"].shape[1]), 0.5)
+    state["policy_head.weight"] = torch.cat(
+        [state["policy_head.weight"][rows], fake_row]
+    )
+    state["policy_head.bias"] = torch.cat(
+        [state["policy_head.bias"][rows], torch.tensor([0.5])]
+    )
+    state["body.0.weight"] = state["body.0.weight"][:, cols]
+    forged["state_dict"] = state
+    templates = list(document["action_templates"])
+    forged["action_templates"] = [
+        t for i, t in enumerate(templates) if i != drop_action
+    ] + [("fake_action", ())]
+    forged["action_size"] = len(forged["action_templates"])
+    layout = []
+    offset = 0
+    for name, _, length in document["observation_layout"]:
+        first = offset == 0 and name == OBSERVATION_SEGMENTS[0].name
+        size = length - 1 if first else length
+        layout.append((name, offset, size))
+        offset += size
+    forged["observation_layout"] = layout
+    forged["observation_size"] = OBSERVATION_SIZE - 1
+    forged["action_codec_version"] = ACTION_CODEC_VERSION - 1
+    forged["observation_version"] = OBSERVATION_VERSION
+    optimizer = document["optimizer_state"]
+    if optimizer is not None:
+        moved = {}
+        for index, moments in optimizer["state"].items():
+            entry = dict(moments)
+            for key in ("exp_avg", "exp_avg_sq"):
+                tensor = entry[key]
+                if int(index) == 0:
+                    entry[key] = tensor[:, cols]
+                elif tensor.shape[0] == int(document["action_size"]):
+                    extra = torch.zeros((1, *tensor.shape[1:]))
+                    entry[key] = torch.cat([tensor[rows], extra])
+            moved[index] = entry
+        forged["optimizer_state"] = {**optimizer, "state": moved}
+    return forged
+
+
+def test_format_2_stores_template_identities_and_the_layout(tmp_path: Path) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec)
+    path = tmp_path / "net.pt"
+    save_checkpoint(
+        path,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=4,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+
+    loaded, info = load_checkpoint(path)
+    assert info.format == CHECKPOINT_FORMAT == 2
+    assert info.arch == "mlp"
+    assert info.migratable and info.migration is None
+    assert info.action_codec_version == ACTION_CODEC_VERSION
+    document = torch.load(path, weights_only=True)
+    assert len(document["action_templates"]) == codec.size
+    assert document["action_templates"][0] == (
+        codec.catalog[0].action_id,
+        codec.catalog[0].arguments,
+    )
+    assert document["observation_layout"] == [
+        (segment.name, segment.offset, segment.length)
+        for segment in OBSERVATION_SEGMENTS
+    ]
+    assert torch.equal(loaded.policy_head.weight, network.policy_head.weight.detach())
+
+    # A codec that does not fit the network is refused at save time.
+    with pytest.raises(ValueError, match="does not match the codec"):
+        save_checkpoint(
+            tmp_path / "bad.pt",
+            PolicyValueNetwork(11, hidden=(16,)),
+            ruleset=codec.config.identifier,
+            iteration=1,
+            codec=codec,
+        )
+    # A file saved without a codec is not migratable but loads as before.
+    save_checkpoint(
+        tmp_path / "plain.pt", network, ruleset=codec.config.identifier, iteration=1
+    )
+    _, plain = load_checkpoint(tmp_path / "plain.pt")
+    assert not plain.migratable
+
+
+def test_a_file_without_templates_cannot_answer_for_another_ruleset(
+    tmp_path: Path,
+) -> None:
+    # Moving a head onto another catalog needs the file's template list.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    path = tmp_path / "plain.pt"
+    save_checkpoint(path, network, ruleset=codec.config.identifier, iteration=1)
+
+    _, info = load_checkpoint(path, ruleset=RulesetConfig())
+    assert info.migration is None
+    with pytest.raises(ValueError, match="cannot answer for"):
+        load_checkpoint(path, ruleset=RulesetConfig(epic_game=True))
+
+
+def test_migration_moves_rows_and_columns_by_identity(tmp_path: Path) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=7,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    drop_action = next(
+        i for i, t in enumerate(codec.catalog) if t.action_id == "finish_agent_turn"
+    )
+    drop_column = OBSERVATION_SEGMENTS[0].length - 1
+    older = tmp_path / "older.pt"
+    torch.save(
+        _forge_older(
+            torch.load(current, weights_only=True),
+            drop_action=drop_action,
+            drop_column=drop_column,
+        ),
+        older,
+    )
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.from_codec_version, report.to_codec_version) == (
+        ACTION_CODEC_VERSION - 1,
+        ACTION_CODEC_VERSION,
+    )
+    assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
+        codec.size - 1,
+        1,
+        1,
+    )
+    assert (
+        report.observation_kept,
+        report.observation_new,
+        report.observation_dropped,
+    ) == (OBSERVATION_SIZE - 1, 1, 0)
+    assert migrated.action_size == codec.size
+    assert info.iteration == 7
+
+    original = network.policy_head.weight.detach()
+    weight = migrated.policy_head.weight.detach()
+    keep = torch.tensor([i for i in range(codec.size) if i != drop_action])
+    assert torch.equal(weight[keep], original[keep])
+    assert torch.equal(weight[drop_action], torch.zeros(weight.shape[1]))
+    assert float(migrated.policy_head.bias.detach()[drop_action]) == 0.0
+    first_layer = migrated.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    columns = torch.tensor([i for i in range(OBSERVATION_SIZE) if i != drop_column])
+    original_first = network.body[0]
+    assert isinstance(original_first, torch.nn.Linear)
+    assert torch.equal(first[:, columns], original_first.weight.detach()[:, columns])
+    assert torch.equal(first[:, drop_column], torch.zeros(first.shape[0]))
+
+    # With the new column at zero, every kept action scores exactly as before
+    # and the new one is neutral rather than masked.
+    observations = torch.randint(0, 5, (3, OBSERVATION_SIZE), dtype=torch.int32)
+    observations[:, drop_column] = 0
+    masks = torch.ones(3, codec.size, dtype=torch.int8)
+    expected, expected_values = network(observations, masks)
+    actual, actual_values = migrated(observations, masks)
+    assert torch.allclose(actual[:, keep], expected[:, keep])
+    assert torch.allclose(actual_values, expected_values)
+    assert torch.allclose(actual[:, drop_action], torch.zeros(3))
+
+    # The Adam moments moved with the rows and columns and can be restored.
+    assert info.optimizer_state is not None
+    resumed = Learner(migrated, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    resumed.restore_optimizer(info.optimizer_state)
+    moments = resumed.optimizer.state_dict()["state"]
+    before = learner.optimizer.state_dict()["state"]
+    head_index = 2 * len(network.hidden)
+    assert torch.equal(
+        moments[head_index]["exp_avg"][keep], before[head_index]["exp_avg"][keep]
+    )
+    assert torch.equal(
+        moments[head_index]["exp_avg"][drop_action], torch.zeros(weight.shape[1])
+    )
+    assert torch.equal(
+        moments[0]["exp_avg_sq"][:, columns], before[0]["exp_avg_sq"][:, columns]
+    )
+    assert int(moments[0]["step"]) == int(before[0]["step"])
+
+
+def test_box_one_rows_start_from_their_untagged_twins(tmp_path: Path) -> None:
+    """Codec v143 adds box 1's twin of every grafted Agent-box template
+    (``box=1``, docs/graft-boxes-plan.md 4.8). A file written before it
+    starts each twin from the untagged row it stands beside: the same
+    weights, bias and Adam moments, counted as trained (aliased, not new),
+    so a network-only seat never hands such a decision to a heuristic."""
+
+    codec = ActionCodec(RulesetConfig(immortality=True))
+    network, learner = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=3,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    document = torch.load(current, weights_only=True)
+    twins = [i for i, t in enumerate(codec.catalog) if ("box", 1) in t.arguments]
+    assert twins
+    keep = [i for i in range(codec.size) if i not in set(twins)]
+    rows = torch.tensor(keep)
+    state = dict(document["state_dict"])
+    for name in ("policy_head.weight", "policy_head.bias"):
+        state[name] = state[name][rows]
+    forged = {
+        **document,
+        "state_dict": state,
+        "action_templates": [document["action_templates"][i] for i in keep],
+        "action_size": len(keep),
+        "action_codec_version": ACTION_CODEC_VERSION - 1,
+    }
+    optimizer = document["optimizer_state"]
+    moved = {}
+    for index, moments in optimizer["state"].items():
+        entry = dict(moments)
+        for key in ("exp_avg", "exp_avg_sq"):
+            tensor = entry[key]
+            if int(index) != 0 and tensor.shape[0] == codec.size:
+                entry[key] = tensor[rows]
+        moved[index] = entry
+    forged["optimizer_state"] = {**optimizer, "state": moved}
+    older = tmp_path / "v142.pt"
+    torch.save(forged, older)
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (
+        report.actions_kept,
+        report.actions_aliased,
+        report.actions_new,
+        report.actions_dropped,
+    ) == (len(keep), len(twins), 0, 0)
+    assert report.new_action_rows == frozenset()
+    assert "aliased" in report.describe()
+    index = {template: row for row, template in enumerate(codec.catalog)}
+    weight = migrated.policy_head.weight.detach()
+    bias = migrated.policy_head.bias.detach()
+    original = network.policy_head.weight.detach()
+    assert torch.equal(weight[rows], original[rows])
+    resumed = Learner(migrated, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    assert info.optimizer_state is not None
+    resumed.restore_optimizer(info.optimizer_state)
+    moments = resumed.optimizer.state_dict()["state"][2 * len(network.hidden)]
+    for twin in twins:
+        template = codec.catalog[twin]
+        plain = index[
+            ActionTemplate(
+                template.action_id,
+                tuple(item for item in template.arguments if item != ("box", 1)),
+            )
+        ]
+        assert torch.equal(weight[twin], original[plain])
+        assert torch.equal(bias[twin], bias[plain])
+        assert torch.equal(moments["exp_avg"][twin], moments["exp_avg"][plain])
+
+
+def test_no_template_names_a_reveal_choice_by_its_card_any_more() -> None:
+    """Codec v147 named the Reveal card of eleven Reveal choice ids with
+    ``source``, and a file written before it started each card's row from the
+    source-less row. Since stage B3d-3 no catalog holds a Reveal choice's
+    whole template (the Reveal frame shows them by their effect rows, the
+    last one, the refusal of a recall first, by ``decline``), so that alias
+    has nothing to start (``checkpoint._alias`` keeps the box 1 twins only)."""
+
+    every = RulesetConfig(
+        choam_module=True,
+        promo_cards=True,
+        bloodlines=True,
+        tech_module=True,
+        immortality=True,
+        arrakeen_scouts=True,
+    )
+    for config in (RulesetConfig(), every):
+        assert not [
+            template
+            for template in ActionCodec(config).catalog
+            if template.action_id in SOURCED_REVEAL_ACTION_IDS
+        ]
+
+
+def test_a_format_1_mismatch_is_refused_and_stamping_fixes_it(tmp_path: Path) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    path = tmp_path / "old.pt"
+    save_checkpoint(path, network, ruleset=codec.config.identifier, iteration=2)
+    document = torch.load(path, weights_only=True)
+    document["format"] = 1
+    del document["action_templates"]
+    del document["observation_layout"]
+    torch.save(document, path)
+    _, info = load_checkpoint(path)
+    assert info.format == 1 and not info.migratable
+
+    stale = tmp_path / "stale.pt"
+    document["action_codec_version"] -= 1
+    torch.save(document, stale)
+    with pytest.raises(ValueError, match="stamp"):
+        load_checkpoint(stale)
+    with pytest.raises(ValueError, match="current codec"):
+        stamp_checkpoint(stale)
+
+    stamped = stamp_checkpoint(path)
+    assert stamped.format == 2 and stamped.migratable
+    document = torch.load(path, weights_only=True)
+    assert len(document["action_templates"]) == codec.size
+    document["action_codec_version"] -= 1
+    torch.save(document, stale)
+    _, migrated = load_checkpoint(stale)
+    assert migrated.migration is not None
+    assert migrated.migration.actions_kept == codec.size
+
+    # A file whose action size is not its ruleset's catalog cannot be stamped.
+    odd = tmp_path / "odd.pt"
+    save_checkpoint(
+        odd,
+        PolicyValueNetwork(11, hidden=(16,)),
+        ruleset="uprising-4p-base",
+        iteration=1,
+    )
+    with pytest.raises(ValueError, match="catalog"):
+        stamp_checkpoint(odd)
+
+
+def test_a_v20_file_reads_its_contract_columns_by_identity(tmp_path: Path) -> None:
+    # Observation v21 put Spice Refinery I/II and the second Espionage I and
+    # Harvest 3+ where four Rise of Ix tiles were [Main p. 16]. A v20 file's
+    # Contract columns follow the v20 identities: a kept tile keeps its
+    # column, a second copy reads its first copy's, a new tile starts at zero.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=3, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    v20 = list(_CONTRACT_IDS_BEFORE_V21)
+    mark = {contract_id: float(index + 1) for index, contract_id in enumerate(v20)}
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"].clone()
+    segments = [s for s in OBSERVATION_SEGMENTS if s.name in CONTRACT_SEGMENTS]
+    assert len(segments) == 11
+    for segment in segments:
+        for index, contract_id in enumerate(v20):
+            weight[:, segment.offset + index] = mark[contract_id]
+    state["body.0.weight"] = weight
+    document["state_dict"] = state
+    document["observation_version"] = 20
+    document["action_codec_version"] = ACTION_CODEC_VERSION - 1
+    older = tmp_path / "v20.pt"
+    torch.save(document, older)
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    # Per segment: Spice Refinery I/II and (v40, stage P7f-2) the ten Rise of
+    # Ix tiles dealt at setup are new -- their ids are not v20's stand-ins,
+    # which played as bank tiles -- and the four stand-ins drop, with the ten
+    # columns of today's width past v20's 28 that this made-up file carries.
+    assert (report.observation_new, report.observation_dropped) == (
+        12 * 11,
+        14 * 11,
+    )
+    first_layer = migrated.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    for segment in segments:
+        for index, contract_id in enumerate(CONTRACT_IDS):
+            column = first[:, segment.offset + index]
+            printed = CONTRACTS_BY_ID[contract_id].copy_of or contract_id
+            expected = mark.get(printed, 0.0)
+            assert torch.all(column == expected), (segment.name, contract_id)
+
+
+# Observation v28 (Epic Game Mode; v26 on the epic-game-mode branch)
+# appended Control the Spice to every personal-card segment, Economic
+# Supremacy to every battle-card segment, and the one-column ``epic_game``
+# segment after all the others. v27 has v25's layout (v26's frame kind was
+# removed again), so the previous layout is 4,587 columns wide.
+# Observation v33's picked effect (stage B3): no older file has it.
+_EFFECT_PICK_SEGMENTS = tuple(
+    segment.name
+    for segment in OBSERVATION_SEGMENTS
+    if segment.name.startswith("private_effect_pick")
+)
+# Their columns before v35 (``GROWN_COLUMNS`` counts v35's).
+_EFFECT_PICK_COLUMNS = sum(
+    segment.length - growth_since_v34(segment)
+    for segment in OBSERVATION_SEGMENTS
+    if segment.name in _EFFECT_PICK_SEGMENTS
+)
+_V28_GROWN_SEGMENTS = frozenset(
+    {"imperium_removed", "private_hand", "private_peeked_card"}
+    | {
+        f"seat{seat}_{zone}"
+        for seat in range(4)
+        for zone in ("hand_public", "in_play", "discard", "trashed", "battle_cards")
+    }
+)
+
+
+def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A file written under v27 knows neither the v28 Epic card nor its flag,
+    # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, nor
+    # v31's Agent boxes, nor v32's deck pools, nor v33's picked Agent card
+    # (139 + 1 columns), nor v34's base-game flag, nor v35's columns
+    # (``GROWN_COLUMNS``), and still has the 90-column
+    # intrigue_trash segment v30 removed (OQ-061): each v27 segment's columns
+    # keep their place at its start, the 24 + 8 + 4 + 4 + 556 + 140 + 1 new
+    # columns start at zero, the
+    # trash columns are dropped, and a game without the option, without a
+    # waiting shortfall, without an owed track Spy, without an Intrigue trash
+    # and without an open Agent turn or a picked Agent card at the compared
+    # decisions (every new and every dropped column 0; seed 6's 80 steps trash
+    # no Intrigue card) scores exactly as the v27 network did.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=4, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"]
+    kept: list[int] = []
+    columns: list[Any] = []
+    layout: list[tuple[str, int, int]] = []
+    offset = 0
+    for segment in OBSERVATION_SEGMENTS:
+        if segment.name in (
+            "epic_game",
+            "shortfall",
+            "track_spies_owed",
+            "agent_boxes",
+            *(f"seat{seat}_deck_pool" for seat in range(4)),
+            "private_agent_card_pick",
+            "private_agent_card_pick_graft",
+            *_EFFECT_PICK_SEGMENTS,
+            "base_game",
+            *NEW_SEGMENTS,
+        ):
+            continue
+        length = (
+            segment.length
+            - int(segment.name in _V28_GROWN_SEGMENTS)
+            - growth_since_v34(segment)
+        )
+        kept.extend(range(segment.offset, segment.offset + length))
+        columns.append(weight[:, segment.offset : segment.offset + length])
+        layout.append((segment.name, offset, length))
+        offset += length
+        if segment.name == "intrigue_discard":
+            # The v29-and-older Intrigue trash pile, weighted so that
+            # keeping any of it would change the outputs.
+            columns.append(torch.full((weight.shape[0], 90), 0.5))
+            layout.append(("intrigue_trash", offset, 90))
+            offset += 90
+    assert ("intrigue_trash", 289, 90) in layout
+    assert offset == 4_587 == (
+        OBSERVATION_SIZE
+        - 24
+        - 8
+        - 4
+        - 4
+        - 556
+        - 140
+        - 1
+        + 90
+        - _EFFECT_PICK_COLUMNS
+        - GROWN_COLUMNS
+    )
+    state["body.0.weight"] = torch.cat(columns, dim=1)
+    older = tmp_path / "v27.pt"
+    torch.save(
+        {
+            **document,
+            "state_dict": state,
+            "observation_layout": layout,
+            "observation_size": offset,
+            "observation_version": 27,
+            "action_codec_version": ACTION_CODEC_VERSION - 1,
+        },
+        older,
+    )
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.from_observation_version, report.to_observation_version) == (
+        27,
+        OBSERVATION_VERSION,
+    )
+    assert (
+        report.observation_kept,
+        report.observation_new,
+        report.observation_dropped,
+    ) == (
+        4_587 - 90,
+        24 + 8 + 4 + 4 + 556 + 140 + 1 + _EFFECT_PICK_COLUMNS + GROWN_COLUMNS,
+        90,
+    )
+    assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
+        codec.size,
+        0,
+        0,
+    )
+    new = torch.tensor(sorted(set(range(OBSERVATION_SIZE)) - set(kept)))
+    first_layer = migrated.body[0]
+    original_first = network.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    assert isinstance(original_first, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    assert torch.equal(
+        first[:, torch.tensor(kept)],
+        original_first.weight.detach()[:, torch.tensor(kept)],
+    )
+    assert float(first[:, new].abs().sum()) == 0.0
+
+    # The dropped trash columns were 0 in a v27 observation only while no
+    # Intrigue card was trashed, so the game must not trash one.
+    kinds: list[str] = []
+    apply = UprisingRulesEngine.apply
+
+    def recording_apply(
+        engine: UprisingRulesEngine, *args: Any, **kwargs: Any
+    ) -> Transition:
+        transition = apply(engine, *args, **kwargs)
+        kinds.extend(event.kind for event in transition.events)
+        return transition
+
+    monkeypatch.setattr(UprisingRulesEngine, "apply", recording_apply)
+    runner = SelfPlayRunner(codec.config, max_steps=80, record=True)
+    result = runner.run(
+        {"r": RandomBatchPolicy(seed=5)},
+        (SelfPlaySpec(game_seed=6, lineup=("r",) * 4),),
+    )
+    monkeypatch.undo()
+    assert kinds, "the recording saw no engine step"
+    assert "intrigue_card_trashed" not in kinds
+    observations = torch.stack(
+        [
+            torch.as_tensor(step.observation, dtype=torch.int32)
+            for episode in result.episodes
+            for step in episode.steps
+        ]
+    )
+    assert observations.shape[1] == OBSERVATION_SIZE
+    # v31's Agent boxes name the card of every open Agent turn, so they are
+    # not 0 here; the migrated network's columns for them are 0 (asserted
+    # above), so they cannot move its outputs, and the network the v27 file
+    # was cut from is fed the observations without them. Every other new
+    # column of a game without the option is 0, so that network computes
+    # the v27 file's function on them.
+    # v32's deck pools are never empty either and are cut the same way, and
+    # so is v39's Intrigue deck size, the last global scalar.
+    boxes = segment_slice("agent_boxes")
+    pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
+    deck_size = segment_slice("global_scalars").start + 12
+    assert bool(observations[:, boxes].any())
+    assert bool(observations[:, pools].any())
+    assert bool(observations[:, deck_size].any())
+    others = new[(new < boxes.start) | ((new >= boxes.stop) & (new < pools.start))]
+    others = others[others != deck_size]
+    assert not bool(observations[:, others].any())
+    cut = observations.clone()
+    cut[:, boxes] = 0
+    cut[:, pools] = 0
+    cut[:, deck_size] = 0
+    masks = torch.ones(observations.shape[0], codec.size, dtype=torch.int8)
+    expected, expected_values = network(cut, masks)
+    actual, actual_values = migrated(observations, masks)
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual_values, expected_values)
+
+
+def _older_file(
+    tmp_path: Path,
+    version: int,
+    layout: list[tuple[str, int, int]],
+) -> tuple[Path, ActionCodec, Tensor, Tensor]:
+    """An MLP file as observation ``version`` wrote it: today's trained
+    network cut to ``layout`` (each segment's first columns, by name). Also
+    the network's first-layer weight and the current columns kept."""
+
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=4, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"]
+    segments = {segment.name: segment for segment in OBSERVATION_SEGMENTS}
+    kept = torch.tensor(
+        [
+            column
+            for name, _, length in layout
+            for column in range(segments[name].offset, segments[name].offset + length)
+        ]
+    )
+    state["body.0.weight"] = weight[:, kept].clone()
+    older = tmp_path / f"v{version}.pt"
+    torch.save(
+        {
+            **document,
+            "state_dict": state,
+            "observation_layout": layout,
+            "observation_size": layout[-1][1] + layout[-1][2],
+            "observation_version": version,
+        },
+        older,
+    )
+    return older, codec, weight, kept
+
+
+def _check_new_columns_at_zero(
+    older: Path,
+    version: int,
+    codec: ActionCodec,
+    weight: Tensor,
+    kept: Tensor,
+) -> int:
+    """Load ``older``: its columns keep their weights by (segment, offset),
+    every new column starts at zero and moves no output. The new count."""
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.from_observation_version, report.to_observation_version) == (
+        version,
+        OBSERVATION_VERSION,
+    )
+    added = OBSERVATION_SIZE - len(kept)
+    assert (
+        report.observation_kept,
+        report.observation_new,
+        report.observation_dropped,
+    ) == (len(kept), added, 0)
+    first_layer = migrated.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    new = torch.tensor(sorted(set(range(OBSERVATION_SIZE)) - set(kept.tolist())))
+    assert torch.equal(first[:, kept], weight[:, kept])
+    assert float(first[:, new].abs().sum()) == 0.0
+    # The new columns cannot move an output, whatever they read.
+    observations = torch.randint(0, 3, (6, OBSERVATION_SIZE), dtype=torch.int32)
+    cut = observations.clone()
+    cut[:, new] = 0
+    masks = torch.ones(6, codec.size, dtype=torch.int8)
+    expected, expected_values = migrated(cut, masks)
+    actual, actual_values = migrated(observations, masks)
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual_values, expected_values)
+    return added
+
+
+def test_a_v37_file_migrates_to_v38_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v38 appended the public deck-top depths (four seats by
+    # personal-card identity), the Voice's barred spaces and the card turn
+    # flags after every older segment: a v37 file's columns keep their place,
+    # the new ones start at zero, and every Uprising game without Immortality
+    # has them 0 anyway, so the migrated file scores as before. (Today's
+    # file is cut to v37 through v38's layout, ``v38_layout``.)
+    v38 = (
+        *(f"seat{seat}_deck_public_top" for seat in range(4)),
+        "voice_blocks",
+        "card_turn_flags",
+    )
+    layout: list[tuple[str, int, int]] = []
+    for name, _, length in v38_layout():
+        if name not in v38:
+            offset = layout[-1][1] + layout[-1][2] if layout else 0
+            layout.append((name, offset, length))
+    assert layout[-1][0] == "private_masterstroke"
+    older, codec, weight, kept = _older_file(tmp_path, 37, layout)
+    added = _check_new_columns_at_zero(older, 37, codec, weight, kept)
+    assert added == 4 * 188 + 4 * 42 + 4 * 2 + (OBSERVATION_SIZE - V38_SIZE)
+
+
+# Every column observation v41 added: the original game's Scouts items, its
+# missions in the parked and goods segments, its secret event's lines and the
+# new segment of the observer's own picks' Factions.
+_V41_COLUMNS = (
+    V41_SCOUTS_ITEMS
+    + V41_MISSIONS * 9
+    + V41_SECRET_EVENTS * 4
+    + sum(
+        segment.length
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name in V41_NEW_SEGMENTS
+    )
+)
+
+
+# Every column observation v42 added: the one new segment of the garrison
+# Sardaukar Commanders parked by Send for Aid and Genetic Research (OQ-166).
+_V42_COLUMNS = sum(
+    segment.length
+    for segment in OBSERVATION_SEGMENTS
+    if segment.name in V42_NEW_SEGMENTS
+)
+# Every column observation v43 added: three more set-aside Imperium card
+# slots at the end of each relative seat's ``imperium_set_aside``.
+_V43_COLUMNS = sum(growth_in_v43(segment) for segment in OBSERVATION_SEGMENTS)
+
+
+def test_a_v38_file_migrates_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v39 (stage P4a, plan 17.8): Rise of Ix's ids end the
+    # personal-card, Intrigue and Tech universes (30, 17 and 18 columns at the
+    # end of 30, 9 and 6 segments), the Intrigue deck's size ends
+    # global_scalars, and Rise of Ix's segments end the layout. A v38 file's
+    # columns keep their (segment, offset) and the new ones start at zero.
+    layout = v38_layout()
+    assert layout[-1][0] == "card_turn_flags"
+    assert layout[-1][1] + layout[-1][2] == V38_SIZE
+    older, codec, weight, kept = _older_file(tmp_path, 38, layout)
+    added = _check_new_columns_at_zero(older, 38, codec, weight, kept)
+    # v40: eight Commander spaces (stage P7c), two more posts at the end
+    # of the five post segments (stage P7f), and the ten Rise of Ix Contracts
+    # at the end of the 11 Contract segments and in the two new private
+    # segments, and Arrakeen Scouts' three Rise of Ix missions (stage P7f-2);
+    # v41: the original game's Scouts items (stage P8b-1, 19 so far) and its
+    # missions (stage P8b-2): 8 more items and 4 + 5 columns each in the parked
+    # and goods segments; the two Mentat auctions, Fremen Exchange, Stationed
+    # Support and Covert Operation, whose four lines end ``scouts_secret_own``
+    # and whose picks' Factions are the new segment (stage P8c-1); and the
+    # last five events and Fremen Mercenaries, six more Scouts items (stage
+    # P8c-2); v42: the new segment of the parked Sardaukar Commanders (OQ-166);
+    # v43: three more set-aside slots per seat.
+    assert added == 30 * 30 + 9 * 17 + 6 * 18 + 1 + 8 + 5 * 2 + 11 * 10 + 76 + 30 + sum(
+        segment.length
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name in V39_NEW_SEGMENTS
+    ) + _V41_COLUMNS + _V42_COLUMNS + _V43_COLUMNS
+    assert added == sum(growth_after_v38(segment) for segment in OBSERVATION_SEGMENTS)
+    assert (V41_SCOUTS_ITEMS, V41_MISSIONS, V41_SECRET_EVENTS) == (38, 9, 1)
+    assert added == OBSERVATION_SIZE - V38_SIZE == 10_694 - 8_265
+
+
+def test_a_v39_file_migrates_to_v40_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v40 (stage P7): ``commander_spaces`` grows at its end from
+    # Uprising's six Commander setup spaces to every board's (the original
+    # board's six, Dreadnought and Tech Negotiation [Bloodlines pp. 3, 7];
+    # stage P7c), and "Play as if there is one observation post on each of
+    # those boards" [Main p. 18] -- Rise of Ix's two posts join the post
+    # universe at its end, so each post segment (four seats' Spy posts and
+    # the effect pick's) is two columns wider (stage P7f); the ten Rise of Ix
+    # Contracts end the 11 Contract segments and the observer's own starting
+    # Contracts and choice are appended as two new segments (stage P7f-2).
+    # The by-segment
+    # migration keeps a v39 file's columns at their (segment, offset) and
+    # starts the new ones at zero; no older segment moves.
+    layout = v39_layout()
+    assert layout[-1][1] + layout[-1][2] == V39_SIZE
+    assert dict((name, length) for name, _, length in layout)["commander_spaces"] == 6
+    assert [name for name, _, _ in layout] == [
+        segment.name
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name
+        not in (
+            "private_starting_contracts",
+            "private_starting_contract_pick",
+            *V41_NEW_SEGMENTS,
+            *V42_NEW_SEGMENTS,
+        )
+    ]
+    older, codec, weight, kept = _older_file(tmp_path, 39, layout)
+    added = _check_new_columns_at_zero(older, 39, codec, weight, kept)
+    # v41's Scouts items (stage P8b-1), missions (stage P8b-2) and secret
+    # columns (stage P8c-1), v42's parked Sardaukar Commanders (OQ-166) and
+    # v43's set-aside slots are columns this file never had either.
+    assert added == (
+        8 + 5 * 2 + 11 * 10 + 2 * 38 + 30 + _V41_COLUMNS + _V42_COLUMNS + _V43_COLUMNS
+    ) == OBSERVATION_SIZE - V39_SIZE
+    new = set(range(OBSERVATION_SIZE)) - set(kept.tolist())
+    assert new == {
+        column
+        for segment in OBSERVATION_SEGMENTS
+        for width in (
+            growth_in_v40(segment)
+            + growth_in_v41(segment)
+            + growth_in_v42(segment)
+            + growth_in_v43(segment),
+        )
+        for column in range(
+            segment.offset + segment.length - width, segment.offset + segment.length
+        )
+    }
+
+
+def test_a_v40_file_migrates_to_v41_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v41 (stage P8, docs/base-game-and-ix-plan.md 20.10): the
+    # original game's Arrakeen Scouts items end the ``scouts_items`` segment,
+    # its missions end the parked and goods segments and its Covert
+    # Operation's lines end ``scouts_secret_own``, so every later segment moves
+    # by their number; the Factions the observer's own picks named are a new
+    # segment at the end (stage P8c-1). The by-segment migration keeps a v40
+    # file's columns at their (segment, offset) and starts the new ones at
+    # zero. (v42's segment and v43's set-aside slots are columns this file
+    # never had either.)
+    layout = v40_layout()
+    assert [name for name, _, _ in layout] == [
+        segment.name
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name not in V41_NEW_SEGMENTS | V42_NEW_SEGMENTS
+    ]
+    lengths = dict((name, length) for name, _, length in layout)
+    assert lengths["scouts_items"] == 80
+    assert (lengths["scouts_parked"], lengths["scouts_goods"]) == (19 * 4, 19 * 5)
+    assert lengths["scouts_secret_own"] == 3 * 4
+    assert layout[-1][1] + layout[-1][2] == (
+        OBSERVATION_SIZE - _V41_COLUMNS - _V42_COLUMNS - _V43_COLUMNS
+    )
+    older, codec, weight, kept = _older_file(tmp_path, 40, layout)
+    added = _check_new_columns_at_zero(older, 40, codec, weight, kept)
+    assert added == _V41_COLUMNS + _V42_COLUMNS + _V43_COLUMNS
+    assert added == OBSERVATION_SIZE - 10_535
+    new = set(range(OBSERVATION_SIZE)) - set(kept.tolist())
+    expected: set[int] = set()
+    for name, width in (
+        ("scouts_items", V41_SCOUTS_ITEMS),
+        ("scouts_parked", V41_MISSIONS * 4),
+        ("scouts_goods", V41_MISSIONS * 5),
+        ("scouts_secret_own", V41_SECRET_EVENTS * 4),
+        *((name, segment_slice(name).stop - segment_slice(name).start)
+          for name in (*V41_NEW_SEGMENTS, *V42_NEW_SEGMENTS)),
+        *((name, 3) for name in sorted(V43_SET_ASIDE_SEGMENTS)),
+    ):
+        part = segment_slice(name)
+        expected |= set(range(part.stop - width, part.stop))
+    assert new == expected
+
+
+def test_a_v41_file_migrates_to_v42_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v42 (OQ-166, cloud engine review finding 3) appends one
+    # segment after every other, ``scouts_parked_commanders``: the garrison
+    # Sardaukar Commanders parked in place of a mission's troop by Send for Aid
+    # and Genetic Research, mission x relative seat (2 x 4 columns). It grows
+    # no older segment, so no older segment moves; the by-segment migration
+    # keeps a v41 file's columns at their (segment, offset) and starts the new
+    # ones at zero. (v43's set-aside slots are columns it never had either.)
+    layout = v41_layout()
+    assert [name for name, _, _ in layout] == [
+        segment.name
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name not in V42_NEW_SEGMENTS
+    ]
+    assert layout[-1][0] == "private_scouts_secret_faction"
+    end = layout[-1][1] + layout[-1][2]
+    assert end == OBSERVATION_SIZE - _V42_COLUMNS - _V43_COLUMNS == 10_674
+    older, codec, weight, kept = _older_file(tmp_path, 41, layout)
+    added = _check_new_columns_at_zero(older, 41, codec, weight, kept)
+    assert added == _V42_COLUMNS + _V43_COLUMNS == 2 * 4 + 4 * 3
+    new = set(range(OBSERVATION_SIZE)) - set(kept.tolist())
+    part = segment_slice("scouts_parked_commanders")
+    assert part.stop == OBSERVATION_SIZE
+    set_aside = {
+        column
+        for name in V43_SET_ASIDE_SEGMENTS
+        for column in range(segment_slice(name).stop - 3, segment_slice(name).stop)
+    }
+    assert new == set(range(part.start, part.stop)) | set_aside
+
+
+def test_a_v42_file_migrates_to_v43_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v43 widens each relative seat's ``imperium_set_aside`` from
+    # two slots to five at its end (a seat may hold up to five set-aside
+    # Imperium cards: Helena Richese's Signet Ring ability through the Signet
+    # Ring card, Boundless Ambition, Ghola's copy and Servo-Receivers, and the
+    # Manipulate Intrigue card). Every later segment moves by the columns
+    # before it, so the by-segment migration has to keep a v42 file's
+    # columns at their (segment, offset), the two old slots included, and
+    # start the three new slots of each seat at zero.
+    layout = v42_layout()
+    assert [name for name, _, _ in layout] == [
+        segment.name for segment in OBSERVATION_SEGMENTS
+    ]
+    lengths = dict((name, length) for name, _, length in layout)
+    assert {lengths[name] for name in V43_SET_ASIDE_SEGMENTS} == {2}
+    assert layout[-1][1] + layout[-1][2] == OBSERVATION_SIZE - _V43_COLUMNS == 10_682
+    older, codec, weight, kept = _older_file(tmp_path, 42, layout)
+    added = _check_new_columns_at_zero(older, 42, codec, weight, kept)
+    assert added == _V43_COLUMNS == 4 * 3
+    new = set(range(OBSERVATION_SIZE)) - set(kept.tolist())
+    expected = set()
+    for name in V43_SET_ASIDE_SEGMENTS:
+        part = segment_slice(name)
+        assert part.stop - part.start == 5
+        expected |= set(range(part.start + 2, part.stop))
+        # The two v42 slots keep their weights in place.
+        assert {part.start, part.start + 1} <= set(kept.tolist())
+    assert new == expected
+
+
+def test_checkpoint_cli_inspects_stamps_and_migrates(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    path = tmp_path / "cli.pt"
+    save_checkpoint(path, network, ruleset=codec.config.identifier, iteration=9)
+    document = torch.load(path, weights_only=True)
+    document["format"] = 1
+    del document["action_templates"]
+    del document["observation_layout"]
+    torch.save(document, path)
+
+    assert checkpoint_main(["inspect", str(path)]) == 0
+    assert "format 1" in capsys.readouterr().out
+    assert checkpoint_main(["stamp", str(path)]) == 0
+    assert "migratable yes" in capsys.readouterr().out
+
+    stale = tmp_path / "stale.pt"
+    document = torch.load(path, weights_only=True)
+    document["action_codec_version"] -= 1
+    torch.save(document, stale)
+    target = tmp_path / "migrated.pt"
+    assert checkpoint_main(["migrate", str(stale), str(target)]) == 0
+    out = capsys.readouterr().out
+    assert f"v{ACTION_CODEC_VERSION - 1} -> v{ACTION_CODEC_VERSION}" in out
+    _, info = load_checkpoint(target)
+    assert info.migration is None and info.migratable and info.iteration == 9
+    assert checkpoint_main(["inspect", str(tmp_path / "missing.pt")]) == 1
+
+
+# An MLP file keeps exactly the format-2 document it had before format 3.
+_FORMAT_2_KEYS = {
+    "format",
+    "observation_version",
+    "observation_size",
+    "observation_layout",
+    "action_codec_version",
+    "action_templates",
+    "ruleset",
+    "action_size",
+    "hidden",
+    "iteration",
+    "metadata",
+    "state_dict",
+    "optimizer_state",
+}
+
+
+def test_a_slot_network_writes_format_3_and_an_mlp_stays_format_2(
+    tmp_path: Path,
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    mlp, _ = _trained(codec)
+    network, learner = _trained(codec, slots=True)
+    assert isinstance(network, MlpSlotsNetwork)
+    embedding = network.slot_embed.weight.detach()
+    assert float(embedding.abs().sum()) > 0.0  # the update trained some rows
+
+    save_checkpoint(
+        tmp_path / "mlp.pt", mlp, ruleset=codec.config.identifier, iteration=1
+    )
+    mlp_document = torch.load(tmp_path / "mlp.pt", weights_only=True)
+    assert set(mlp_document) == _FORMAT_2_KEYS
+    assert mlp_document["format"] == CHECKPOINT_FORMAT == 2
+
+    path = tmp_path / "slots.pt"
+    save_checkpoint(
+        path,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=5,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    document = torch.load(path, weights_only=True)
+    assert set(document) == _FORMAT_2_KEYS | {"arch", "slot_keys"}
+    assert document["format"] == ARCH_CHECKPOINT_FORMAT == 3
+    assert document["arch"] == {"kind": "mlp_slots", "hidden": [16], "slot_version": 1}
+    assert document["slot_keys"] == list(SLOT_KEYS)
+    # Only weights are persisted; the lookup tables are rebuilt.
+    assert set(document["state_dict"]) == set(mlp.state_dict()) | {"slot_embed.weight"}
+
+    loaded, info = load_checkpoint(path)
+    assert isinstance(loaded, MlpSlotsNetwork)
+    assert (info.format, info.arch, info.migratable) == (3, "mlp_slots", True)
+    assert torch.equal(loaded.slot_embed.weight.detach(), embedding)
+    observations = torch.randint(0, 6, (3, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(3, codec.size, dtype=torch.int8)
+    with torch.no_grad():
+        expected = network(observations, masks)[0]
+        assert torch.equal(loaded(observations, masks)[0], expected)
+
+    # A slot table whose keys do not fit the embedding, or whose meaning
+    # changed (another slot_version), is refused, not read with shifted rows.
+    for change, message in (
+        ({"slot_keys": list(SLOT_KEYS[:-1])}, "slot keys"),
+        ({"slot_keys": [*SLOT_KEYS[1:], SLOT_KEYS[1]]}, "slot keys"),
+        ({"arch": {**document["arch"], "slot_version": 0}}, "slot table"),
+        ({"arch": {**document["arch"], "hidden": [32]}}, "hidden shape"),
+    ):
+        forged = tmp_path / "forged.pt"
+        torch.save({**document, **change}, forged)
+        with pytest.raises(ValueError, match=message):
+            load_checkpoint(forged)
+        with pytest.raises(ValueError, match=message):
+            stamp_checkpoint(forged)
+
+
+def test_a_slot_checkpoint_relinks_its_embedding_rows_by_key(
+    tmp_path: Path,
+) -> None:
+    # Observation v22 added the Arrakeen Scouts frame kind, hence the row
+    # ``decision_kind:scouts_draw``: a file written before it has one row
+    # fewer. Its rows move by key, the new row starts at zero, and Adam's
+    # moments move with the rows.
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec, slots=True)
+    assert isinstance(network, MlpSlotsNetwork)
+    path = tmp_path / "slots.pt"
+    save_checkpoint(
+        path,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=5,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    document = torch.load(path, weights_only=True)
+    new_key = "decision_kind:scouts_draw"
+    dropped = SLOT_KEYS.index(new_key)
+    embedding = document["state_dict"]["slot_embed.weight"]
+    keep = [row for row in range(embedding.shape[0]) if row != dropped]
+    old_keys = [key for key in SLOT_KEYS if key != new_key]
+    # Shuffle the old order too: rows are found by key, not by position.
+    old_keys = [*old_keys[5:], *old_keys[:5]]
+    old_rows = [*keep[5:-1], *keep[:5], keep[-1]]
+    state = dict(document["optimizer_state"]["state"])
+    embed_index = next(
+        index
+        for index, moments in state.items()
+        if moments["exp_avg"].shape == embedding.shape
+    )
+    moments = dict(state[embed_index])
+    moments["exp_avg"] = moments["exp_avg"][old_rows]
+    moments["exp_avg_sq"] = moments["exp_avg_sq"][old_rows]
+    state[embed_index] = moments
+    forged = {
+        **document,
+        "slot_keys": old_keys,
+        "state_dict": {
+            **document["state_dict"],
+            "slot_embed.weight": embedding[old_rows],
+        },
+        "optimizer_state": {**document["optimizer_state"], "state": state},
+    }
+    old_path = tmp_path / "old_slots.pt"
+    torch.save(forged, old_path)
+
+    loaded, info = load_checkpoint(old_path)
+    assert isinstance(loaded, MlpSlotsNetwork)
+    relinked = loaded.slot_embed.weight.detach()
+    assert torch.equal(relinked[keep], embedding[keep])
+    assert float(relinked[dropped].abs().sum()) == 0.0
+    assert info.optimizer_state is not None
+    moved = info.optimizer_state["state"][embed_index]["exp_avg"]
+    assert torch.equal(
+        moved[keep], document["optimizer_state"]["state"][embed_index]["exp_avg"][keep]
+    )
+    assert float(moved[dropped].abs().sum()) == 0.0
+
+
+def test_a_slot_checkpoint_migrates_its_head_and_keeps_its_embedding(
+    tmp_path: Path,
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec, slots=True)
+    assert isinstance(network, MlpSlotsNetwork)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=7,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    drop_action = next(
+        i for i, t in enumerate(codec.catalog) if t.action_id == "finish_agent_turn"
+    )
+    drop_column = OBSERVATION_SEGMENTS[0].length - 1
+    older = tmp_path / "older.pt"
+    torch.save(
+        _forge_older(
+            torch.load(current, weights_only=True),
+            drop_action=drop_action,
+            drop_column=drop_column,
+        ),
+        older,
+    )
+
+    migrated, info = load_checkpoint(older)
+    assert isinstance(migrated, MlpSlotsNetwork)
+    assert info.migration is not None and info.arch == "mlp_slots"
+    keep = torch.tensor([i for i in range(codec.size) if i != drop_action])
+    weight = migrated.policy_head.weight.detach()
+    assert torch.equal(weight[keep], network.policy_head.weight.detach()[keep])
+    assert torch.equal(weight[drop_action], torch.zeros(weight.shape[1]))
+    assert torch.equal(
+        migrated.slot_embed.weight.detach(), network.slot_embed.weight.detach()
+    )
+
+    assert info.optimizer_state is not None
+    resumed = Learner(migrated, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    resumed.restore_optimizer(info.optimizer_state)
+    moments = resumed.optimizer.state_dict()["state"]
+    before = learner.optimizer.state_dict()["state"]
+    head_index = 2 * len(network.hidden)
+    slot_index = head_index + 4
+    assert torch.equal(
+        moments[head_index]["exp_avg"][keep], before[head_index]["exp_avg"][keep]
+    )
+    for name in ("exp_avg", "exp_avg_sq"):
+        assert torch.equal(moments[slot_index][name], before[slot_index][name])
+    assert float(before[slot_index]["exp_avg"].abs().sum()) > 0.0
+
+    # Migrating through the CLI writes the result as format 3 again.
+    target = tmp_path / "migrated.pt"
+    save_checkpoint(
+        target,
+        migrated,
+        ruleset=info.ruleset,
+        iteration=info.iteration,
+        optimizer_state=info.optimizer_state,
+    )
+    assert torch.load(target, weights_only=True)["action_templates"] is None
+    stamped = stamp_checkpoint(target)
+    assert (stamped.format, stamped.arch, stamped.migratable) == (3, "mlp_slots", True)
+    document = torch.load(target, weights_only=True)
+    assert document["slot_keys"] == list(SLOT_KEYS)
+    assert checkpoint_main(["migrate", str(older), str(tmp_path / "cli.pt")]) == 0
+    _, cli = load_checkpoint(tmp_path / "cli.pt")
+    assert (cli.format, cli.arch, cli.migration) == (3, "mlp_slots", None)
+
+
+def test_widening_keeps_the_function_and_the_adam_moments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec)
+    source = tmp_path / "mlp.pt"
+    save_checkpoint(
+        source,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=11,
+        metadata={"tag": "champion"},
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    destination = tmp_path / "slots.pt"
+
+    info = widen_checkpoint(source, destination)
+
+    assert (info.format, info.arch, info.iteration) == (3, "mlp_slots", 11)
+    assert info.migratable and info.migration is None
+    assert info.metadata["widened_from"] == str(source)
+    assert info.metadata["tag"] == "champion"
+    widened, _ = load_checkpoint(destination)
+    assert isinstance(widened, MlpSlotsNetwork)
+    assert float(widened.slot_embed.weight.detach().abs().sum()) == 0.0
+    observations = torch.randint(0, 9, (4, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(4, codec.size, dtype=torch.int8)
+    with torch.no_grad():
+        expected = network(observations, masks)
+        actual = widened(observations, masks)
+    assert torch.equal(actual[0], expected[0]) and torch.equal(actual[1], expected[1])
+
+    assert info.optimizer_state is not None
+    slot_index = 2 * len(network.hidden) + 4
+    assert info.optimizer_state["param_groups"][0]["params"] == list(
+        range(slot_index + 1)
+    )
+    resumed = Learner(widened, _CPU, LearnerConfig(minibatch_size=256), seed=0)
+    resumed.restore_optimizer(info.optimizer_state)
+    moments = resumed.optimizer.state_dict()["state"]
+    before = learner.optimizer.state_dict()["state"]
+    assert set(moments) == set(before) == set(range(slot_index))
+    for index in before:
+        for name in ("exp_avg", "exp_avg_sq", "step"):
+            assert torch.equal(
+                torch.as_tensor(moments[index][name]),
+                torch.as_tensor(before[index][name]),
+            )
+    assert widened.slot_embed.weight not in resumed.optimizer.state
+
+    runner = SelfPlayRunner(codec.config, max_steps=24)
+    result = runner.run(
+        {"r": RandomBatchPolicy(seed=3)},
+        (SelfPlaySpec(game_seed=4, lineup=("r",) * 4),),
+    )
+    resumed.update(stack_episodes(result.episodes, action_size=codec.size))
+    state = resumed.optimizer.state[widened.slot_embed.weight]
+    assert int(state["step"]) >= 1
+    assert float(widened.slot_embed.weight.detach().abs().sum()) > 0.0
+    assert float(widened.slot_embed.weight.detach()[PAD_ROW].abs().sum()) == 0.0
+
+    # A slot file cannot be widened again; the CLI widens and prints the arch.
+    with pytest.raises(ValueError, match="already"):
+        widen_checkpoint(destination, tmp_path / "again.pt")
+    assert (
+        checkpoint_main(
+            ["widen", "--arch", "mlp_slots", str(source), str(tmp_path / "cli.pt")]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "arch mlp_slots" in out and "format 3" in out
+    assert checkpoint_main(["inspect", str(source)]) == 0
+    assert "arch mlp" in capsys.readouterr().out
+
+
+def test_widening_an_older_file_records_the_migration_done_on_load(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    network, learner = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current,
+        network,
+        ruleset=codec.config.identifier,
+        iteration=3,
+        optimizer_state=learner.optimizer_state(),
+        codec=codec,
+    )
+    drop_action = next(
+        i for i, t in enumerate(codec.catalog) if t.action_id == "finish_agent_turn"
+    )
+    older = tmp_path / "older.pt"
+    torch.save(
+        _forge_older(
+            torch.load(current, weights_only=True),
+            drop_action=drop_action,
+            drop_column=OBSERVATION_SEGMENTS[0].length - 1,
+        ),
+        older,
+    )
+    migrated, loaded = load_checkpoint(older)
+    assert loaded.migration is not None
+    described = loaded.migration.describe()
+
+    info = widen_checkpoint(older, tmp_path / "slots.pt")
+
+    # The widened file is at the current versions; the move is not lost.
+    assert info.migration is None
+    assert info.metadata["widened_migration"] == described
+    widened, _ = load_checkpoint(tmp_path / "slots.pt")
+    observations = torch.randint(0, 9, (4, OBSERVATION_SIZE), dtype=torch.int32)
+    masks = torch.ones(4, codec.size, dtype=torch.int8)
+    with torch.no_grad():
+        assert torch.equal(
+            widened(observations, masks)[0], migrated(observations, masks)[0]
+        )
+    # A current-version source records nothing.
+    plain = widen_checkpoint(current, tmp_path / "plain.pt")
+    assert "widened_migration" not in plain.metadata
+
+    assert (
+        checkpoint_main(
+            ["widen", "--arch", "mlp_slots", str(older), str(tmp_path / "cli.pt")]
+        )
+        == 0
+    )
+    assert f"{older}: {described}" in capsys.readouterr().out
+
+
+class _ExtraParameterSlots(MlpSlotsNetwork):
+    """A widened class with one more new weight than the embedding."""
+
+    def __init__(self, action_size: int, **kwargs: Any) -> None:
+        super().__init__(action_size, **kwargs)
+        self.extra = torch.nn.Parameter(torch.zeros(1))
+
+
+class _MissingBiasSlots(MlpSlotsNetwork):
+    """A widened class that cannot hold one of the source's weights."""
+
+    def __init__(self, action_size: int, **kwargs: Any) -> None:
+        super().__init__(action_size, **kwargs)
+        self.value_head = torch.nn.Linear(self.hidden[-1], 1, bias=False)
+
+
+@pytest.mark.parametrize(
+    ("widened_class", "reported"),
+    [
+        (_ExtraParameterSlots, r"missing \[[^]]*'extra'[^]]*\] and unexpected \[\]"),
+        (_MissingBiasSlots, r"unexpected \['value_head\.bias'\]"),
+    ],
+    ids=["extra-parameter", "missing-bias"],
+)
+def test_widening_refuses_anything_but_the_embedding_being_new(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    widened_class: type[MlpSlotsNetwork],
+    reported: str,
+) -> None:
+    codec = ActionCodec(RulesetConfig())
+    torch.manual_seed(0)
+    source = tmp_path / "mlp.pt"
+    save_checkpoint(
+        source,
+        PolicyValueNetwork(codec.size, hidden=(16,)),
+        ruleset=codec.config.identifier,
+        iteration=1,
+        codec=codec,
+    )
+    monkeypatch.setattr(checkpoint_module, "MlpSlotsNetwork", widened_class)
+    destination = tmp_path / "slots.pt"
+    with pytest.raises(
+        RuntimeError, match=f"widening expected only slot_embed.weight(?s:.*){reported}"
+    ):
+        widen_checkpoint(source, destination)
+    assert not destination.exists()

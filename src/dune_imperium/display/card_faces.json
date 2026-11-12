@@ -1,0 +1,6168 @@
+{
+ "cards": {
+  "appropriate": {
+   "agent": {
+    "en": "{agent_icon_emperor} 2 Influence : {acquire_tech} You may use Solari instead of spice for this purchase."
+   },
+   "reveal": {
+    "en": "{persuasion:2}"
+   }
+  },
+  "arrakis_liaison": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "arrakis_observer": {
+   "agent": {
+    "en": "{discard} {arrow_right} {spy_deep_cover}\nIf you discarded a Spacing Guild card: {spice:2}",
+    "ko": "{discard} {arrow_right} {spy_deep_cover}\n우주 항행 길드 카드를 버렸다면: {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} —AND— {recall_spy} {arrow_right} {sword}{sword}{sword}",
+    "ko": "{persuasion:1} —그리고— {recall_spy} {arrow_right} {sword}{sword}{sword}"
+   }
+  },
+  "arrakis_recruiter": {
+   "agent": {
+    "en": "{troop}",
+    "ko": "{troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "arrakis_revolt": {
+   "agent": {
+    "en": "{maker_hooks}: {spice:2} {arrow_right} {shield_wall} {sandworm}",
+    "ko": "{maker_hooks}: {spice:2} {arrow_right} {shield_wall} {sandworm}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}{sword}{sword}",
+    "ko": "{persuasion:1} {sword}{sword}{sword}"
+   }
+  },
+  "assassination_mission": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{solari:1} {sword}"
+   },
+   "static": {
+    "en": "When this card is trashed: {solari:4}"
+   }
+  },
+  "beguiling_pheromones": {
+   "agent": {
+    "en": "If you sent an Agent to a Faction board space this turn, trash one of the grafted cards and gain an additional Influence with that Faction.",
+    "ko": "이번 차례에 당신이 팩션 게임판 장소에 에이전트를 보냈다면, 접합된 카드 중 하나를 폐기하고 그 팩션의 영향력 1 추가 획득."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "bene_gesserit_initiate": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "bene_gesserit_operative": {
+   "agent": {
+    "en": "{spy}",
+    "ko": "{spy}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nIf you have two or more Spies on the board: +{persuasion:2}",
+    "ko": "{persuasion:1}\n게임판에 당신의 스파이가 둘 이상 있다면: +{persuasion:2}"
+   }
+  },
+  "bene_gesserit_sister": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2} -OR- {sword} {sword}"
+   }
+  },
+  "bene_tleilax_lab": {
+   "agent": {
+    "en": "{specimen}",
+    "ko": "{specimen}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\n{genetic_marker_1} : {spice:1}",
+    "ko": "{persuasion:1}\n{genetic_marker_1} : {spice:1}"
+   }
+  },
+  "bene_tleilax_researcher": {
+   "agent": {
+    "en": "{research}",
+    "ko": "{research}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\n{genetic_marker_1} : +{persuasion:1} {genetic_marker_2} : +{persuasion:1}",
+    "ko": "{persuasion:1}\n{genetic_marker_1} : +{persuasion:1} {genetic_marker_2} : +{persuasion:1}"
+   }
+  },
+  "blank_slate": {
+   "agent": {
+    "en": "If grafted:\nThis has {agent_icon_emperor}, {agent_icon_spacing_guild}, {agent_icon_bene_gesserit}, and {agent_icon_fremen}.",
+    "ko": "만약 접합되었다면:\n이 카드는 {agent_icon_emperor}, {agent_icon_spacing_guild}, {agent_icon_bene_gesserit}, {agent_icon_fremen}를 보유."
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "bombast": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nCommand\n({persuasion:6}+): {solari:3} and trash this card.",
+    "ko": "{persuasion:1}\n통솔\n({persuasion:6}+): {solari:3} 그리고 이 카드 폐기."
+   }
+  },
+  "boundless_ambition": {
+   "agent": {
+    "en": "{signet_ring}"
+   },
+   "reveal": {
+    "en": "{unload} Acquire a card that costs {persuasion:5} or less."
+   }
+  },
+  "bounty_hunter": {
+   "agent": {
+    "en": "If used to send an Agent to a board space with an enemy Agent: {solari:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}"
+   }
+  },
+  "branching_path": {
+   "agent": {
+    "en": "{agent_icon_bene_gesserit} Alliance: {trash_intrigue} {arrow_right} {intrigue} {spice:2}",
+    "ko": "{agent_icon_bene_gesserit} 동맹: {trash_intrigue} {arrow_right} {intrigue} {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "calculus_of_power": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nTrash another Emperor card you have in play {arrow_right} {sword}{sword}{sword}",
+    "ko": "{persuasion:2}\n당신의 플레이 영역에 있는 다른 황제 카드 1장 폐기 {arrow_right} {sword}{sword}{sword}"
+   }
+  },
+  "captured_mentat": {
+   "agent": {
+    "en": "{discard} {arrow_right} {intrigue}{draw}",
+    "ko": "{discard} {arrow_right} {intrigue}{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\n{influence_lose} {arrow_right} {influence_any}",
+    "ko": "{persuasion:1}\n{influence_lose} {arrow_right} {influence_any}"
+   }
+  },
+  "cargo_runner": {
+   "agent": {
+    "en": "If you have completed two or more contracts: {draw}\nIf you have completed four or more contracts: {draw}",
+    "ko": "당신이 계약을 둘 이상 완수했다면: {draw}\n당신이 계약을 넷 이상 완수했다면: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "carryall": {
+   "agent": {
+    "en": "Double the base (not bonus) spice\nyou harvest with this Agent."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spice:1}"
+   }
+  },
+  "chairdog": {
+   "agent": {
+    "en": "At the start of your Reveal turn, return the <i>other</i> grafted card from play to your hand.",
+    "ko": "매 라운드 당신의 공개 차례를 시작할 때, 접합된 <i>다른</i> 카드를 플레이 영역에서 당신의 핸드로 돌려놓음."
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "chani_card": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nRetreat any number of your troops."
+   }
+  },
+  "chani_clever_tactician": {
+   "agent": {
+    "en": "If you have three or more units in the Conflict: {intrigue}",
+    "ko": "교전 칸에 당신의 부대가 셋 이상 있다면: {intrigue}"
+   },
+   "reveal": {
+    "en": "Retreat two of your troops {arrow_right} {sword}{sword}{sword}{sword}\nFremen Bond: {persuasion:2}",
+    "ko": "당신의 병력 중 둘을 후퇴 {arrow_right} {sword}{sword}{sword}{sword}\n프레멘의 유대감: {persuasion:2}"
+   }
+  },
+  "choam_delegate": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{unload} {solari:3}",
+    "ko": "{unload} {solari:3}"
+   }
+  },
+  "choam_demands": {
+   "agent": {
+    "en": "Complete one of your contracts.",
+    "ko": "당신의 계약 중 하나 완수."
+   },
+   "reveal": {
+    "en": "If you have completed four or more contracts:\nTrash this card {arrow_right} {influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}",
+    "ko": "당신이 계약을 넷 이상 완수했다면:\n이 카드 폐기 {arrow_right} {influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}"
+   }
+  },
+  "choam_directorship": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   }
+  },
+  "clandestine_meeting": {
+   "agent": {
+    "en": "<i>(This card has no Agent icons.)</i>\n{influence_bene_gesserit} {intrigue}",
+    "ko": "<i>(이 카드에는 에이전트 아이콘이 없습니다.)</i>\n{influence_bene_gesserit} {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "command_center": {
+   "agent": {
+    "en": "{agent_icon_emperor} 2 Influence: {troop}",
+    "ko": "{agent_icon_emperor} 영향력 2: {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nRetreat two troops {arrow_right} +{persuasion:2}",
+    "ko": "{persuasion:1}\n병력 둘 후퇴 {arrow_right} +{persuasion:2}"
+   }
+  },
+  "contaminator": {
+   "agent": {
+    "en": "{tleilaxu}",
+    "ko": "{tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "control_the_spice": {
+   "agent": {
+    "en": "{spice:1} {arrow_right} {trash} {troop}",
+    "ko": "{spice:1} {arrow_right} {trash} {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spice:1}",
+    "ko": "{persuasion:1} {spice:1}"
+   }
+  },
+  "convincing_argument": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "corrino_genes": {
+   "agent": {
+    "en": "If grafted: {tleilaxu}",
+    "ko": "만약 접합되었다면: {tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "corrinth_city": {
+   "agent": {
+    "en": "{discard}{discard} {solari:5} {arrow_right} {victory_point}",
+    "ko": "{discard}{discard} {solari:5} {arrow_right} {victory_point}"
+   },
+   "reveal": {
+    "en": "{solari:5} —OR— {solari:5} {arrow_right} Take your seat on the High Council (if you haven't already).",
+    "ko": "{solari:5} —또는—\n{solari:5} {arrow_right} 당신은 원로회에서 자리 차지 (아직 하지 않았다면)."
+   }
+  },
+  "corrupt_bureaucrat": {
+   "agent": {
+    "en": "If you recalled a Spy this turn: {contract}",
+    "ko": "이번 차례에 스파이를 소환했다면: {contract}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   },
+   "static": {
+    "en": "When this card is discarded: {solari:3}",
+    "ko": "이 카드가 버려질 때: {solari:3}"
+   }
+  },
+  "corrupt_smuggler": {
+   "agent": {
+    "en": "If grafted: {spice:2}",
+    "ko": "만약 접합되었다면: {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "court_intrigue": {
+   "agent": {
+    "en": "Put an Intrigue card on the bottom of the deck {arrow_right} {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}"
+   }
+  },
+  "covert_operation": {
+   "agent": {
+    "en": "Each opponent discards a card.",
+    "ko": "다른 플레이어들은 각각 카드 1장씩 버리기."
+   },
+   "reveal": {
+    "en": "{spy}{spy}",
+    "ko": "{spy}{spy}"
+   }
+  },
+  "crysknife_card": {
+   "agent": {
+    "en": "{solari:1}",
+    "ko": "{solari:1}"
+   },
+   "reveal": {
+    "en": "{sword}\nFremen Bond: {influence_fremen}",
+    "ko": "{sword}\n프레멘의 유대감: {influence_fremen}"
+   }
+  },
+  "dagger": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{sword}",
+    "ko": "{sword}"
+   }
+  },
+  "dangerous_rhetoric": {
+   "agent": {
+    "en": "{influence_any}\nTrash this card.",
+    "ko": "{influence_any}\n이 카드 폐기."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "delivery_agreement": {
+   "agent": {
+    "en": "{discard} {arrow_right} {contract}",
+    "ko": "{discard} {arrow_right} {contract}"
+   },
+   "reveal": {
+    "en": "{spice:1}—OR—If you have completed four or more contracts: Trash this card {arrow_right} {victory_point}",
+    "ko": "{spice:1} —또는— 당신이 계약을 넷 이상 완수했다면:\n이 카드 폐기 {arrow_right} {victory_point}"
+   }
+  },
+  "delivery_logistics": {
+   "agent": {
+    "en": "This has the Agent icons shown on all your incomplete contracts.",
+    "ko": "이 카드는 당신의 완수하지 않은 모든 계약에 표시된 에이전트 아이콘을 보유함."
+   },
+   "reveal": {
+    "en": "{persuasion:1} —OR— {contract}",
+    "ko": "{persuasion:1} —또는— {contract}"
+   }
+  },
+  "desert_ambush": {
+   "agent": {
+    "en": "For each troop you deploy this turn, you may force an enemy unit to retreat."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}"
+   }
+  },
+  "desert_power": {
+   "agent": {
+    "en": "If you sent an Agent to a Maker board space this turn: {spice:2}",
+    "ko": "이번 차례에 메이커 게임판 장소로 에이전트를 보냈다면: {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} —OR— {maker_hooks}: {water} {arrow_right} {sandworm}",
+    "ko": "{persuasion:2} —또는— {maker_hooks}: {water} {arrow_right} {sandworm}"
+   }
+  },
+  "desert_survival": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "diplomacy": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "disruption_tactics": {
+   "agent": {
+    "en": "Force an enemy troop to retreat.",
+    "ko": "다른 플레이어의 병력 1을 강제로 후퇴시킴."
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nTrash this card {arrow_right} {conflict}",
+    "ko": "{persuasion:1}\n이 카드 폐기 {arrow_right} {conflict}"
+   }
+  },
+  "dissecting_kit": {
+   "agent": {
+    "en": "Trash the <i>other</i> grafted card {arrow_right} {specimen}",
+    "ko": "접합된 <i>다른</i> 카드 폐기 {arrow_right} {specimen}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\n{genetic_marker_1} : {tleilaxu}",
+    "ko": "{persuasion:1}\n{genetic_marker_1} : {tleilaxu}"
+   }
+  },
+  "double_agent": {
+   "agent": {
+    "en": "{spy} spying on the board space you sent an Agent to this turn.\nYou may place this Spy on the same observation post as another player’s Spy.",
+    "ko": "당신이 이번 차례에 에이전트를 보낸 게임판 장소에 {spy}. 그곳에 다른 플레이어의 스파이가 있더라도 이 스파이를 놓을 수 있음."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "dr_yueh": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "duncan_idaho_card": {
+   "agent": {
+    "en": "{water} {arrow_right} {troop} {draw}",
+    "ko": "{water} {arrow_right} {troop} {draw}"
+   },
+   "reveal": {
+    "en": "{water} {sword} {sword}",
+    "ko": "{water} {sword} {sword}"
+   }
+  },
+  "duncan_loyal_blade": {
+   "agent": {
+    "en": "{troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}\nTrash this card {arrow_right} Deploy or retreat any number of your troops from or to your garrison."
+   }
+  },
+  "dune_the_desert_planet": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "ecological_testing_station": {
+   "agent": {
+    "en": "{water}{water} {arrow_right} {draw}{draw}",
+    "ko": "{water}{water} {arrow_right} {draw}{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nFremen Bond: {water}",
+    "ko": "{persuasion:1}\n프레멘의 유대감: {water}"
+   }
+  },
+  "eliminate_allies": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   },
+   "static": {
+    "en": "When this card is trashed: {troop}{troop}",
+    "ko": "이 카드가 폐기될 때: {troop}{troop}"
+   }
+  },
+  "elite_forces": {
+   "agent": {
+    "en": "You may trash a card from your hand.\nIf you trash an Emperor card: {intrigue} {troop} {conflict}",
+    "ko": "핸드에 있는 카드 1장 폐기 가능\n황제 카드를 폐기했다면: {intrigue} {troop} {conflict}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "embedded_agent": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {freighter} {freighter}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {intrigue}"
+   }
+  },
+  "engineered_miracle": {
+   "agent": {
+    "en": "{discard} {arrow_right} {water}",
+    "ko": "{discard} {arrow_right} {water}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nCommand\n({persuasion:6}+): Trash this card {arrow_right} Acquire a card from the Imperium Row.",
+    "ko": "{persuasion:1}\n통솔\n({persuasion:6}+): 이 카드 폐기 {arrow_right} 임페리움 열에서 카드 1장 획득."
+   }
+  },
+  "esmar_tuek_card": {
+   "agent": {
+    "en": "{spice:1} {arrow_right} {influence_spacing_guild} {draw}",
+    "ko": "{spice:1} {arrow_right} {influence_spacing_guild} {draw}"
+   },
+   "reveal": {
+    "en": "{unload} {spice:2} {solari:2}",
+    "ko": "{unload} {spice:2} {solari:2}"
+   }
+  },
+  "experimentation": {
+   "agent": {
+    "en": "{research}",
+    "ko": "{research}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {specimen}",
+    "ko": "{persuasion:1} {specimen}"
+   }
+  },
+  "face_dancer": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "face_dancer_initiate": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "fedaykin_death_commando": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nFremen Bond: {sword} {sword} {sword}",
+    "ko": "{persuasion:1}\n프레멘의 유대감: {sword} {sword} {sword}"
+   }
+  },
+  "fedaykin_stilltent": {
+   "agent": {
+    "en": "If you sent an Agent to a Maker board space this turn: {troop}",
+    "ko": "이번 차례에 메이커 게임판 장소로 에이전트를 보냈다면: {troop}"
+   },
+   "reveal": {
+    "en": "{water}",
+    "ko": "{water}"
+   }
+  },
+  "firm_grip": {
+   "agent": {
+    "en": "{solari:2} {arrow_right} Choose one:\n{influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}"
+   },
+   "reveal": {
+    "en": "{agent_icon_emperor} Alliance: {persuasion:4}"
+   }
+  },
+  "foldspace_card": {
+   "agent": {
+    "en": "{draw}\nTrash this card.",
+    "ko": "{draw}\n이 카드 폐기."
+   },
+   "reveal": {
+    "en": "",
+    "ko": ""
+   }
+  },
+  "for_humanity": {
+   "agent": {
+    "en": "{influence_any}",
+    "ko": "{influence_any}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\n{agent_icon_bene_gesserit} Alliance: {influence_lose} {influence_lose} {arrow_right} {victory_point}",
+    "ko": "{persuasion:2}\n{agent_icon_bene_gesserit} 동맹 : {influence_lose} {influence_lose} {arrow_right} {victory_point}"
+   }
+  },
+  "freighter_fleet": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{unload} {freighter}",
+    "ko": "{unload} {freighter}"
+   }
+  },
+  "fremen_camp": {
+   "agent": {
+    "en": "{spice:2} {arrow_right} {troop} {troop} {troop}",
+    "ko": "{spice:2} {arrow_right} {troop} {troop} {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}",
+    "ko": "{persuasion:2} {sword}"
+   }
+  },
+  "fremen_war_name": {
+   "agent": {
+    "en": "If you gained {spice:2} or more this turn: {troop} {draw}",
+    "ko": "이번 차례에 당신이 {spice:2} 이상 얻었다면: {troop} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nFremen Bond: {sword}{sword}",
+    "ko": "{persuasion:2}\n프레멘의 유대감: {sword}{sword}"
+   }
+  },
+  "from_the_tanks": {
+   "agent": {
+    "en": "{troop} {troop}",
+    "ko": "{troop} {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "full_scale_assault": {
+   "agent": {
+    "en": "{troop} {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\n{sword}{sword}{sword} for each of your dreadnoughts in the Conflict."
+   }
+  },
+  "gene_manipulation": {
+   "agent": {
+    "en": "{trash} –AND– If you have another\nBene Gesserit card\nin play: {spice:2}."
+   },
+   "reveal": {
+    "en": "{persuasion:2}"
+   }
+  },
+  "ghola": {
+   "agent": {
+    "en": "This card has the same Agent box as the <i>other</i> grafted card.",
+    "ko": "이 카드는 접합된 <i>다른</i> 카드와 동일한 에이전트 칸을 보유."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "guild_accord": {
+   "agent": {
+    "en": "It costs {spice:2} less to send an Agent to the <b>Heighliner</b> board space with this card."
+   },
+   "reveal": {
+    "en": "{agent_icon_spacing_guild} {unload} Alliance: {water} {spice:3}"
+   }
+  },
+  "guild_administrator": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "guild_ambassador": {
+   "agent": {
+    "en": "{influence_spacing_guild} –OR– {spice:2}",
+    "ko": "{influence_spacing_guild} —또는— {spice:2}"
+   },
+   "reveal": {
+    "en": "{agent_icon_spacing_guild} Alliance: {spice:3} {arrow_right} {victory_point}",
+    "ko": "{agent_icon_spacing_guild} 동맹 : {spice:3} {arrow_right} {victory_point}"
+   }
+  },
+  "guild_bankers": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "<b>The Spice Must Flow</b> costs {persuasion:3} less to acquire this turn."
+   }
+  },
+  "guild_chief_administrator": {
+   "agent": {
+    "en": "{discard} {arrow_right} {trash}",
+    "ko": "{discard} {arrow_right} {trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {freighter}",
+    "ko": "{persuasion:1} {freighter}"
+   }
+  },
+  "guild_envoy": {
+   "agent": {
+    "en": "{discard}\nIf you discarded a Spacing Guild card: {draw}{draw}",
+    "ko": "{discard}\n우주 항행 길드 카드를 버렸다면: {draw}{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "guild_impersonator": {
+   "agent": {
+    "en": "If you gain spice this turn: {influence_spacing_guild}",
+    "ko": "이번 차례에 당신이 스파이스를 얻는다면: {influence_spacing_guild}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "guild_spy": {
+   "agent": {
+    "en": "{discard} {arrow_right} {draw} If you discarded a Spacing Guild card: {intrigue}",
+    "ko": "{discard} {arrow_right} {draw} 우주 항행 길드 카드를 버렸다면: {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nIf you acquire The Spice Must Flow this turn, gain one Influence with each Faction you are spying on.",
+    "ko": "{persuasion:2}\n이번 차례에 스파이스는 흘러야 한다를 획득하면, 당신이 정탐하고 있는 각각의 팩션에서 영향력 1씩 얻음."
+   }
+  },
+  "gun_thopter": {
+   "agent": {
+    "en": "Each opponent loses\none garrisoned troop."
+   },
+   "reveal": {
+    "en": "{sword} {sword} {sword}\nYou may deploy a troop from your\ngarrison to the Conflict."
+   }
+  },
+  "gurney_halleck_card": {
+   "agent": {
+    "en": "{troop} {troop} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} –AND– {solari:3} {arrow_right} {troop} {troop}\nYou may deploy these\ntroops to the Conflict."
+   }
+  },
+  "hidden_missive": {
+   "agent": {
+    "en": "{agent_icon_bene_gesserit} 2 Influence: {troop}{draw}",
+    "ko": "{agent_icon_bene_gesserit} 영향력 2: {troop}{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "high_priority_travel": {
+   "agent": {
+    "en": "{agent_icon_spacing_guild} 2 Influence : {draw} –OR– {conflict}",
+    "ko": "{agent_icon_spacing_guild} 영향력 2: {draw} —또는— {conflict}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {solari:1}",
+    "ko": "{persuasion:1} {solari:1}"
+   }
+  },
+  "holy_war": {
+   "agent": {
+    "en": "Each opponent loses one troop.\nEach opponent spying on the board space where you sent an Agent this turn must move that Spy.",
+    "ko": "다른 플레이어들은 각자 병력 1씩 잃음.\n이번 차례에 에이전트를 보낸 게임판 장소를 정탐하고 있는 다른 플레이어들은 각자 그 스파이를 이동시켜야 함."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {troop} —AND— Fremen Bond: {conflict}",
+    "ko": "{persuasion:1} {troop} —그리고— 프레멘의 유대감: {conflict}"
+   }
+  },
+  "i_believe": {
+   "agent": {
+    "en": "{discard} {arrow_right} {draw}",
+    "ko": "{discard} {arrow_right} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nCommand\n({persuasion:6}+): {troop}{troop}",
+    "ko": "{persuasion:1}\n통솔\n({persuasion:6}+): {troop}{troop}"
+   }
+  },
+  "imperial_bashar": {
+   "agent": {
+    "en": "{troop} –OR– {trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}\n+{sword} for each other revealed card that provides one or more {sword} this turn."
+   }
+  },
+  "imperial_shock_trooper": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}\nIf you have an Agent\non an {agent_icon_emperor} board space: +{sword} {sword} {sword}"
+   }
+  },
+  "imperial_spy": {
+   "agent": {
+    "en": "Trash this card {arrow_right} {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}"
+   }
+  },
+  "imperial_spymaster": {
+   "agent": {
+    "en": "If you recalled a Spy this turn: {intrigue}",
+    "ko": "이번 차례에 스파이를 소환했다면: {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "imperial_throneship": {
+   "agent": {
+    "en": "{intrigue}",
+    "ko": "{intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nIf you have four or more garrisoned units: +{persuasion:1} {solari:3}",
+    "ko": "{persuasion:2}\n당신의 주둔지에 부대가 4 이상 있다면: +{persuasion:1} {solari:3}"
+   }
+  },
+  "imperium_ceremony": {
+   "agent": {
+    "en": "Look at the top two cards of the Intrigue deck. Keep one and put the other back on top.",
+    "ko": "책략 카드덱 맨 위의 카드 2장 살펴봄. 한 장은 가지고 다른 한 장은 책략 카드덱 맨 위에 올려둠."
+   },
+   "reveal": {
+    "en": "{persuasion:3}",
+    "ko": "{persuasion:3}"
+   }
+  },
+  "imperium_the_spice_must_flow": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{spice:1}",
+    "ko": "{spice:1}"
+   }
+  },
+  "in_high_places": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {draw} {spy}",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면: {draw} {spy}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\n{recall_spy}{recall_spy}{arrow_right} +{persuasion:3}",
+    "ko": "{persuasion:2}\n{recall_spy}{recall_spy} {arrow_right} +{persuasion:3}"
+   }
+  },
+  "in_the_shadows": {
+   "agent": {
+    "en": "{agent_icon_bene_gesserit} 2 Influence: {discard} {arrow_right} Choose one:\n{influence_emperor} {influence_spacing_guild} {influence_fremen}"
+   },
+   "reveal": {
+    "en": "{unload} {influence_bene_gesserit}"
+   }
+  },
+  "industrial_espionage": {
+   "agent": {
+    "en": "{draw}\nIf grafted: {research} {specimen}",
+    "ko": "{draw}\n만약 접합되었다면: {research} {specimen}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "intelligence_training": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nCommand\n({persuasion:6}+): {spy}",
+    "ko": "{persuasion:1} {sword}\n통솔\n({persuasion:6}+): {spy}"
+   }
+  },
+  "interstellar_conspiracy": {
+   "agent": {
+    "en": "{spice:1} - AND - If grafted with an Emperor or Spacing Guild card: {influence_any}",
+    "ko": "{spice:1} —그리고— 만약 황제 또는 우주 항행 길드 카드와 접합되었다면: {influence_any}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "interstellar_trade": {
+   "agent": {
+    "en": "{influence_any}",
+    "ko": "{influence_any}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} for each contract you have completed.",
+    "ko": "당신이 완수한 계약 하나당 {persuasion:1}"
+   }
+  },
+  "ix_guild_compact": {
+   "agent": {
+    "en": "{discard} {discard} {arrow_right} {dreadnought}",
+    "ko": "{discard} {discard} {arrow_right} {dreadnought}"
+   },
+   "reveal": {
+    "en": "{unload} {tech_negotiation} {tech_negotiation}",
+    "ko": "{unload} {tech_negotiation} {tech_negotiation}"
+   }
+  },
+  "ixian_ambassador": {
+   "agent": {
+    "en": "{spice:1}",
+    "ko": "{spice:1}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nIf you have two or more Tech tiles: {influence_any}",
+    "ko": "{persuasion:1}\n당신이 기술 타일을 2개 이상 가지고 있다면: {influence_any}"
+   }
+  },
+  "ixian_engineer": {
+   "agent": {
+    "en": "{acquire_tech}"
+   },
+   "reveal": {
+    "en": "If you have three or more Techs:\nTrash this card {arrow_right} {victory_point}"
+   }
+  },
+  "jamis": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}",
+    "ko": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "jessica_of_arrakis": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {draw}{draw}."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "junction_headquarters": {
+   "agent": {
+    "en": "{agent_icon_spacing_guild} Alliance: {trash_intrigue} {spice:2} {arrow_right} {victory_point}",
+    "ko": "{agent_icon_spacing_guild} 동맹: {trash_intrigue} {spice:2} {arrow_right} {victory_point}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {water} {troop}",
+    "ko": "{persuasion:1} {water} {troop}"
+   }
+  },
+  "keys_to_power": {
+   "agent": {
+    "en": "{agent_icon_emperor} 2 Influence: {spice:2}",
+    "ko": "{agent_icon_emperor} 영향력 2: {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "kwisatz_haderach": {
+   "agent": {
+    "en": "{draw} –AND– Send one of your Agents from anywhere\nto ANY board space (even if occupied)."
+   },
+   "reveal": {
+    "en": ""
+   }
+  },
+  "lady_jessica_card": {
+   "agent": {
+    "en": "{draw} {draw}",
+    "ko": "{draw} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:3} {sword}",
+    "ko": "{persuasion:3} {sword}"
+   }
+  },
+  "landing_rights": {
+   "agent": {
+    "en": "{freighter}",
+    "ko": "{freighter}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "leadership": {
+   "agent": {
+    "en": "For each sandworm you have in the Conflict: {draw}",
+    "ko": "교전 칸에 있는 당신의 모래벌레 하나당: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}+{sword} for each other revealed card that provides one or more {sword} this turn.",
+    "ko": "{persuasion:2} {sword}\n이번 차례에 1개 이상의 {sword}을 제공하는 다른 공개된 카드 1장당 +{sword}"
+   }
+  },
+  "liet_kynes_card": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2} for each Fremen card you have\nin play (including this one)."
+   }
+  },
+  "lisan_al_gaib": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {influence_fremen}",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면: {influence_fremen}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nFremen Bond: {sword} {sword}",
+    "ko": "{persuasion:1}\n프레멘의 유대감: {sword} {sword}"
+   }
+  },
+  "litany_against_fear": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   },
+   "static": {
+    "en": "At the start of your turn:\nPut this card into play {arrow_right} {draw} and pass your turn.",
+    "ko": "당신의 차례 시작 시:\n이 카드를 플레이 영역에 놓음 {arrow_right} {draw} 그리고 당신의 차례를 넘김."
+   }
+  },
+  "local_fence": {
+   "agent": {
+    "en": "{spice:2} {arrow_right} {solari:5} –OR– {solari:5} {arrow_right} {spice:4}",
+    "ko": "{spice:2} {arrow_right} {solari:5} —또는— {solari:5} {arrow_right} {spice:4}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "long_live_the_fighters": {
+   "agent": {
+    "en": "If your deck has three or more cards, look at the top three cards. Draw one, discard one, and trash one.",
+    "ko": "당신의 카드덱에 남은 카드가 3장 이상이라면, 당신의 카드덱 맨 위의 카드 3장 살펴봄. 그중 1장은 뽑고, 1장은 버리고, 1장은 폐기."
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}{sword}{sword}",
+    "ko": "{persuasion:2} {sword}{sword}{sword}"
+   }
+  },
+  "long_reach": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play, this has {agent_icon_landsraad}, {agent_icon_city}, and {agent_icon_spice_trade}.\nChoose two: {influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면, 이 카드는 {agent_icon_landsraad}, {agent_icon_city}, {agent_icon_spice_trade}를 보유.\n2가지 선택: {influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {intrigue}",
+    "ko": "{persuasion:1} {intrigue}"
+   }
+  },
+  "maker_keeper": {
+   "agent": {
+    "en": "{agent_icon_bene_gesserit} 2 Influence: {water}\n{agent_icon_fremen} 2 Influence: {spice:1}",
+    "ko": "{agent_icon_bene_gesserit} 영향력 2: {water}\n{agent_icon_fremen} 영향력 2: {spice:1}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "maula_pistol": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "mercantile_affairs": {
+   "agent": {
+    "en": "If you completed a contract this turn: {intrigue}",
+    "ko": "이번 차례에 계약을 완수했다면: {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "missionaria_protectiva": {
+   "agent": {
+    "en": "If you have another\nBene Gesserit card in play: {influence_any}."
+   },
+   "reveal": {
+    "en": "{persuasion:1}"
+   }
+  },
+  "negotiated_withdrawal": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nRetreat three of your units {arrow_right} {influence_any}"
+   }
+  },
+  "northern_watermaster": {
+   "agent": {
+    "en": "{water}",
+    "ko": "{water}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nFremen Bond: {spice:2}",
+    "ko": "{persuasion:1}\n프레멘의 유대감: {spice:2}"
+   }
+  },
+  "occupation": {
+   "agent": {
+    "en": "{draw} {conflict}",
+    "ko": "{draw} {conflict}"
+   },
+   "reveal": {
+    "en": "{water} {spice:1} {troop}",
+    "ko": "{water} {spice:1} {troop}"
+   }
+  },
+  "opulence": {
+   "agent": {
+    "en": "{solari:3}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} –AND– {solari:6} {arrow_right} {victory_point}"
+   }
+  },
+  "organ_merchants": {
+   "agent": {
+    "en": "{specimen} {arrow_right} {solari:4}",
+    "ko": "{specimen} {arrow_right} {solari:4}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {solari:1}",
+    "ko": "{persuasion:1} {solari:1}"
+   }
+  },
+  "other_memory": {
+   "agent": {
+    "en": "{draw} –OR– Draw a Bene Gesserit card from your discard pile."
+   },
+   "reveal": {
+    "en": "{persuasion:2}"
+   }
+  },
+  "overthrow": {
+   "agent": {
+    "en": "Gain two Influence instead of one.",
+    "ko": "영향력 1이 아니라 2 얻음."
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}{sword} {troop}",
+    "ko": "{persuasion:2} {sword}{sword} {troop}"
+   }
+  },
+  "paracompass": {
+   "agent": {
+    "en": "{solari:2}",
+    "ko": "{solari:2}"
+   },
+   "reveal": {
+    "en": "If you have a seat on the High Council: {persuasion:2}\nIf you <i>also</i> have a Swordmaster: +{persuasion:1}",
+    "ko": "당신이 원로회에서 자리를 차지하고 있다면: {persuasion:2}\n당신이 추가로 소드마스터도 가지고 있다면: +{persuasion:1}"
+   }
+  },
+  "piter_de_vries_card": {
+   "agent": {
+    "en": "{intrigue}",
+    "ko": "{intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:3} {sword}",
+    "ko": "{persuasion:3} {sword}"
+   }
+  },
+  "piter_genius_advisor": {
+   "agent": {
+    "en": "Lose a troop {arrow_right} {draw} {draw} {research}",
+    "ko": "병력 1 잃음 {arrow_right} {draw} {draw} {research}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "pivotal_gambit": {
+   "agent": {
+    "en": "Trash this card {arrow_right} {troop} -AND- Add {influence_any} to the first place reward for this Conflict."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}{sword}"
+   }
+  },
+  "planned_coupling": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "pointing_the_way": {
+   "agent": {
+    "en": "If you have one or more sandworms in the Conflict: {intrigue}",
+    "ko": "교전 칸에 당신의 모래벌레가 1 이상 있다면: {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}{sword}\nCommand\n({persuasion:6}+): {influence_any}",
+    "ko": "{persuasion:1} {sword}{sword}\n통솔\n({persuasion:6}+): {influence_any}"
+   }
+  },
+  "possible_futures": {
+   "agent": {
+    "en": "{influence_any} —OR— {troop}{troop}\nIf you have another Bene Gesserit card in play, get both.",
+    "ko": "{influence_any} —또는— {troop}{troop}\n당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면, 둘 다 얻음."
+   },
+   "reveal": {
+    "en": "{persuasion:2} {water}",
+    "ko": "{persuasion:2} {water}"
+   }
+  },
+  "power_play": {
+   "agent": {
+    "en": "Gain two Influence instead of one.\nTrash this card."
+   },
+   "reveal": {
+    "en": ""
+   }
+  },
+  "prepare_the_way": {
+   "agent": {
+    "en": "{agent_icon_bene_gesserit} 2 Influence: {draw}",
+    "ko": "{agent_icon_bene_gesserit} 영향력 2: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "price_is_no_object": {
+   "agent": {
+    "en": "You may acquire a card to your hand using Solari instead of Persuasion.",
+    "ko": "설득 비용 대신 솔라리를 사용해서 카드 1장을 획득해 핸드로 가져올 수 있음."
+   },
+   "reveal": {
+    "en": "{persuasion:2} {solari:2}",
+    "ko": "{persuasion:2} {solari:2}"
+   }
+  },
+  "priority_contracts": {
+   "agent": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "reveal": {
+    "en": "{spice:2}—OR—If you have completed four or more contracts: Trash this card {arrow_right} {victory_point}",
+    "ko": "{spice:2}—또는—당신이 계약을 넷 이상 완수했다면:\n이 카드 폐기 {arrow_right} {victory_point}"
+   }
+  },
+  "public_spectacle": {
+   "agent": {
+    "en": "If you recalled a Spy this turn: {influence_any}",
+    "ko": "이번 차례에 스파이를 소환했다면: {influence_any}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spy}",
+    "ko": "{persuasion:1} {spy}"
+   }
+  },
+  "quash_rebellion": {
+   "agent": {
+    "en": "{solari:2}",
+    "ko": "{solari:2}"
+   },
+   "reveal": {
+    "en": "{sword}{sword}\nIf you have one or more Sardaukar Commanders in the Conflict: {persuasion:2}",
+    "ko": "{sword}{sword}\n교전 칸에 당신의 사다우카 지휘관이 1 이상 있다면: {persuasion:2}"
+   }
+  },
+  "rebel_supplier": {
+   "agent": {
+    "en": "If you recalled a Spy this turn: {troop}{troop}",
+    "ko": "이번 차례에 스파이를 소환했다면: {troop}{troop}"
+   },
+   "reveal": {
+    "en": "{spice:1} {sword}",
+    "ko": "{spice:1} {sword}"
+   }
+  },
+  "reclaimed_forces": {
+   "reveal": {
+    "en": "<i>(This card is never removed from the Tleilaxu Row.)</i>",
+    "ko": "<i>(이 카드는 틀레이락스 열에서 절대로 제거되지 않습니다.)</i>"
+   }
+  },
+  "reconnaissance": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "reliable_informant": {
+   "agent": {
+    "en": "{spy} on {agent_icon_emperor}/{agent_icon_bene_gesserit}/{agent_icon_fremen}",
+    "ko": "{agent_icon_emperor}/{agent_icon_bene_gesserit}/{agent_icon_fremen}에 {spy}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {solari:1}",
+    "ko": "{persuasion:1} {solari:1}"
+   }
+  },
+  "replacement_eyes": {
+   "agent": {
+    "en": "{trash} {arrow_right} {draw}",
+    "ko": "{trash} {arrow_right} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   },
+   "static": {
+    "en": "When this card is trashed: {tleilaxu}",
+    "ko": "이 카드가 폐기될 때: {tleilaxu}"
+   }
+  },
+  "reverend_mother_mohiam": {
+   "agent": {
+    "en": "If you have another Bene Gesserit\ncard in play, each opponent\ndiscards two cards."
+   },
+   "reveal": {
+    "en": "{persuasion:2} {spice:2}"
+   }
+  },
+  "ruthless_leadership": {
+   "agent": {
+    "en": "If you have one or more Sardaukar Commanders in the Conflict: {trash}{trash}",
+    "ko": "교전 칸에 당신의 사다우카 지휘관이 1 이상 있다면: {trash}{trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nCommand\n({persuasion:6}+): {conflict}",
+    "ko": "{persuasion:1} {sword}\n통솔\n({persuasion:6}+): {conflict}"
+   }
+  },
+  "sandwalk": {
+   "agent": {
+    "en": "If you gained {spice:2} or more this turn: {draw}",
+    "ko": "이번 차례에 당신이 {spice:2} 이상 얻었다면: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nFremen Bond: +{persuasion:1}",
+    "ko": "{persuasion:1} {sword}\n프레멘의 유대감: +{persuasion:1}"
+   }
+  },
+  "sardaukar_coordination": {
+   "agent": {
+    "en": "You may deploy any troops you recruit this turn to the Conflict.",
+    "ko": "당신은 이번 차례에 소집하는 병력을 얼마든지 교전 칸에 배치할 수 있음."
+   },
+   "reveal": {
+    "en": "{persuasion:2}\n+{sword} for each Emperor card you revealed (including this one).",
+    "ko": "{persuasion:2}\n당신이 공개한 황제 카드 1장당 +{sword} (이 카드 포함)"
+   }
+  },
+  "sardaukar_infantry": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}",
+    "ko": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "sardaukar_legion": {
+   "agent": {
+    "en": "{troop} {troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nDeploy up to three troops from\nyour garrison to the Conflict."
+   }
+  },
+  "sardaukar_quartermaster": {
+   "agent": {
+    "en": "If grafted: {troop} {draw}",
+    "ko": "만약 접합되었다면: {troop} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}",
+    "ko": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "sardaukar_soldier": {
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   },
+   "static": {
+    "en": "When this card is trashed: {intrigue}",
+    "ko": "이 카드가 폐기될 때: {intrigue}"
+   }
+  },
+  "sardaukar_standard": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:2} {troop}",
+    "ko": "{persuasion:2} {troop}"
+   },
+   "static": {
+    "en": "When this card is trashed, acquire and recruit the Sardaukar Commander in the bank.",
+    "ko": "이 카드가 폐기될 때, 은행에 놓인 사다우카 지휘관을 획득하고 소집."
+   }
+  },
+  "satellite_ban": {
+   "agent": {
+    "en": "{discard} {arrow_right} {spice:1} {water}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nRetreat up to two of your troops."
+   }
+  },
+  "sayyadina": {
+   "agent": {
+    "en": "{water} {water} {water} {arrow_right} {victory_point}",
+    "ko": "{water} {water} {water} {arrow_right} {victory_point}"
+   },
+   "reveal": {
+    "en": "Fremen Bond: {persuasion:3}",
+    "ko": "프레멘의 유대감: {persuasion:3}"
+   }
+  },
+  "scientific_breakthrough": {
+   "agent": {
+    "en": "{research}\n{genetic_marker_2} : Trash this card {arrow_right} {victory_point}",
+    "ko": "{research}\n{genetic_marker_2} : 이 카드 폐기 {arrow_right} {victory_point}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "scout": {
+   "agent": {
+    "en": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nRetreat up to two of your troops."
+   }
+  },
+  "seek_allies": {
+   "agent": {
+    "en": "Trash this card.",
+    "ko": "이 카드 폐기."
+   },
+   "reveal": {
+    "en": "",
+    "ko": ""
+   }
+  },
+  "shadout_mapes": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nYou may deploy or\nretreat one of your troops.",
+    "ko": "{persuasion:1} {sword}\n당신의 병력 중 하나를 배치 혹은 후퇴 가능."
+   }
+  },
+  "shai_hulud": {
+   "agent": {
+    "en": "{trash} {arrow_right} {troop} {troop}",
+    "ko": "{trash} {arrow_right} {troop} {troop}"
+   },
+   "reveal": {
+    "en": "Fremen Bond: {sword} {sword} {sword} {sword} {sword}",
+    "ko": "프레멘의 유대감: {sword} {sword} {sword} {sword} {sword}"
+   }
+  },
+  "shifting_allegiances": {
+   "agent": {
+    "en": "{influence_lose} {spice:2} {arrow_right} {influence_any_two}",
+    "ko": "{influence_lose} {spice:2} {arrow_right} {influence_any_two}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "shishakli": {
+   "agent": {
+    "en": "{trash} {arrow_right} {draw}",
+    "ko": "{trash} {arrow_right} {draw}"
+   },
+   "reveal": {
+    "en": "{sword}{sword}\nFremen Bond: {influence_fremen}",
+    "ko": "{sword}{sword}\n프레멘의 유대감: {influence_fremen}"
+   }
+  },
+  "show_of_strength": {
+   "agent": {
+    "en": "If you have more deployed troops than each opponent, this has {agent_icon_landsraad} and {agent_icon_spice_trade}.\n{draw} {draw}",
+    "ko": "당신이 각각의 다른 플레이어보다 더 많은 병력을 배치했다면, 이 카드는 {agent_icon_landsraad}와 {agent_icon_spice_trade}를 보유.\n{draw} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}",
+    "ko": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "shrouded_counsel": {
+   "agent": {
+    "en": "{intrigue}",
+    "ko": "{intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nCommand\n({persuasion:6}+): {trash}",
+    "ko": "{persuasion:1}\n통솔\n({persuasion:6}+): {trash}"
+   }
+  },
+  "sietch_reverend_mother": {
+   "agent": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "reveal": {
+    "en": "Fremen Bond: {persuasion:3} {spice:1}",
+    "ko": "프레멘의 유대감: {persuasion:3} {spice:1}"
+   }
+  },
+  "signet_ring": {
+   "agent": {
+    "en": "{signet_ring}",
+    "ko": "{signet_ring}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "slig_farmer": {
+   "agent": {
+    "en": "{solari:1} for each Agent icon on the <i>other</i> grafted card.\n{solari:5} {arrow_right} {tleilaxu}",
+    "ko": "접합된 <i>다른</i> 카드에 있는 에이전트 아이콘 1개당 {solari:1}.\n{solari:5} {arrow_right} {tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "smuggler_s_harvester": {
+   "agent": {
+    "en": "If you sent an Agent to a Maker board space this turn: {spice:1}",
+    "ko": "이번 차례에 메이커 게임판 장소로 에이전트를 보냈다면: {spice:1}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "smuggler_s_haven": {
+   "agent": {
+    "en": "{spice:4} {arrow_right} {victory_point}",
+    "ko": "{spice:4} {arrow_right} {victory_point}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}\nIf you are spying on a Maker board space: {spice:2}",
+    "ko": "{persuasion:1}\n당신이 메이커 게임판 장소를 정탐하고 있다면: {spice:2}"
+   }
+  },
+  "smugglers_thopter": {
+   "agent": {
+    "en": "{agent_icon_spacing_guild} 2 Influence: {draw} {draw}",
+    "ko": "{agent_icon_spacing_guild} 영향력 2: {draw} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spice:1}",
+    "ko": "{persuasion:1} {spice:1}"
+   }
+  },
+  "southern_elders": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {troop}{troop}",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면: {troop}{troop}"
+   },
+   "reveal": {
+    "en": "{water}\nFremen Bond: {persuasion:2}",
+    "ko": "{water}\n프레멘의 유대감: {persuasion:2}"
+   }
+  },
+  "southern_faith": {
+   "agent": {
+    "en": "{draw} —OR— If you have another Bene Gesserit card in play: {influence_bene_gesserit}",
+    "ko": "{draw} —또는— 당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면: {influence_bene_gesserit}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}{sword}\nCommand\n({persuasion:6}+): {spice:2}",
+    "ko": "{persuasion:1} {sword}{sword}\n통솔\n({persuasion:6}+): {spice:2}"
+   }
+  },
+  "space_time_folding": {
+   "agent": {
+    "en": "{discard} {arrow_right} {draw}\n\nIf you discarded a Spacing Guild card: {draw}",
+    "ko": "{discard} {arrow_right} {draw}\n우주 항행 길드 카드를 버렸다면: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "space_travel": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}",
+    "ko": "{persuasion:2}"
+   }
+  },
+  "spacing_guild_s_favor": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} —AND— {spice:3} {arrow_right} {influence_any}",
+    "ko": "{persuasion:2} —그리고— {spice:3} {arrow_right} {influence_any}"
+   },
+   "static": {
+    "en": "When this card is discarded: {spice:2}",
+    "ko": "이 카드가 버려질 때: {spice:2}"
+   }
+  },
+  "spice_hunter": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}\nFremen Bond: {spice:1}",
+    "ko": "{persuasion:1} {sword}\n프레멘의 유대감: {spice:1}"
+   }
+  },
+  "spice_smugglers": {
+   "agent": {
+    "en": "{spice:2} {arrow_right} {influence_spacing_guild} {solari:3}",
+    "ko": "{spice:2} {arrow_right} {influence_spacing_guild} {solari:3}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "spice_trader": {
+   "agent": {
+    "en": "{agent_icon_fremen} 2 Influence: {discard} {arrow_right} {spice:2}",
+    "ko": "{agent_icon_fremen} 영향력 2: {discard} {arrow_right} {spice:2}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}",
+    "ko": "{persuasion:2} {sword}"
+   }
+  },
+  "spiritual_fervor": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{persuasion:1} {specimen}",
+    "ko": "{persuasion:1} {specimen}"
+   }
+  },
+  "spy_network": {
+   "reveal": {
+    "en": "{persuasion:2} {sword}\nIf you have two or more Spies on the board: {recall_spy}{arrow_right} {intrigue}",
+    "ko": "{persuasion:2} {sword}\n게임판에 당신의 스파이가 둘 이상 있다면: {recall_spy}{arrow_right} {intrigue}"
+   }
+  },
+  "steersman": {
+   "agent": {
+    "en": "{draw} {recall_agent}",
+    "ko": "{draw} {recall_agent}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {spice:2}",
+    "ko": "{persuasion:2} {spice:2}"
+   }
+  },
+  "stilgar": {
+   "agent": {
+    "en": "{water}",
+    "ko": "{water}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword} {sword} {sword}",
+    "ko": "{persuasion:2} {sword} {sword} {sword}"
+   }
+  },
+  "stilgar_the_devoted": {
+   "agent": {
+    "en": "{troop}{troop}",
+    "ko": "{troop}{troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} for each Fremen card you have in play (including this one).",
+    "ko": "당신의 플레이 영역에 놓인 프레멘 카드 1장당 {persuasion:2} (이 카드 포함)"
+   }
+  },
+  "stillsuit_manufacturer": {
+   "agent": {
+    "en": "{water} - AND - {agent_icon_fremen} Alliance:\nReturn this card from play to your hand.",
+    "ko": "{water} —그리고— {agent_icon_fremen} 동맹:\n이 카드를 플레이 영역에서 당신의 핸드로 돌려놓음."
+   },
+   "reveal": {
+    "en": "{persuasion:1} - AND - Fremen Bond: {spice:2}",
+    "ko": "{persuasion:1} —그리고— 프레멘의 유대감: {spice:2}"
+   }
+  },
+  "stitched_horror": {
+   "agent": {
+    "en": "Choose two:\n{water} {troop} {trash} {tleilaxu}",
+    "ko": "2가지 선택:\n{water} {troop} {trash} {tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "strike_fleet": {
+   "agent": {
+    "en": "If you recalled a Spy this turn: {troop}{troop}{troop}",
+    "ko": "이번 차례에 스파이를 소환했다면: {troop}{troop}{troop}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}{sword}{sword}",
+    "ko": "{persuasion:1} {sword}{sword}{sword}"
+   }
+  },
+  "subject_x_137": {
+   "agent": {
+    "en": "{genetic_marker_1} : {tleilaxu}",
+    "ko": "{genetic_marker_1} : {tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "subversive_advisor": {
+   "agent": {
+    "en": "If you sent an Agent to a Faction board space this turn, gain two Influence instead of one and trash this card.",
+    "ko": "이번 차례에 당신이 팩션 게임판 장소에 에이전트를 보냈다면, 영향력 1이 아니라 2 얻고 이 카드 폐기."
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "test_of_humanity": {
+   "agent": {
+    "en": "Each opponent chooses:\nDiscard a card -OR-\nLose a deployed troop."
+   },
+   "reveal": {
+    "en": "{persuasion:2}"
+   }
+  },
+  "the_beast_s_spoils": {
+   "agent": {
+    "en": "Gain rewards for your face-up battle icons:\n{battle_crysknife}: {trash} {battle_desert_mouse}: {spice:1} {battle_ornithopter}: {troop}"
+   },
+   "reveal": {
+    "en": "{sword}{sword}{sword}"
+   }
+  },
+  "the_spice_must_flow": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{spice:1}",
+    "ko": "{spice:1}"
+   }
+  },
+  "the_voice": {
+   "agent": {
+    "en": "Choose any board space.\nOpponents can't send their next\nAgents there this round."
+   },
+   "reveal": {
+    "en": "{persuasion:2}"
+   }
+  },
+  "throne_room_politics": {
+   "agent": {
+    "en": "{troop} {trash}",
+    "ko": "{troop} {trash}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {influence_bene_gesserit}",
+    "ko": "{persuasion:1} {influence_bene_gesserit}"
+   }
+  },
+  "thufir_hawat": {
+   "agent": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {intrigue}",
+    "ko": "{persuasion:1} {intrigue}"
+   }
+  },
+  "thumper": {
+   "agent": {
+    "en": "Double the bonus spice you harvest with this Agent."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spice:1}"
+   }
+  },
+  "tleilaxu_infiltrator": {
+   "agent": {
+    "en": "Enemy Agents don't block your Agent this turn.\n{draw} - AND - {genetic_marker_2} : {intrigue}",
+    "ko": "이번 차례에 당신의 에이전트는 다른 플레이어의 에이전트에 의해 막히지 않음.\n{draw} —그리고— {genetic_marker_2} : {intrigue}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "tleilaxu_master": {
+   "agent": {
+    "en": "{genetic_marker_1} : You may acquire a card that costs {persuasion:6} or less.\n{genetic_marker_2} : Put that card in your hand.",
+    "ko": "{genetic_marker_1} : 비용 {persuasion:6} 이하의 카드 1장 획득 가능.\n{genetic_marker_2} : 그 카드를 손으로 가져옴."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {research} {research}",
+    "ko": "{persuasion:1} {research} {research}"
+   }
+  },
+  "tleilaxu_surgeon": {
+   "agent": {
+    "en": "{specimen} {specimen} {arrow_right} {tleilaxu} {tleilaxu}",
+    "ko": "{specimen} {specimen} {arrow_right} {tleilaxu} {tleilaxu}"
+   },
+   "reveal": {
+    "en": "{persuasion:2}\nLose two troops {arrow_right} {specimen} {specimen}",
+    "ko": "{persuasion:2}\n병력 2 잃음 {arrow_right} {specimen} {specimen}"
+   }
+  },
+  "treacherous_maneuver": {
+   "agent": {
+    "en": "Trash this card and an Emperor card from your hand {arrow_right} Gain two Influence instead of one.",
+    "ko": "이 카드와 핸드에 있는 황제 카드 1장 폐기 {arrow_right} 영향력 1이 아니라 2 얻음."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {intrigue}",
+    "ko": "{persuasion:1} {intrigue}"
+   }
+  },
+  "treachery": {
+   "agent": {
+    "en": "Gain two Influence instead of one.\nTrash this card."
+   },
+   "reveal": {
+    "en": "{unload} {troop} {troop}\nDeploy these troops to the Conflict."
+   }
+  },
+  "tread_in_darkness": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play: {trash}{draw}",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면: {trash}{draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:2} {sword}",
+    "ko": "{persuasion:2} {sword}"
+   }
+  },
+  "truthsayer": {
+   "agent": {
+    "en": "{discard} {arrow_right} {draw}",
+    "ko": "{discard} {arrow_right} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "truthtrance": {
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "twisted_mentat": {
+   "agent": {
+    "en": "You may recall the Agent you sent this turn.",
+    "ko": "당신은 이번 차례에 보낸 에이전트 회수 가능."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {specimen}",
+    "ko": "{persuasion:1} {sword} {specimen}"
+   }
+  },
+  "undercover_asset": {
+   "agent": {
+    "en": "Ignore Influence requirements on board spaces when sending an Agent this turn.",
+    "ko": "이번 차례에 에이전트를 보낼 때 게임판 장소의 영향력 조건을 무시."
+   },
+   "reveal": {
+    "en": "{spy} —OR— {sword}{sword}",
+    "ko": "{spy} —또는— {sword}{sword}"
+   }
+  },
+  "unnatural_reflexes": {
+   "agent": {
+    "en": "{genetic_marker_1} : {draw} {draw}",
+    "ko": "{genetic_marker_1} : {draw} {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "unswerving_loyalty": {
+   "reveal": {
+    "en": "{persuasion:1} {troop}\nFremen Bond: You may deploy or retreat one of your troops.",
+    "ko": "{persuasion:1} {troop}\n프레멘의 유대감: 당신의 병력 중 하나를 배치 혹은 후퇴 가능."
+   }
+  },
+  "urgent_shigawire": {
+   "agent": {
+    "en": "The next Bene Gesserit card you play this round has all Agent icons and, added to its Agent box: {draw}",
+    "ko": "이번 라운드에 다음으로 플레이하는 베네 게세리트 카드는 모든 에이전트 아이콘을 보유하며, 에이전트 칸에 다음이 추가됨: {draw}"
+   },
+   "reveal": {
+    "en": "{persuasion:1}",
+    "ko": "{persuasion:1}"
+   }
+  },
+  "usurp": {
+   "agent": {
+    "en": "You may graft this to a card in the Imperium Row without acquiring it. If you do, trash that card at the end of your turn.",
+    "ko": "당신은 이 카드를 임페리움 열에 있는 카드 하나에 접합할 수 있음(그 카드를 획득하지 않음). 그렇게 하면, 당신의 차례 끝에 그 카드를 폐기."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {specimen}",
+    "ko": "{persuasion:1} {sword} {specimen}"
+   }
+  },
+  "water_peddler": {
+   "agent": {
+    "en": "",
+    "ko": ""
+   },
+   "reveal": {
+    "en": "{unload} {water}",
+    "ko": "{unload} {water}"
+   }
+  },
+  "web_of_power": {
+   "agent": {
+    "en": "{agent_icon_emperor} 2 Influence: {solari:2}\n{agent_icon_spacing_guild} 2 Influence: {draw}\n{agent_icon_fremen} 2 Influence: {water}",
+    "ko": "{agent_icon_emperor} 영향력 2: {solari:2}\n{agent_icon_spacing_guild} 영향력 2: {draw}\n{agent_icon_fremen} 영향력 2: {water}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {influence_any}",
+    "ko": "{persuasion:1} {influence_any}"
+   }
+  },
+  "weirding_way": {
+   "agent": {
+    "en": "You may take another turn immediately after this one."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword} {sword}"
+   }
+  },
+  "weirding_woman": {
+   "agent": {
+    "en": "If you have another Bene Gesserit card in play, return this card from play to your hand.",
+    "ko": "당신의 플레이 영역에 다른 베네 게세리트 카드가 있다면, 이 카드를 플레이 영역에서 당신의 핸드로 돌려놓음."
+   },
+   "reveal": {
+    "en": "{persuasion:1} {sword}",
+    "ko": "{persuasion:1} {sword}"
+   }
+  },
+  "wheels_within_wheels": {
+   "agent": {
+    "en": "{agent_icon_emperor} 2 Influence: {solari:2}\n{agent_icon_spacing_guild} 2 Influence: {spice:1}",
+    "ko": "{agent_icon_emperor} 영향력 2: {solari:2}\n{agent_icon_spacing_guild} 영향력 2: {spice:1}"
+   },
+   "reveal": {
+    "en": "{persuasion:1} {spy}",
+    "ko": "{persuasion:1} {spy}"
+   }
+  },
+  "worm_riders": {
+   "agent": {
+    "en": "{spice:2}"
+   },
+   "reveal": {
+    "en": "{agent_icon_fremen} 2 Influence: {sword} {sword} {sword} {sword}\n{agent_icon_fremen} Alliance: + {sword} {sword}"
+   }
+  }
+ },
+ "conflicts": {
+  "battle_for_arrakeen": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}\n{recall_spy}{recall_spy} {arrow_right} {victory_point}",
+     "ko": "{victory_point} {control}\n{recall_spy}{recall_spy} {arrow_right} {victory_point}"
+    },
+    {
+     "en": "{intrigue} {spice:1} {solari:3}",
+     "ko": "{intrigue} {spice:1} {solari:3}"
+    },
+    {
+     "en": "{spice:2} {solari:2}",
+     "ko": "{spice:2} {solari:2}"
+    }
+   ]
+  },
+  "battle_for_carthag": {
+   "rewards": [
+    {
+     "en": "{victory_point} {victory_point} {control}",
+     "ko": "{victory_point} {victory_point} {control}"
+    },
+    {
+     "en": "{intrigue} {spice:3}",
+     "ko": "{intrigue} {spice:3}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "battle_for_imperial_basin": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}\n{spice:4} {arrow_right} {victory_point}",
+     "ko": "{victory_point} {control}\n{spice:4} {arrow_right} {victory_point}"
+    },
+    {
+     "en": "{spice:5}",
+     "ko": "{spice:5}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "battle_for_spice_refinery": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}\n{solari:6} {arrow_right} {victory_point}",
+     "ko": "{victory_point} {control}\n{solari:6} {arrow_right} {victory_point}"
+    },
+    {
+     "en": "{intrigue} {spice:3}",
+     "ko": "{intrigue} {spice:3}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "choam_security": {
+   "rewards": [
+    {
+     "en": "{influence_spacing_guild}\n{contract} {troop}",
+     "ko": "{influence_spacing_guild}\n{contract} {troop}"
+    },
+    {
+     "en": "{water} {solari:2}\n{troop} {troop}",
+     "ko": "{water} {solari:2}\n{troop} {troop}"
+    },
+    {
+     "en": "{intrigue} {troop}",
+     "ko": "{intrigue} {troop}"
+    }
+   ]
+  },
+  "cloak_and_dagger": {
+   "rewards": [
+    {
+     "en": "{influence_any} {intrigue} {intrigue}",
+     "ko": "{influence_any} {intrigue} {intrigue}"
+    },
+    {
+     "en": "{intrigue} {spice:1}",
+     "ko": "{intrigue} {spice:1}"
+    },
+    {
+     "en": "{intrigue} –OR– {spice:1}",
+     "ko": "{intrigue} —또는— {spice:1}"
+    }
+   ]
+  },
+  "desert_power_conflict": {
+   "rewards": [
+    {
+     "en": "{victory_point} {water}",
+     "ko": "{victory_point} {water}"
+    },
+    {
+     "en": "{water} {spice:1}",
+     "ko": "{water} {spice:1}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "economic_supremacy": {
+   "rewards": [
+    {
+     "en": "{victory_point}\n{solari:6} {arrow_right} {victory_point}\n{spice:4} {arrow_right} {victory_point}",
+     "ko": "{victory_point}\n{solari:6} {arrow_right} {victory_point}\n{spice:4} {arrow_right} {victory_point}"
+    },
+    {
+     "en": "{victory_point}",
+     "ko": "{victory_point}"
+    },
+    {
+     "en": "{spice:2} {solari:2}",
+     "ko": "{spice:2} {solari:2}"
+    }
+   ]
+  },
+  "grand_vision": {
+   "rewards": [
+    {
+     "en": "{influence_any_two} {intrigue}",
+     "ko": "{influence_any_two} {intrigue}"
+    },
+    {
+     "en": "{intrigue} {spice:3}",
+     "ko": "{intrigue} {spice:3}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "guild_bank_raid": {
+   "rewards": [
+    {
+     "en": "{solari:6}",
+     "ko": "{solari:6}"
+    },
+    {
+     "en": "{solari:4}",
+     "ko": "{solari:4}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "imperium_battle_for_arrakeen": {
+   "rewards": [
+    {
+     "en": "{victory_point} {victory_point} {control}"
+    },
+    {
+     "en": "Choose two:\n{intrigue} {spice:2} {solari:3}"
+    },
+    {
+     "en": "{intrigue} {solari:2}"
+    }
+   ]
+  },
+  "imperium_battle_for_imperial_basin": {
+   "rewards": [
+    {
+     "en": "{victory_point} {victory_point} {control}",
+     "ko": "{victory_point} {victory_point} {control}"
+    },
+    {
+     "en": "{spice:5}",
+     "ko": "{spice:5}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "imperium_secure_imperial_basin": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}",
+     "ko": "{victory_point} {control}"
+    },
+    {
+     "en": "{water} {water}",
+     "ko": "{water} {water}"
+    },
+    {
+     "en": "{water}",
+     "ko": "{water}"
+    }
+   ]
+  },
+  "imperium_siege_of_arrakeen": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}",
+     "ko": "{victory_point} {control}"
+    },
+    {
+     "en": "{solari:4}",
+     "ko": "{solari:4}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "machinations": {
+   "rewards": [
+    {
+     "en": "Choose two:\n{influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}"
+    },
+    {
+     "en": "{water} {solari:2}"
+    },
+    {
+     "en": "{water}"
+    }
+   ]
+  },
+  "propaganda": {
+   "rewards": [
+    {
+     "en": "Choose two:\n{influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}",
+     "ko": "2가지 선택:\n{influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}"
+    },
+    {
+     "en": "{intrigue} {spice:3}",
+     "ko": "{intrigue} {spice:3}"
+    },
+    {
+     "en": "{spice:3}",
+     "ko": "{spice:3}"
+    }
+   ]
+  },
+  "protect_the_sietches": {
+   "rewards": [
+    {
+     "en": "{influence_fremen} {water} {troop}",
+     "ko": "{influence_fremen} {water} {troop}"
+    },
+    {
+     "en": "{spice:3} {troop}",
+     "ko": "{spice:3} {troop}"
+    },
+    {
+     "en": "{spice:2}",
+     "ko": "{spice:2}"
+    }
+   ]
+  },
+  "raid_stockpiles": {
+   "rewards": [
+    {
+     "en": "{intrigue} {spice:3}",
+     "ko": "{intrigue} {spice:3}"
+    },
+    {
+     "en": "{spice:2}",
+     "ko": "{spice:2}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "secure_imperial_basin": {
+   "rewards": [
+    {
+     "en": "{control}\n{spice:2} {troop}"
+    },
+    {
+     "en": "{water} {water} {troop}"
+    },
+    {
+     "en": "{water} {troop}"
+    }
+   ]
+  },
+  "seize_spice_refinery": {
+   "rewards": [
+    {
+     "en": "{control}\n{spy} {spice:2}",
+     "ko": "{control}\n{spy} {spice:2}"
+    },
+    {
+     "en": "{intrigue} {spice:1} {troop}",
+     "ko": "{intrigue} {spice:1} {troop}"
+    },
+    {
+     "en": "{spice:2}",
+     "ko": "{spice:2}"
+    }
+   ]
+  },
+  "shadow_contest": {
+   "rewards": [
+    {
+     "en": "{influence_bene_gesserit} {intrigue}",
+     "ko": "{influence_bene_gesserit} {intrigue}"
+    },
+    {
+     "en": "{intrigue} {spice:1} {troop}",
+     "ko": "{intrigue} {spice:1} {troop}"
+    },
+    {
+     "en": "{spice:1} {troop}",
+     "ko": "{spice:1} {troop}"
+    }
+   ]
+  },
+  "siege_of_arrakeen": {
+   "rewards": [
+    {
+     "en": "{control}\n{solari:2} {troop} {troop}",
+     "ko": "{control}\n{solari:2} {troop} {troop}"
+    },
+    {
+     "en": "{solari:4} {troop}",
+     "ko": "{solari:4} {troop}"
+    },
+    {
+     "en": "{solari:3}",
+     "ko": "{solari:3}"
+    }
+   ]
+  },
+  "siege_of_carthag": {
+   "rewards": [
+    {
+     "en": "{victory_point} {control}",
+     "ko": "{victory_point} {control}"
+    },
+    {
+     "en": "{intrigue} {spice:1}",
+     "ko": "{intrigue} {spice:1}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "skirmish_a": {
+   "rewards": [
+    {
+     "en": "{victory_point}",
+     "ko": "{victory_point}"
+    },
+    {
+     "en": "{water}",
+     "ko": "{water}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "skirmish_b": {
+   "rewards": [
+    {
+     "en": "{victory_point}",
+     "ko": "{victory_point}"
+    },
+    {
+     "en": "{intrigue} {solari:2}",
+     "ko": "{intrigue} {solari:2}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "skirmish_c": {
+   "rewards": [
+    {
+     "en": "{influence_any} {spice:1}",
+     "ko": "{influence_any} {spice:1}"
+    },
+    {
+     "en": "{spice:2}",
+     "ko": "{spice:2}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "skirmish_crysknife": {
+   "rewards": [
+    {
+     "en": "{influence_any}",
+     "ko": "{influence_any}"
+    },
+    {
+     "en": "{intrigue} {spice:1}",
+     "ko": "{intrigue} {spice:1}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "skirmish_d": {
+   "rewards": [
+    {
+     "en": "{influence_any} {solari:2}",
+     "ko": "{influence_any} {solari:2}"
+    },
+    {
+     "en": "{solari:3}",
+     "ko": "{solari:3}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "skirmish_desert_mouse": {
+   "rewards": [
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    },
+    {
+     "en": "{solari:3}",
+     "ko": "{solari:3}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "skirmish_e": {
+   "rewards": [
+    {
+     "en": "{freighter} {troop}",
+     "ko": "{freighter} {troop}"
+    },
+    {
+     "en": "{spice:2}",
+     "ko": "{spice:2}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "skirmish_f": {
+   "rewards": [
+    {
+     "en": "{freighter} {spice:1}",
+     "ko": "{freighter} {spice:1}"
+    },
+    {
+     "en": "{solari:3}",
+     "ko": "{solari:3}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "skirmish_ornithopter": {
+   "rewards": [
+    {
+     "en": "{intrigue} {solari:1}",
+     "ko": "{intrigue} {solari:1}"
+    },
+    {
+     "en": "{intrigue} {solari:2}",
+     "ko": "{intrigue} {solari:2}"
+    },
+    {
+     "en": "{intrigue}",
+     "ko": "{intrigue}"
+    }
+   ]
+  },
+  "skirmish_wild": {
+   "rewards": [
+    {
+     "en": "{trash}",
+     "ko": "{trash}"
+    },
+    {
+     "en": "{water} {solari:1}",
+     "ko": "{water} {solari:1}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "sort_through_the_chaos": {
+   "rewards": [
+    {
+     "en": "{mentat} {intrigue} {solari:2}",
+     "ko": "{mentat} {intrigue} {solari:2}"
+    },
+    {
+     "en": "{intrigue} {solari:2}",
+     "ko": "{intrigue} {solari:2}"
+    },
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}"
+    }
+   ]
+  },
+  "spice_freighters": {
+   "rewards": [
+    {
+     "en": "{influence_any}\n{spice:3} {arrow_right} {victory_point}",
+     "ko": "{influence_any}\n{spice:3} {arrow_right} {victory_point}"
+    },
+    {
+     "en": "{water} {spice:1} {troop}",
+     "ko": "{water} {spice:1} {troop}"
+    },
+    {
+     "en": "{spice:1} {troop}",
+     "ko": "{spice:1} {troop}"
+    }
+   ]
+  },
+  "storms_in_the_south": {
+   "rewards": [
+    {
+     "en": "{spy_deep_cover} {spice:2}",
+     "ko": "{spy_deep_cover} {spice:2}"
+    },
+    {
+     "en": "{intrigue} {intrigue} {solari:2}",
+     "ko": "{intrigue} {intrigue} {solari:2}"
+    },
+    {
+     "en": "{intrigue} {solari:2}",
+     "ko": "{intrigue} {solari:2}"
+    }
+   ]
+  },
+  "terrible_purpose": {
+   "rewards": [
+    {
+     "en": "{victory_point} {trash}",
+     "ko": "{victory_point} {trash}"
+    },
+    {
+     "en": "{water} {spice:1}",
+     "ko": "{water} {spice:1}"
+    },
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}"
+    }
+   ]
+  },
+  "test_of_loyalty": {
+   "rewards": [
+    {
+     "en": "{influence_emperor} {spy} {solari:2}"
+    },
+    {
+     "en": "{solari:4} {troop}"
+    },
+    {
+     "en": "{solari:3}"
+    }
+   ]
+  },
+  "trade_dispute": {
+   "rewards": [
+    {
+     "en": "{contract} {water} {trash}",
+     "ko": "{contract}\n{water} {trash}"
+    },
+    {
+     "en": "{water} {spice:1} {trash}",
+     "ko": "{water} {spice:1} {trash}"
+    },
+    {
+     "en": "{water} {troop}",
+     "ko": "{water} {troop}"
+    }
+   ]
+  },
+  "trade_monopoly": {
+   "rewards": [
+    {
+     "en": "{freighter} {freighter} {troop}",
+     "ko": "{freighter} {freighter} {troop}"
+    },
+    {
+     "en": "{intrigue} {water}",
+     "ko": "{intrigue} {water}"
+    },
+    {
+     "en": "{intrigue} –OR– {water}",
+     "ko": "{intrigue} —또는— {water}"
+    }
+   ]
+  }
+ },
+ "contracts": {
+  "acquire": {
+   "condition": {
+    "en": "",
+    "ko": ""
+   },
+   "frame": "spice_must_flow",
+   "reward": {
+    "en": "{influence_spacing_guild} {solari:3}",
+    "ko": "{influence_spacing_guild} {solari:3}"
+   },
+   "subtitle": {
+    "en": "The Spice Must Flow",
+    "ko": "스파이스는 흘러야 한다"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Acquire",
+    "ko": "획득"
+   }
+  },
+  "arrakeen_i": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "arrakeen",
+   "reward": {
+    "en": "{water}",
+    "ko": "{water}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Arrakeen",
+    "ko": "아라킨"
+   }
+  },
+  "arrakeen_ii": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "arrakeen",
+   "reward": {
+    "en": "{troop} {spy}",
+    "ko": "{troop} {spy}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Arrakeen",
+    "ko": "아라킨"
+   }
+  },
+  "bloodlines_deliver_supplies": {
+   "condition": {
+    "en": "{agent_icon_spacing_guild}",
+    "ko": "{agent_icon_spacing_guild}"
+   },
+   "frame": "spacing_guild",
+   "reward": {
+    "en": "{solari:1} {spy_deep_cover}",
+    "ko": "{solari:1} {spy_deep_cover}"
+   },
+   "tile": "spacing2",
+   "title": {
+    "en": "Deliver Supplies",
+    "ko": "보급품 배송"
+   }
+  },
+  "bloodlines_earn_any_alliance": {
+   "condition": {
+    "en": "",
+    "ko": ""
+   },
+   "frame": "",
+   "reward": {
+    "en": "{solari:2} {troop} {troop}",
+    "ko": "{solari:2} {troop} {troop}"
+   },
+   "tile": "spacing",
+   "title": {
+    "en": "Earn Any Alliance",
+    "ko": "아무 팩션과 동맹이 됨"
+   }
+  },
+  "bloodlines_harvest_3": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:3+}",
+    "ko": "{agent_icon_spice_trade} {spice:3+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:2} {spy}",
+    "ko": "{solari:2} {spy}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "bloodlines_harvest_4": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:4+}",
+    "ko": "{agent_icon_spice_trade} {spice:4+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:3} {spy}",
+    "ko": "{solari:3} {spy}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "bloodlines_high_council": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{recall_agent}",
+    "ko": "{recall_agent}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "High Council",
+    "ko": "원로회"
+   }
+  },
+  "bloodlines_immediate": {
+   "condition": {
+    "en": "",
+    "ko": ""
+   },
+   "frame": "",
+   "reward": {
+    "en": "Requires an Intrigue card\n{trash_intrigue} {arrow_right} {intrigue} {draw}",
+    "ko": "책략 카드 1장 필요\n{trash_intrigue} {arrow_right} {intrigue} {draw}"
+   },
+   "tile": "spacing",
+   "title": {
+    "en": "Immediate",
+    "ko": "즉시"
+   }
+  },
+  "bloodlines_secrets": {
+   "condition": {
+    "en": "{agent_icon_bene_gesserit}",
+    "ko": "{agent_icon_bene_gesserit}"
+   },
+   "frame": "bene_gesserit",
+   "reward": {
+    "en": "{solari:2} {draw}",
+    "ko": "{solari:2} {draw}"
+   },
+   "tile": "bene_gesserit",
+   "title": {
+    "en": "Secrets",
+    "ko": "비밀"
+   }
+  },
+  "bloodlines_spice_refinery": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "spice_refinery",
+   "reward": {
+    "en": "{troop} {troop}",
+    "ko": "{troop} {troop}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Spice Refinery",
+    "ko": "스파이스 정제소"
+   }
+  },
+  "deliver_supplies": {
+   "condition": {
+    "en": "{agent_icon_spacing_guild}",
+    "ko": "{agent_icon_spacing_guild}"
+   },
+   "frame": "spacing_guild",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "spacing2",
+   "title": {
+    "en": "Deliver Supplies",
+    "ko": "보급품 배송"
+   }
+  },
+  "espionage_i": {
+   "condition": {
+    "en": "{agent_icon_bene_gesserit}",
+    "ko": "{agent_icon_bene_gesserit}"
+   },
+   "frame": "bene_gesserit",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "bene_gesserit",
+   "title": {
+    "en": "Espionage",
+    "ko": "첩보 활동"
+   }
+  },
+  "espionage_i_copy_2": {
+   "condition": {
+    "en": "{agent_icon_bene_gesserit}",
+    "ko": "{agent_icon_bene_gesserit}"
+   },
+   "frame": "bene_gesserit",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "bene_gesserit",
+   "title": {
+    "en": "Espionage",
+    "ko": "첩보 활동"
+   }
+  },
+  "harvest_3": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:3+}",
+    "ko": "{agent_icon_spice_trade} {spice:3+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "harvest_3_copy_2": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:3+}",
+    "ko": "{agent_icon_spice_trade} {spice:3+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "harvest_4": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:4+}",
+    "ko": "{agent_icon_spice_trade} {spice:4+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:4}",
+    "ko": "{solari:4}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "heighliner_i": {
+   "condition": {
+    "en": "{agent_icon_spacing_guild}",
+    "ko": "{agent_icon_spacing_guild}"
+   },
+   "frame": "heighliner",
+   "reward": {
+    "en": "{water} {water}",
+    "ko": "{water} {water}"
+   },
+   "tile": "spacing2",
+   "title": {
+    "en": "Heighliner",
+    "ko": "하이라이너"
+   }
+  },
+  "heighliner_ii": {
+   "condition": {
+    "en": "{agent_icon_spacing_guild}",
+    "ko": "{agent_icon_spacing_guild}"
+   },
+   "frame": "heighliner",
+   "reward": {
+    "en": "{troop} {troop}",
+    "ko": "{troop} {troop}"
+   },
+   "tile": "spacing2",
+   "title": {
+    "en": "Heighliner",
+    "ko": "하이라이너"
+   }
+  },
+  "high_council_i": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{influence_bene_gesserit}",
+    "ko": "{influence_bene_gesserit}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "High Council",
+    "ko": "원로회"
+   }
+  },
+  "high_council_ii": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "High Council",
+    "ko": "원로회"
+   }
+  },
+  "immediate": {
+   "condition": {
+    "en": "",
+    "ko": ""
+   },
+   "frame": "",
+   "reward": {
+    "en": "{solari:2}",
+    "ko": "{solari:2}"
+   },
+   "tile": "spacing",
+   "title": {
+    "en": "Immediate",
+    "ko": "즉시"
+   }
+  },
+  "ix_dreadnought": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{tech_negotiation} {contract}",
+    "ko": "{tech_negotiation} {contract}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "Dreadnought",
+    "ko": "드레드노트"
+   }
+  },
+  "ix_espionage": {
+   "condition": {
+    "en": "{agent_icon_bene_gesserit}",
+    "ko": "{agent_icon_bene_gesserit}"
+   },
+   "frame": "bene_gesserit",
+   "reward": {
+    "en": "{solari:1} {contract}",
+    "ko": "{solari:1} {contract}"
+   },
+   "tile": "bene_gesserit",
+   "title": {
+    "en": "Espionage",
+    "ko": "첩보 활동"
+   }
+  },
+  "ix_harvest_3": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:3+}",
+    "ko": "{agent_icon_spice_trade} {spice:3+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "ix_harvest_4": {
+   "condition": {
+    "en": "{agent_icon_spice_trade} {spice:4+}",
+    "ko": "{agent_icon_spice_trade} {spice:4+}"
+   },
+   "frame": "harvest",
+   "reward": {
+    "en": "{solari:2} {contract}",
+    "ko": "{solari:2} {contract}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Harvest",
+    "ko": "채취"
+   }
+  },
+  "ix_heighliner": {
+   "condition": {
+    "en": "{agent_icon_spacing_guild}",
+    "ko": "{agent_icon_spacing_guild}"
+   },
+   "frame": "heighliner",
+   "reward": {
+    "en": "{solari:3} {contract}",
+    "ko": "{solari:3} {contract}"
+   },
+   "tile": "spacing",
+   "title": {
+    "en": "Heighliner",
+    "ko": "하이라이너"
+   }
+  },
+  "ix_high_council": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{tech_negotiation} {contract}",
+    "ko": "{tech_negotiation} {contract}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "High Council",
+    "ko": "원로회"
+   }
+  },
+  "ix_interstellar_shipping": {
+   "condition": {
+    "en": "{agent_icon_spice_trade}",
+    "ko": "{agent_icon_spice_trade}"
+   },
+   "frame": "yellow",
+   "reward": {
+    "en": "{tech_negotiation} {contract}",
+    "ko": "{tech_negotiation} {contract}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Interstellar Shipping",
+    "ko": "성간 거래"
+   }
+  },
+  "ix_secrets": {
+   "condition": {
+    "en": "{agent_icon_bene_gesserit}",
+    "ko": "{agent_icon_bene_gesserit}"
+   },
+   "frame": "bene_gesserit",
+   "reward": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "tile": "bene_gesserit",
+   "title": {
+    "en": "Secrets",
+    "ko": "비밀"
+   }
+  },
+  "ix_smuggling": {
+   "condition": {
+    "en": "{agent_icon_spice_trade}",
+    "ko": "{agent_icon_spice_trade}"
+   },
+   "frame": "yellow",
+   "reward": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "tile": "yellow",
+   "title": {
+    "en": "Smuggling",
+    "ko": "밀수"
+   }
+  },
+  "ix_tech_negotiation": {
+   "condition": {
+    "en": "{agent_icon_landsraad}",
+    "ko": "{agent_icon_landsraad}"
+   },
+   "frame": "green",
+   "reward": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "tile": "green",
+   "title": {
+    "en": "Tech Negotiation",
+    "ko": "기술 협상"
+   }
+  },
+  "research_station_i": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "research_station",
+   "reward": {
+    "en": "{solari:2} {spy}",
+    "ko": "{solari:2} {spy}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Research Station",
+    "ko": "연구 기지"
+   }
+  },
+  "research_station_ii": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "research_station",
+   "reward": {
+    "en": "{solari:3}",
+    "ko": "{solari:3}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Research Station",
+    "ko": "연구 기지"
+   }
+  },
+  "sardaukar_i": {
+   "condition": {
+    "en": "{agent_icon_emperor}",
+    "ko": "{agent_icon_emperor}"
+   },
+   "frame": "emperor",
+   "reward": {
+    "en": "{draw} {draw}",
+    "ko": "{draw} {draw}"
+   },
+   "tile": "emperor",
+   "title": {
+    "en": "Sardaukar",
+    "ko": "사다우카"
+   }
+  },
+  "sardaukar_ii": {
+   "condition": {
+    "en": "{agent_icon_emperor}",
+    "ko": "{agent_icon_emperor}"
+   },
+   "frame": "emperor",
+   "reward": {
+    "en": "{recall_agent}",
+    "ko": "{recall_agent}"
+   },
+   "tile": "emperor",
+   "title": {
+    "en": "Sardaukar",
+    "ko": "사다우카"
+   }
+  },
+  "spice_refinery_i": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "spice_refinery",
+   "reward": {
+    "en": "{draw} {draw}",
+    "ko": "{draw} {draw}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Spice Refinery",
+    "ko": "스파이스 정제소"
+   }
+  },
+  "spice_refinery_ii": {
+   "condition": {
+    "en": "{agent_icon_city}",
+    "ko": "{agent_icon_city}"
+   },
+   "frame": "spice_refinery",
+   "reward": {
+    "en": "{water}",
+    "ko": "{water}"
+   },
+   "tile": "blue",
+   "title": {
+    "en": "Spice Refinery",
+    "ko": "스파이스 정제소"
+   }
+  }
+ },
+ "intrigue": {
+  "adaptive_tactics": {
+   "parts": [
+    {
+     "en": "{spice:1}\n{arrow_down}\n{troop}{conflict}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "advanced_weaponry": {
+   "parts": [
+    {
+     "en": "{solari:3} {arrow_right} {dreadnought}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have three or more Tech tiles:\n{sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "allied_armada": {
+   "parts": [
+    {
+     "en": "If you have a\nFaction Alliance:\n{spice:2}\n{arrow_down}\n{sword} {sword} {sword} {sword}\n{sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "ambush": {
+   "parts": [
+    {
+     "en": "{sword} {sword} {sword} {sword}",
+     "ko": "{sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "backed_by_choam": {
+   "parts": [
+    {
+     "en": "{influence_lose} {arrow_right} {solari:4}",
+     "ko": "{influence_lose} {arrow_right} {solari:4}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have completed two or more contracts:\n\n{sword}{sword}{sword}{sword}",
+     "ko": "당신이 계약을 둘 이상 완수했다면:\n{sword}{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "battlefield_research": {
+   "parts": [
+    {
+     "en": "Retreat one or two of your troops\n{arrow_down}\n{acquire_tech_minus1}",
+     "ko": "당신의 병력 1 또는 2 후퇴\n{arrow_down}\n{acquire_tech_minus1}",
+     "timing": "combat"
+    },
+    {
+     "en": "If you have three or more Tech tiles:\n{victory_point}",
+     "ko": "당신이 가진 기술 타일이 3개 이상이면:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "bindu_suspension": {
+   "parts": [
+    {
+     "en": "At the start of\nyour turn:\n{draw}\nYou may pass your turn.\n(Instead of taking an\nAgent or Reveal turn.)",
+     "timing": "plot"
+    }
+   ]
+  },
+  "blackmail": {
+   "parts": [
+    {
+     "en": "{influence_lose}\n{arrow_down}\n{sword} {sword} {sword} {sword} {sword}",
+     "ko": "{influence_lose}\n{arrow_down}\n{sword} {sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "breakthrough": {
+   "parts": [
+    {
+     "en": "{research}",
+     "ko": "{research}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "bribery": {
+   "parts": [
+    {
+     "en": "{solari:2}\n{arrow_down}\n{influence_any}",
+     "ko": "{solari:2}\n{arrow_down}\n{influence_any}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "buy_access": {
+   "parts": [
+    {
+     "en": "{solari:5}\n\n{arrow_down}\nChoose two:\n\n{influence_emperor} {influence_spacing_guild} {influence_bene_gesserit} {influence_fremen}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "bypass_protocol": {
+   "parts": [
+    {
+     "en": "Acquire a card that\ncosts {persuasion:3} or less.",
+     "timing": "plot"
+    },
+    {
+     "en": "{spice:2}\n{arrow_down}\nAcquire a card that\ncosts {persuasion:5} or less to the\ntop of your deck.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "calculated_hire": {
+   "parts": [
+    {
+     "en": "{spice:1}\n{arrow_down}\nTake the Mentat from\nits designated space\nin the Landsraad.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "call_to_arms": {
+   "parts": [
+    {
+     "en": "During your Reveal turn this round, whenever you acquire a card:\n\n{troop}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "cannon_turrets": {
+   "parts": [
+    {
+     "en": "{sword} {sword}\nEach opponent retreats one dreadnought.",
+     "timing": "combat"
+    }
+   ]
+  },
+  "change_allegiances": {
+   "parts": [
+    {
+     "en": "{influence_lose} {arrow_right} {influence_any}\n\n{spice:3} {arrow_right} {influence_any}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "charisma": {
+   "parts": [
+    {
+     "en": "Gain {persuasion:2} during your\nReveal turn this round.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "choam_profits": {
+   "parts": [
+    {
+     "en": "If you have completed four or more contracts:\n\n{victory_point}",
+     "ko": "당신이 계약을 넷 이상 완수했다면:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "choam_shares": {
+   "parts": [
+    {
+     "en": "{solari:7}\n{arrow_down}\n{victory_point}",
+     "ko": "{solari:7}\n{arrow_down}\n{victory_point}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "coercive_negotiation": {
+   "parts": [
+    {
+     "en": "When you deploy three or more units to the Conflict in a single turn:\n\nReveal three contracts from the bank. Take one and trash the other two.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "contingency_plan": {
+   "parts": [
+    {
+     "en": "{solari:2}",
+     "timing": "plot"
+    },
+    {
+     "en": "{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "corner_the_market": {
+   "parts": [
+    {
+     "en": "If you have at least two\n<b>The Spice Must Flow</b>:\n{victory_point}\nIf you have more\n<b>The Spice Must Flow</b>\nthan each opponent:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "councilor_s_ambition": {
+   "parts": [
+    {
+     "en": "If you have a seat on the High Council:\n\n{water}{water}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "councilors_dispensation": {
+   "parts": [
+    {
+     "en": "If you have a seat\non the High Council:\n{spice:2}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "counterattack": {
+   "parts": [
+    {
+     "en": "Deploy up to two troops from your garrison to the Conflict.",
+     "ko": "당신의 주둔지에 있는 병력을 최대 2까지 교전 칸에 배치합니다.",
+     "timing": "plot"
+    },
+    {
+     "en": "If an opponent played a Combat Intrigue card in this Conflict:\n{sword} {sword} {sword} {sword}",
+     "ko": "다른 플레이어가 이 교전에서 전투 책략 카드를 사용했다면:\n{sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "crysknife": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "timing": "plot"
+    },
+    {
+     "en": "Flip one of your face-up {battle_crysknife} or {battle_wild} Conflict cards\n{arrow_down}\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "cull": {
+   "parts": [
+    {
+     "en": "{solari:1}\n{arrow_down}\n{trash}",
+     "ko": "{solari:1}\n{arrow_down}\n{trash}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "cunning": {
+   "parts": [
+    {
+     "en": "{draw}",
+     "timing": "plot"
+    },
+    {
+     "en": "{spice:1}\n\n{arrow_down}\n\n{draw} {trash}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "demand_respect": {
+   "parts": [
+    {
+     "en": "When you win a Conflict:\n{influence_any}",
+     "timing": "combat"
+    },
+    {
+     "en": "{spice:2} {arrow_right} {influence_any_two}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "depart_for_arrakis": {
+   "parts": [
+    {
+     "en": "{spice:2} {arrow_right} {troop}{troop}{troop}\n\n{agent_icon_spacing_guild} 3 Influence: {draw}",
+     "ko": "{spice:2} {arrow_right} {troop}{troop}{troop}\n{agent_icon_spacing_guild} 영향력 3: {draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "desert_mouse": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "timing": "plot"
+    },
+    {
+     "en": "Flip one of your face-up {battle_desert_mouse} or {battle_wild} Conflict cards\n{arrow_down}\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "desert_support": {
+   "parts": [
+    {
+     "en": "{water}\n{arrow_down}\n{sword}{sword}{sword}{sword}{sword}",
+     "ko": "{water}\n{arrow_down}\n{sword}{sword}{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "detonation": {
+   "parts": [
+    {
+     "en": "{shield_wall}",
+     "timing": "plot"
+    },
+    {
+     "en": "Deploy up to four troops from your garrison to the Conflict.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "devour": {
+   "parts": [
+    {
+     "en": "{sword}{sword}\n\nIf you have one or more sandworms in the Conflict:\n\n+{sword}{sword} {trash}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "disguised_bureaucrat": {
+   "parts": [
+    {
+     "en": "{genetic_marker_1} : {spice:1}\n{genetic_marker_2} : {influence_any}",
+     "ko": "{genetic_marker_1} : {spice:1}\n{genetic_marker_2} : {influence_any}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "dispatch_an_envoy": {
+   "parts": [
+    {
+     "en": "The card you play\nthis turn has the\nfollowing icons:\n{agent_icon_emperor} {agent_icon_spacing_guild}\n{agent_icon_bene_gesserit} {agent_icon_fremen}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "distraction": {
+   "parts": [
+    {
+     "en": "When you deploy three or more units to the Conflict in a single turn:\n\n{spy}\n\nYou may place this Spy on the same observation post as another player's Spy.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "diversion": {
+   "parts": [
+    {
+     "en": "When you deploy four or more units to the Conflict in a single turn:\n{freighter}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "double_cross": {
+   "parts": [
+    {
+     "en": "{solari:1}\n{arrow_down}\nAn opponent of your\nchoice loses one troop\nin the Conflict and\nyou deploy one troop\nfrom your supply\nto the Conflict.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "economic_positioning": {
+   "parts": [
+    {
+     "en": "Retreat two of your troops\n{arrow_down}\n{solari:3}",
+     "ko": "당신의 병력 2 후퇴\n{arrow_down}\n{solari:3}",
+     "timing": "combat"
+    },
+    {
+     "en": "If you have {solari:10} or more:\n{victory_point}",
+     "ko": "당신이 {solari:10} 이상 갖고 있다면:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "emperor_s_invitation": {
+   "parts": [
+    {
+     "en": "{draw}",
+     "ko": "{draw}",
+     "timing": "plot"
+    },
+    {
+     "en": "The card you play this turn has the {agent_icon_emperor} icon.",
+     "ko": "이번 차례에 당신이 플레이하는 카드는 {agent_icon_emperor} 아이콘 보유.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "expedite": {
+   "parts": [
+    {
+     "en": "{spice:1}\n{arrow_down}\n{freighter}",
+     "ko": "{spice:1}\n{arrow_down}\n{freighter}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "false_orders": {
+   "parts": [
+    {
+     "en": "Each opponent spying on the board space where you sent an Agent this turn must move that Spy.\n\nThen you {spy} on that space.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "favored_subject": {
+   "parts": [
+    {
+     "en": "{influence_emperor}",
+     "ko": "{influence_emperor}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "find_weakness": {
+   "parts": [
+    {
+     "en": "{sword}{sword}\n\n{recall_spy} {arrow_right} +{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "finesse": {
+   "parts": [
+    {
+     "en": "{influence_lose} {arrow_right} {influence_any}",
+     "ko": "{influence_lose} {arrow_right} {influence_any}",
+     "timing": "plot"
+    },
+    {
+     "en": "{sword} {sword}",
+     "ko": "{sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "glimpse_the_path": {
+   "parts": [
+    {
+     "en": "{spice:1}\n{arrow_down}\n{water} {draw}",
+     "ko": "{spice:1}\n{arrow_down}\n{water} {draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "go_to_ground": {
+   "parts": [
+    {
+     "en": "Retreat one or two of your troops\n{arrow_down}\n\n{spy}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "grand_conspiracy": {
+   "parts": [
+    {
+     "en": "• 2 dreadnoughts\n• 1+ <b>The Spice Must Flow</b>\n• 4+ Influence on 2+ Influence tracks\n• A seat on the High Council\nIf you have any three: {victory_point}",
+     "timing": "endgame"
+    },
+    {
+     "en": "If you have all four: {victory_point} {victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "grasp_arrakis": {
+   "parts": [
+    {
+     "en": "{sword}{sword}{sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "Flip two of your face-up Conflict cards\n{arrow_down}\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "gruesome_sacrifice": {
+   "parts": [
+    {
+     "en": "Lose two of your troops in the Conflict {arrow_right}\n{tleilaxu} {specimen} {specimen}",
+     "ko": "교전 칸에 있는 당신의 병력 2 잃음 {arrow_right}\n{tleilaxu} {specimen} {specimen}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "guild_authorization": {
+   "parts": [
+    {
+     "en": "{influence_spacing_guild}",
+     "ko": "{influence_spacing_guild}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "harvest_cells": {
+   "parts": [
+    {
+     "en": "When you lose at least three troops at the end of a Conflict:\n{specimen} {specimen}\nYou may also acquire a Tleilaxu card (paying its normal cost).",
+     "ko": "한 교전의 끝에 당신이 병력을 셋 이상 잃었을 때:\n{specimen} {specimen}\n당신은 틀레이락스 카드 1장도 획득 가능 (비용은 정상적으로 지불).",
+     "timing": "combat"
+    }
+   ]
+  },
+  "honor_guard": {
+   "parts": [
+    {
+     "en": "{troop}\nRecruiting a Sardaukar Commander (including when you acquire one) costs you {solari:1} less this turn.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "illicit_dealings": {
+   "parts": [
+    {
+     "en": "{tleilaxu}",
+     "ko": "{tleilaxu}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "imperium_politics": {
+   "parts": [
+    {
+     "en": "{solari:1}\n\n{arrow_down}\n\n{influence_emperor} —OR— {influence_spacing_guild}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "impress": {
+   "parts": [
+    {
+     "en": "{sword}{sword}\n\nAcquire a card that costs {persuasion:3} or less.",
+     "timing": "combat"
+    }
+   ]
+  },
+  "infiltrate": {
+   "parts": [
+    {
+     "en": "Enemy Agents don't\nblock your next Agent\nat board spaces\nthis turn.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "insider_information": {
+   "parts": [
+    {
+     "en": "{recall_spy}{arrow_right}{trash}{draw}",
+     "timing": "plot"
+    },
+    {
+     "en": "Ignore Influence requirements on board spaces when sending an Agent this turn.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "inspire_awe": {
+   "parts": [
+    {
+     "en": "Acquire a card that costs {persuasion:3} or less.\nIf you have one or more sandworms in the Conflict, put that card in your hand.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "intelligence_report": {
+   "parts": [
+    {
+     "en": "{draw}\n\nIf you have two or more Spies on the board:\n\n{draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "ixian_probe": {
+   "parts": [
+    {
+     "en": "{discard} {discard}\n{arrow_down}\n{draw} {draw}",
+     "ko": "{discard} {discard}\n{arrow_down}\n{draw} {draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "know_their_ways": {
+   "parts": [
+    {
+     "en": "{influence_fremen}",
+     "ko": "{influence_fremen}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "leverage": {
+   "parts": [
+    {
+     "en": "If you gained spice this turn:\n\n{contract} {solari:1}",
+     "ko": "이번 차례에 당신이 스파이스를 얻었다면:\n{contract} {solari:1}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "machine_culture": {
+   "parts": [
+    {
+     "en": "{acquire_tech}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have three or more Tech tiles:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "manipulate": {
+   "parts": [
+    {
+     "en": "Remove and replace a card in the Imperium Row.\nDuring your Reveal turn this round, you may acquire the removed card for {persuasion:1} less.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "market_opportunity": {
+   "parts": [
+    {
+     "en": "{spice:2} {arrow_right} {solari:5}",
+     "timing": "plot"
+    },
+    {
+     "en": "{solari:5} {arrow_right} {spice:5}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "master_tactician": {
+   "parts": [
+    {
+     "en": "{sword} {sword} {sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "Retreat up to three\nof your troops.",
+     "timing": "combat"
+    }
+   ]
+  },
+  "mercenaries": {
+   "parts": [
+    {
+     "en": "{solari:3}\n\n{arrow_down}\n\n{intrigue} {troop}{troop}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "navigation_card_1": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}",
+     "timing": "navigation"
+    },
+    {
+     "en": "{solari:2}\n{arrow_down}\nGain 1 Influence with a <i>different</i> Faction where you have 2+ Influence.",
+     "ko": "{solari:2}\n{arrow_down}\n당신의 영향력이 2 이상인 다른 팩션 하나에서 영향력 1 얻음.",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_10": {
+   "parts": [
+    {
+     "en": "{influence_lose}\n{arrow_down}\n{influence_any}",
+     "ko": "{influence_lose}\n{arrow_down}\n{influence_any}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_2": {
+   "parts": [
+    {
+     "en": "{spy}",
+     "ko": "{spy}",
+     "timing": "navigation"
+    },
+    {
+     "en": "{recall_spy}\n{arrow_down}\n{intrigue} {spice:2}",
+     "ko": "{recall_spy}\n{arrow_down}\n{intrigue} {spice:2}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_3": {
+   "parts": [
+    {
+     "en": "{solari:2}\nIf this is in Navigation slot 4:\nFor the rest of the game, during each of your Reveal turns, {persuasion:1}.",
+     "ko": "{solari:2}\n이 카드가 운항 구획 4에 놓여 있었다면:\n이제부터 매 라운드의 자기 공개 차례 동안 {persuasion:1}.",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_4": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}",
+     "timing": "navigation"
+    },
+    {
+     "en": "If this is in Navigation slot 1:\n{water}\n{arrow_down}\nAcquire <b>The Spice Must Flow.</b>",
+     "ko": "이 카드가 운항 구획 1에 놓여 있었다면:\n{water}\n{arrow_down}\n스파이스는 흘러야 한다 획득.",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_5": {
+   "parts": [
+    {
+     "en": "{trash}\nIf you trash a card that costs {persuasion:1} or more:\n{spice:2}",
+     "ko": "{trash}\n비용이 {persuasion:1} 이상인 카드를 폐기했다면:\n{spice:2}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_6": {
+   "parts": [
+    {
+     "en": "{troop}",
+     "ko": "{troop}",
+     "timing": "navigation"
+    },
+    {
+     "en": "{solari:3}\n{arrow_down}\n{troop}{troop}{troop}",
+     "ko": "{solari:3}\n{arrow_down}\n{troop}{troop}{troop}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_7": {
+   "parts": [
+    {
+     "en": "{spice:1}\nIf you have an Alliance:\n{intrigue}",
+     "ko": "{spice:1}\n동맹 팩션이 있다면:\n{intrigue}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_8": {
+   "parts": [
+    {
+     "en": "{water}\nIf you played this as a result of reaching 2 Influence with the Spacing Guild:\n{spice:1}",
+     "ko": "{water}\n우주 항행 길드에 대한 영향력이 2에 도달한 결과로 이 카드를 플레이했다면:\n{spice:1}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "navigation_card_9": {
+   "parts": [
+    {
+     "en": "{draw}",
+     "ko": "{draw}",
+     "timing": "navigation"
+    },
+    {
+     "en": "{spice:5}\n{arrow_down}\n{victory_point}",
+     "ko": "{spice:5}\n{arrow_down}\n{victory_point}",
+     "timing": "navigation"
+    }
+   ]
+  },
+  "opportunism": {
+   "parts": [
+    {
+     "en": "{influence_lose}{influence_lose}{solari:2}\n\n{arrow_down}\n\n{victory_point}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "ornithopter": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "timing": "plot"
+    },
+    {
+     "en": "Flip one of your face-up {battle_ornithopter} or {battle_wild} Conflict cards\n{arrow_down}\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "plans_within_plans": {
+   "parts": [
+    {
+     "en": "3 Influence (or more)\non three Faction tracks:\n{victory_point}",
+     "timing": "endgame"
+    },
+    {
+     "en": "3 Influence (or more)\non four Faction tracks:\n{victory_point} {victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "poison_snooper": {
+   "parts": [
+    {
+     "en": "Look at the top\ncard of your deck.\nDraw or trash it.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "private_army": {
+   "parts": [
+    {
+     "en": "{spice:2}\n{arrow_down}\n{sword} {sword} {sword} {sword} {sword}",
+     "ko": "{spice:2}\n{arrow_down}\n{sword} {sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "questionable_methods": {
+   "parts": [
+    {
+     "en": "{sword}\n\n{influence_lose} {arrow_right} + {sword}{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "quid_pro_quo": {
+   "parts": [
+    {
+     "en": "{spice:2}\n{arrow_down}\nGain one Influence with each Faction that has at least one of your Agents on its board spaces.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "rapid_engineering": {
+   "parts": [
+    {
+     "en": "{discard}{arrow_right}{acquire_tech_minus1}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have three or more Tech tiles:\nChoose two:\n{influence_emperor}{influence_spacing_guild}{influence_bene_gesserit}{influence_fremen}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "rapid_mobilization": {
+   "parts": [
+    {
+     "en": "Deploy any number of\nyour garrisoned troops\nto the Conflict.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "reach_agreement": {
+   "parts": [
+    {
+     "en": "Retreat one or two of your troops\n\n{arrow_down}\n\n{contract}",
+     "ko": "당신의 병력 1 또는 2 후퇴\n{arrow_down}\n{contract}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "recruitment_mission": {
+   "parts": [
+    {
+     "en": "Gain {persuasion:1} during your\nReveal turn this round.\nYou may put cards\nyou acquire on top\nof your deck.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "refocus": {
+   "parts": [
+    {
+     "en": "Shuffle your discard\npile into your deck,\nthen:\n{draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "reinforcements": {
+   "parts": [
+    {
+     "en": "{solari:3}\n{arrow_down}\n{troop} {troop} {troop}\nIf it's your Reveal turn,\nyou may deploy\nany of these troops\nto the Conflict.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "return_the_favor": {
+   "parts": [
+    {
+     "en": "{sword}\nFor each Faction where you have 2 Influence (or more):\n+{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "ripples_in_the_sand": {
+   "parts": [
+    {
+     "en": "{sword}{sword}{sword}\nIf you have one or more sandworms in the Conflict:\n{intrigue}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "sacred_pools": {
+   "parts": [
+    {
+     "en": "{discard}{arrow_right}{water}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have {water}{water}{water} or more:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "second_wave": {
+   "parts": [
+    {
+     "en": "{sword} {sword}\nDeploy up to two units from your garrison to the Conflict.",
+     "timing": "combat"
+    }
+   ]
+  },
+  "secret_forces": {
+   "parts": [
+    {
+     "en": "If you have a seat on the High Council:\n{troop} {troop}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "secret_of_the_sisterhood": {
+   "parts": [
+    {
+     "en": "{influence_bene_gesserit}",
+     "ko": "{influence_bene_gesserit}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "secure_spice_trade": {
+   "parts": [
+    {
+     "en": "If you have at least two The Spice Must Flow:\n\n{victory_point} {spice:2}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "seize_production": {
+   "parts": [
+    {
+     "en": "{solari:2}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have one or more Sardaukar Commanders in the Conflict:\n{spice:2}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "shaddam_s_favor": {
+   "parts": [
+    {
+     "en": "{troop}\n\n{agent_icon_emperor} 3 Influence: {solari:3}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "shadow_alliance": {
+   "parts": [
+    {
+     "en": "If you have 4 Influence (or more) on a Faction track where an opponent has the Alliance:\n\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "shadowy_bargain": {
+   "parts": [
+    {
+     "en": "{specimen}",
+     "ko": "{specimen}",
+     "timing": "plot"
+    },
+    {
+     "en": "{tleilaxu}",
+     "ko": "{tleilaxu}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "sietch_ritual": {
+   "parts": [
+    {
+     "en": "{discard}\n\n{arrow_down}\n\n{influence_bene_gesserit} —OR— {influence_fremen}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "sleeper_unit": {
+   "parts": [
+    {
+     "en": "{solari:1}{arrow_right}{spy}",
+     "ko": "{solari:1}{arrow_right}{spy}",
+     "timing": "plot"
+    },
+    {
+     "en": "{recall_spy}\n{arrow_down}\n{troop}{troop}",
+     "ko": "{recall_spy}\n{arrow_down}\n{troop}{troop}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "special_mission": {
+   "parts": [
+    {
+     "en": "{spy} on {agent_icon_city}",
+     "timing": "plot"
+    },
+    {
+     "en": "{recall_spy}\n\n{arrow_down}\n\n{shield_wall} {spice:2}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "spice_is_power": {
+   "parts": [
+    {
+     "en": "Retreat three of your troops\n\n{arrow_down}\n\n{spice:3}",
+     "timing": "combat"
+    },
+    {
+     "en": "{spice:3}\n\n{arrow_down}\n\n{sword}{sword}{sword}{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "spring_the_trap": {
+   "parts": [
+    {
+     "en": "{recall_spy}{recall_spy}\n\n{arrow_down}\n\n{sword}{sword}{sword}{sword}\n\n{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "staged_incident": {
+   "parts": [
+    {
+     "en": "Lose three of your\ntroops in the Conflict\n{arrow_down}\n{victory_point}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "strategic_push": {
+   "parts": [
+    {
+     "en": "{sword} {sword}\nIf you win this Conflict:\n{solari:2}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "strategic_stockpiling": {
+   "parts": [
+    {
+     "en": "{spice:5} {arrow_right} {victory_point}\n\n{agent_icon_fremen} 3 Influence:\n\n{water}{water}{water} {arrow_right} {victory_point}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "strongarm": {
+   "parts": [
+    {
+     "en": "Lose a troop\n{arrow_down}\nGain one Influence with a Faction whose board space you sent an Agent to this turn.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "study_melange": {
+   "parts": [
+    {
+     "en": "{spice:1}",
+     "ko": "{spice:1}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have {spice:3} or more:\n{genetic_marker_2} : {victory_point}",
+     "ko": "당신이 {spice:3} 이상 갖고 있다면:\n{genetic_marker_2} : {victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "tactical_option": {
+   "parts": [
+    {
+     "en": "{sword}{sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "Retreat any number of your troops.",
+     "timing": "combat"
+    }
+   ]
+  },
+  "tenuous_bond": {
+   "parts": [
+    {
+     "en": "{influence_lose}{arrow_right}{influence_any}",
+     "ko": "{influence_lose}{arrow_right}{influence_any}",
+     "timing": "plot"
+    },
+    {
+     "en": "Trash a card from your discard pile that costs {persuasion:1} or more\n{arrow_down}\n{sword}{sword}{sword}{sword}",
+     "ko": "당신의 버림 더미에서 비용이 {persuasion:1} 이상인 카드 1장 폐기\n{arrow_down}\n{sword}{sword}{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "the_sleeper_must_awaken": {
+   "parts": [
+    {
+     "en": "{spice:4}\n{arrow_down}\n{victory_point}",
+     "ko": "{spice:4}\n{arrow_down}\n{victory_point}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "the_strong_survive": {
+   "parts": [
+    {
+     "en": "{sword}{sword}{sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "Retreat one of your troops\n{arrow_down}\n{trash}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "tiebreaker": {
+   "parts": [
+    {
+     "en": "{sword} {sword}",
+     "ko": "{sword} {sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "{spice:10}",
+     "ko": "{spice:10}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "tleilaxu_puppet": {
+   "parts": [
+    {
+     "en": "Gain {persuasion:1} during your Reveal turn this round.",
+     "ko": "이번 라운드의 공개 차례에 설득 비용 {persuasion:1} 얻음.",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have a seat on the High Council:\n{genetic_marker_2} : {victory_point}",
+     "ko": "당신이 원로회에서 자리를 차지하고 있다면:\n{genetic_marker_2} : {victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "to_the_victor": {
+   "parts": [
+    {
+     "en": "When you win a Conflict:\n{spice:3}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "twisted_ambitious": {
+   "parts": [
+    {
+     "en": "Lose three of your troops\n{arrow_down}\nGain one Influence with a Faction where an opponent has more Influence than you.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_calculating": {
+   "parts": [
+    {
+     "en": "For each type of unit you have in the Conflict:\n{solari:1}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_controlled": {
+   "parts": [
+    {
+     "en": "Look at the top card of your deck. You may put it back, discard it, or spend {solari:1} to draw it.",
+     "timing": "plot"
+    },
+    {
+     "en": "{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "twisted_devious": {
+   "parts": [
+    {
+     "en": "Trash a card from your hand.",
+     "timing": "plot"
+    },
+    {
+     "en": "Deploy up to two troops from your garrison to the Conflict.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_discerning": {
+   "parts": [
+    {
+     "en": "{discard}{arrow_right}{draw}",
+     "ko": "{discard}{arrow_right}{draw}",
+     "timing": "plot"
+    },
+    {
+     "en": "If you have an Alliance:\n{draw}",
+     "ko": "동맹 팩션이 있다면:\n{draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_insidious": {
+   "parts": [
+    {
+     "en": "Give an opponent an Intrigue card from your hand\n{arrow_down}\n{spice:1}\nIf you gave them a non-Twisted Intrigue card:\n+{spice:1}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_resourceful": {
+   "parts": [
+    {
+     "en": "The card you play this turn has the following icons:\n{agent_icon_landsraad}{agent_icon_city}{agent_icon_spice_trade}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_sadistic": {
+   "parts": [
+    {
+     "en": "Lose one of your troops\n{arrow_down}\n{draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_shrewd": {
+   "parts": [
+    {
+     "en": "Lose one of your troops in the Conflict\n{arrow_down}\n{spice:1}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "twisted_sinister": {
+   "parts": [
+    {
+     "en": "Lose two of your troops\n{arrow_down}\n{intrigue}{solari:1}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "twisted_unnatural": {
+   "parts": [
+    {
+     "en": "{trash_intrigue}{arrow_right}{intrigue}\nIf you trashed a non-Twisted Intrigue card:\n{troop}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "twisted_withdrawn": {
+   "parts": [
+    {
+     "en": "At the start of your turn:\n\nPass your turn.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "unexpected_allies": {
+   "parts": [
+    {
+     "en": "{water}{water}\n\n{arrow_down}\n\n{shield_wall} {sandworm}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "urgent_mission": {
+   "parts": [
+    {
+     "en": "Recall one of\nyour Agents.",
+     "timing": "plot"
+    }
+   ]
+  },
+  "vicious_talents": {
+   "parts": [
+    {
+     "en": "{sword} {sword}\n{genetic_marker_1} : +{sword} {sword}\n{genetic_marker_2} : +{sword} {sword}",
+     "ko": "{sword} {sword}\n{genetic_marker_1} : +{sword} {sword}\n{genetic_marker_2} : +{sword} {sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "war_chest": {
+   "parts": [
+    {
+     "en": "{solari:2} {arrow_right} {sword} {sword} {sword} {sword}",
+     "ko": "{solari:2} {arrow_right} {sword} {sword} {sword} {sword}",
+     "timing": "combat"
+    },
+    {
+     "en": "If you have {solari:10} or more:\n{victory_point}",
+     "ko": "당신이 {solari:10} 이상 갖고 있다면:\n{victory_point}",
+     "timing": "endgame"
+    }
+   ]
+  },
+  "water_of_life": {
+   "parts": [
+    {
+     "en": "{water} {spice:1}\n{arrow_down}\n{draw} {draw} {draw}",
+     "ko": "{water} {spice:1}\n{arrow_down}\n{draw} {draw} {draw}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "water_peddlers_union": {
+   "parts": [
+    {
+     "en": "{water}",
+     "ko": "{water}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "weirding_combat": {
+   "parts": [
+    {
+     "en": "{sword}{sword}{sword}\n\n{agent_icon_bene_gesserit} 3 Influence:\n\n+{sword}{sword}",
+     "timing": "combat"
+    }
+   ]
+  },
+  "windfall": {
+   "parts": [
+    {
+     "en": "{solari:2}",
+     "ko": "{solari:2}",
+     "timing": "plot"
+    }
+   ]
+  },
+  "withdrawal_agreement": {
+   "parts": [
+    {
+     "en": "Retreat three of your troops\n{arrow_down}\n{influence_any}",
+     "ko": "당신의 병력 3 후퇴\n{arrow_down}\n{influence_any}",
+     "timing": "combat"
+    }
+   ]
+  }
+ },
+ "leaders": {
+  "archduke_armand_ecaz": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Reveal Turn:</b> If you have at least two Agents on {agent_icon_landsraad}/{agent_icon_city}/{agent_icon_spice_trade} board spaces, you may trash one of your cards <i>in play</i>."
+     },
+     "title": {
+      "en": "Coordination"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Ecaz"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "You may acquire a card that costs {persuasion:3} or less."
+    },
+    "title": {
+     "en": "Conscript"
+    }
+   }
+  },
+  "baron_vladimir_harkonnen": {
+   "abilities": [
+    {
+     "text": {
+      "en": "At start of game, secretly choose 2 Factions. When you deploy 4+ troops to the Conflict in a turn, reveal your choices and gain one Influence with each."
+     },
+     "title": {
+      "en": "Masterstroke"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Harkonnen"
+   },
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{solari:1} {arrow_right} {intrigue}"
+    },
+    "title": {
+     "en": "Scheme"
+    }
+   }
+  },
+  "chani": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Whenever you retreat or lose any number of troops from the Conflict, advance your Tactics token that many spaces, earning rewards as you reach them.\nReset the token after reaching the end of the track.",
+      "ko": "당신이 교전 칸에서 병력을 후퇴시키거나 잃을 때마다, 전술 토큰을 그만큼 오른쪽으로 옮기고, 도달한 칸의 보상을 얻음. 트랙 끝에 도달하고 나면 토큰을 초기화함."
+     },
+     "title": {
+      "en": "Tactician",
+      "ko": "전술가"
+     }
+    }
+   ],
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "Retreat any number of your troops.\n—OR—\n{agent_icon_fremen} 2 Influence: {water} {arrow_right} {draw}{draw}",
+     "ko": "당신의 병력을 원하는 만큼 후퇴.\n—또는—\n{agent_icon_fremen} 영향력 2: {water} {arrow_right} {draw}{draw}"
+    },
+    "title": {
+     "en": "Fedaykin Maneuver",
+     "ko": "페다이킨의 책략"
+    }
+   },
+   "track": {
+    "cells": [
+     {
+      "en": "6P",
+      "space": 0
+     },
+     {
+      "en": "",
+      "space": 1
+     },
+     {
+      "en": "1-4P",
+      "space": 2
+     },
+     {
+      "en": "",
+      "space": 3
+     },
+     {
+      "en": "",
+      "space": 4
+     },
+     {
+      "en": "{spice:1}",
+      "space": 5
+     },
+     {
+      "en": "",
+      "space": 6
+     },
+     {
+      "en": "",
+      "space": 7
+     },
+     {
+      "en": "",
+      "space": 8
+     },
+     {
+      "en": "",
+      "space": 9
+     },
+     {
+      "en": "{water}",
+      "space": 10
+     }
+    ],
+    "kind": "chani"
+   }
+  },
+  "count_hasimir_fenring": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Whenever you trash a card: {solari:1}",
+      "ko": "당신이 카드 1장을 폐기할 때마다: {solari:1}"
+     },
+     "title": {
+      "en": "Assassin",
+      "ko": "암살자"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Fenring",
+    "ko": "펜링 가문"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "You may trash a card in your play area.\n—OR—\n{spy_deep_cover} on {agent_icon_emperor}",
+     "ko": "당신의 플레이 영역에 놓인 카드 1장을 폐기해도 됨.\n—또는—\n{agent_icon_emperor} 에 {spy_deep_cover}"
+    },
+    "title": {
+     "en": "Corrino Liaison",
+     "ko": "코리노와의 접점"
+    }
+   }
+  },
+  "count_ilban_richese": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Whenever you pay {solari} for the cost of a board space: {draw}"
+     },
+     "title": {
+      "en": "Ruthless Negotiator"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Richese"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{solari:1}"
+    },
+    "title": {
+     "en": "Manufacturing"
+    }
+   }
+  },
+  "countess_ariana_thorvald": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Whenever you harvest spice, gain {spice:1} less and draw a card."
+     },
+     "title": {
+      "en": "Spice Addict"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Thorvald"
+   },
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{water}"
+    },
+    "title": {
+     "en": "Hidden Reservoir"
+    }
+   }
+  },
+  "duke_leto_atreides": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Sending an Agent to a {agent_icon_landsraad} board space costs you {solari:1} less."
+     },
+     "title": {
+      "en": "Landsraad Popularity"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "{spice:1} {arrow_right} Gain one Influence with a Faction where an opponent has more Influence than you."
+    },
+    "title": {
+     "en": "Prudent Diplomacy"
+    }
+   }
+  },
+  "duncan_idaho": {
+   "abilities": [
+    {
+     "text": {
+      "en": "The Swordmaster board space costs you {solari:2} less.",
+      "ko": "당신이 지불하는 소드마스터 게임판 장소 비용이 {solari:2} 감소."
+     },
+     "title": {
+      "en": "Ginaz Swordmaster",
+      "ko": "기나즈의 소드마스터"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides",
+    "ko": "아트레이드 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated. If you have your Swordmaster*, it has 3 strength instead.\n<i>(*Bonus token in a six-player game)</i>",
+     "ko": "이번 차례에 보낸 에이전트를 가져와서 전투력이 2이고 후퇴시킬 수 없는 부대로서 교전 칸에 배치할 수 있음. 당신이 소드마스터*를 보유하고 있다면, 대신 그 에이전트의 전투력이 3이 됨. (*6인 게임이라면 보너스 토큰)"
+    },
+    "title": {
+     "en": "Into the Fray",
+     "ko": "전투 속으로"
+    }
+   }
+  },
+  "earl_memnon_thorvald": {
+   "abilities": [
+    {
+     "text": {
+      "en": "When you take a High Council seat: {influence_any}"
+     },
+     "title": {
+      "en": "Connections"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Thorvald"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{spice:1}"
+    },
+    "title": {
+     "en": "Spice Hoard"
+    }
+   }
+  },
+  "esmar_tuek": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Whenever you* send an Agent to Tuek's Sietch: {solari:1}\nWhenever an opponent sends an Agent there: {intrigue}\n<i>(*or a teammate, in a six-player game)</i>",
+      "ko": "당신*이 튜엑의 시치에 에이전트를 보낼 때마다: {solari:1}\n다른 플레이어가 튜엑의 시치에 에이전트를 보낼 때마다: {intrigue} (*6인 게임이라면 팀원도 포함)"
+     },
+     "title": {
+      "en": "Tuek's Sietch",
+      "ko": "튜엑의 시치"
+     }
+    }
+   ],
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "Place 1 bonus spice on Tuek's Sietch.\n—OR—\nTake 1 bonus spice from a Maker board space.",
+     "ko": "튜엑의 시치에 보너스 스파이스 1을 놓음.\n—또는—\n메이커 게임판 장소에서 보너스 스파이스 1을 가져감."
+    },
+    "title": {
+     "en": "Smuggle Spice",
+     "ko": "스파이스 밀수"
+    }
+   }
+  },
+  "feyd_rautha_harkonnen": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Reveal Turn:</b> {recall_spy} {arrow_right} {sword}{sword}",
+      "ko": "<b>공개 차례:</b> {recall_spy} {arrow_right} {sword}{sword}"
+     },
+     "title": {
+      "en": "Devious Strength",
+      "ko": "교활한 힘"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Harkonnen",
+    "ko": "하코넨 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "Move your Feyd token one space to the right on your Training track, earning the reward on the new space.",
+     "ko": "훈련 트랙에 놓인 페이드 토큰을 오른쪽으로 1칸 옮기고, 도착한 칸의 보상을 얻음."
+    },
+    "title": {
+     "en": "Personal Training",
+     "ko": "개인 훈련"
+    }
+   },
+   "track": {
+    "cells": [
+     {
+      "en": "",
+      "space": "start"
+     },
+     {
+      "en": "{solari:1} {arrow_right} {trash}",
+      "space": "paid_trash"
+     },
+     {
+      "en": "{spy}",
+      "space": "first_spy"
+     },
+     {
+      "en": "{trash}",
+      "space": "mid_trash"
+     },
+     {
+      "en": "{trash}",
+      "space": "late_trash"
+     },
+     {
+      "en": "{spy}",
+      "space": "second_spy"
+     },
+     {
+      "en": "{spice:2}",
+      "space": "double_spice"
+     },
+     {
+      "en": "{troop}{spy}",
+      "space": "final"
+     }
+    ],
+    "kind": "feyd"
+   }
+  },
+  "gaius_helen_mohiam": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Each card you play has the {agent_icon_spy} icon.\nWhenever you could recall a Spy to Gather Intelligence, you must.",
+      "ko": "당신이 플레이하는 모든 카드는 {agent_icon_spy} 아이콘 보유. 당신이 정보 수집을 위해 스파이를 소환할 수 있을 때마다, 반드시 그래야만 함."
+     },
+     "title": {
+      "en": "Clandestine",
+      "ko": "은밀함"
+     }
+    }
+   ],
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{spy} on {agent_icon_landsraad} —OR— {spice:1} {arrow_right} {spy}",
+     "ko": "{agent_icon_landsraad} 에 {spy} —또는— {spice:1} {arrow_right} {spy}"
+    },
+    "title": {
+     "en": "Listeners",
+     "ko": "듣는 자들"
+    }
+   }
+  },
+  "glossu_rabban": {
+   "abilities": [
+    {
+     "text": {
+      "en": "You start the game with additional resources: {spice:1} {solari:1}"
+     },
+     "title": {
+      "en": "Arrakis Fiefdom"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Harkonnen"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{troop} —OR— {troop} {troop} if you have at least one Faction Alliance."
+    },
+    "title": {
+     "en": "Brutality"
+    }
+   }
+  },
+  "gurney_halleck": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Reveal Turn:</b> If you have 6* or more strength in the Conflict: {persuasion:1}\n(*10 in a six-player game)",
+      "ko": "<b>공개 차례:</b> 전투 트랙에서 당신의 전투력 총합이 6* 이상이라면: {persuasion:1} (*6인 게임에서는 10)"
+     },
+     "title": {
+      "en": "Always Smiling",
+      "ko": "항상 웃는 모습"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides",
+    "ko": "아트레이드 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{troop}",
+     "ko": "{troop}"
+    },
+    "title": {
+     "en": "Warmaster",
+     "ko": "전쟁 참모"
+    }
+   }
+  },
+  "helena_richese": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Enemy Agents don't block your Agents at {agent_icon_landsraad} or {agent_icon_city} board spaces."
+     },
+     "title": {
+      "en": "Eyes Everywhere"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Richese"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "Remove and replace a card in the Imperium Row. During your Reveal turn this round, you may acquire the removed card for {persuasion:1} less."
+    },
+    "title": {
+     "en": "Manipulate"
+    }
+   }
+  },
+  "ilesa_ecaz": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Round Start:</b> Set aside a card from your hand.\nAt the start of your second turn in a round, reveal that card and return it to your hand. If you use it to send an Agent this turn:\n• if it has exactly one Agent icon, {spice:1}\n• otherwise, {solari:1}"
+     },
+     "title": {
+      "en": "One Step Ahead"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Ecaz"
+   },
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{solari:1} {arrow_right} {foldspace}"
+    },
+    "title": {
+     "en": "Guild Contacts"
+    }
+   }
+  },
+  "kota_odax_of_ix": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Game Start:</b> Peek at the bottom Tech tile of each stack. Place one face down here.\nWhenever you could acquire a Tech tile, you may choose this one. It costs {spice:1} less.",
+      "ko": "<b>게임 시작:</b> 각각의 기술 타일 더미 맨 아래 타일을 혼자만 확인하고, 그중 1개를 여기에 뒷면으로 놓음. 당신이 기술 타일을 획득할 수 있을 때마다, 이 기술 타일을 선택해도 됨. 이 기술 타일의 비용은 {spice:1} 감소."
+     },
+     "title": {
+      "en": "Secret Project",
+      "ko": "비밀 프로젝트"
+     }
+    }
+   ],
+   "mark": "tech",
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{spice:1}\n—OR—\nTrash one of your Tech tiles {arrow_right} {intrigue} {draw}",
+     "ko": "{spice:1}\n—또는—\n당신의 기술 타일 1개 폐기 {arrow_right} {intrigue}{draw}"
+    },
+    "title": {
+     "en": "Reverse Engineering",
+     "ko": "역설계"
+    }
+   }
+  },
+  "lady_amber_metulli": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Reveal Turn:</b> You may retreat one of your troops.",
+      "ko": "<b>공개 차례:</b> 당신의 병력 중 하나를 후퇴 가능."
+     },
+     "title": {
+      "en": "Desert Scouts",
+      "ko": "사막 정찰대"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Metulli",
+    "ko": "메툴리 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{solari:1} —AND—\nIf you have an Alliance: {spice:1}",
+     "ko": "{solari:1} —그리고— 동맹 팩션이 있다면: {spice:1}"
+    },
+    "title": {
+     "en": "Fill Coffers",
+     "ko": "재원 확보"
+    }
+   }
+  },
+  "lady_jessica": {
+   "abilities": [
+    {
+     "text": {
+      "en": "When you send an Agent to a {agent_icon_bene_gesserit} board space, you may return all your memories to your supply, drawing a card for each one. Then flip this Leader over.",
+      "ko": "당신이 에이전트를 {agent_icon_bene_gesserit} 게임판 장소로 보낼 때, 당신은 모든 당신의 기억을 개인 공급처로 보내면서 그렇게 보낸 기억 1당 카드 1장을 뽑을 수 있음. 기억을 개인 공급처로 보냈을 경우, 이 지도자를 뒤집음."
+     },
+     "title": {
+      "en": "Other Memories",
+      "ko": "다른 기억들"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides",
+    "ko": "아트레이드 가문"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "{spice:1} {arrow_right} {intrigue} and move a troop from your supply to the Bene Gesserit area of the board. It is now a memory.",
+     "ko": "{spice:1} {arrow_right} {intrigue} 그리고 당신의 개인 공급처에서 게임판의 베네 게세리트 영역으로 병력 1을 옮김. 이것은 이제 당신의 기억이 됨."
+    },
+    "title": {
+     "en": "Spice Agony",
+     "ko": "스파이스의 고통"
+    }
+   }
+  },
+  "lady_margot_fenring": {
+   "abilities": [
+    {
+     "text": {
+      "en": "When you reach {agent_icon_bene_gesserit} 2 Influence: {spice:2}",
+      "ko": "당신이 {agent_icon_bene_gesserit} 영향력 2에 도달할 때: {spice:2}"
+     },
+     "title": {
+      "en": "Loyalty",
+      "ko": "충성심"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Fenring",
+    "ko": "펜링 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{spy} on {agent_icon_city}",
+     "ko": "{agent_icon_city} 에 {spy}"
+    },
+    "title": {
+     "en": "Arrakis Informant",
+     "ko": "아라키스 정보원"
+    }
+   }
+  },
+  "liet_kynes": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Ignore the Influence requirement of Sietch Tabr.\nYou summon no sandworms. For each one you would, instead: {trash} {spice:1} {intrigue}\n<i>(Even when the Conflict is protected by the Shield Wall.)</i>",
+      "ko": "시치 타브르의 영향력 조건을 무시. 당신은 모래벌레를 소환하지 않음. 모래벌레를 소환하려 할 때마다, 대신: {trash} {spice:1} {intrigue} (교전이 방어벽으로 보호받고 있을 때도 포함.)"
+     },
+     "title": {
+      "en": "Arrakis Planetologist",
+      "ko": "아라키스 행성학자"
+     }
+    }
+   ],
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "If you sent an Agent this turn to...\n{agent_icon_landsraad}: {agent_icon_emperor} 2 Influence: {water}\n{agent_icon_city}: {solari:1} {agent_icon_spice_trade}: {spice:1}",
+     "ko": "이번 차례에 에이전트를 보낸 장소에 따라 아래를 적용.\n{agent_icon_landsraad}: {agent_icon_emperor} 영향력 2: {water}\n{agent_icon_city}: {solari:1}\n{agent_icon_spice_trade}: {spice:1}"
+    },
+    "title": {
+     "en": "Judge of the Change",
+     "ko": "변화의 판관"
+    }
+   }
+  },
+  "muad_dib": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Reveal Turn:</b> If you have one or more sandworms in the Conflict: {intrigue}",
+      "ko": "<b>공개 차례:</b> 교전 칸에 당신의 모래벌레가 하나 이상 있다면: {intrigue}"
+     },
+     "title": {
+      "en": "Unpredictable Foe",
+      "ko": "예측 불가능한 적"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides",
+    "ko": "아트레이드 가문"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{draw}",
+     "ko": "{draw}"
+    },
+    "title": {
+     "en": "Lead the Way",
+     "ko": "솔선수범"
+    }
+   }
+  },
+  "paul_atreides": {
+   "abilities": [
+    {
+     "text": {
+      "en": "You may look at the top card of your deck at any time."
+     },
+     "title": {
+      "en": "Prescience"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{draw}"
+    },
+    "title": {
+     "en": "Discipline"
+    }
+   }
+  },
+  "piter_de_vries": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Game Start:</b> Shuffle the Twisted Intrigue deck and place it face down near you.\n<b>Round Start:</b> Draw a Twisted Intrigue card.\n<i>(These count as Intrigue cards and can be stolen.)</i>",
+      "ko": "<b>게임 시작:</b> 뒤틀린 책략 카드를 잘 섞어서 덱을 만든 뒤, 당신의 근처에 뒷면이 보이도록 놓음. <b>라운드 시작:</b> 뒤틀린 책략 카드 1장을 뽑음. (뒤틀린 책략 카드는 책략 카드로 간주되며, 훔쳐질 수 있음.)"
+     },
+     "title": {
+      "en": "Twisted Genius",
+      "ko": "뒤틀린 재능"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Harkonnen",
+    "ko": "하코넨 가문"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "{troop}\nYou can't deploy this troop to the Conflict this turn.",
+     "ko": "{troop} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음."
+    },
+    "title": {
+     "en": "Harkonnen Advisor",
+     "ko": "하코넨의 조언자"
+    }
+   }
+  },
+  "prince_rhombur_vernius": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Your dreadnoughts have 4 strength (instead of 3)."
+     },
+     "title": {
+      "en": "Heavy Lasgun Cannons"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Vernius"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{acquire_tech} —OR— {tech_negotiation}"
+    },
+    "title": {
+     "en": "Ixian Technology"
+    }
+   }
+  },
+  "princess_irulan": {
+   "abilities": [
+    {
+     "text": {
+      "en": "When you reach {agent_icon_emperor} 2 Influence: {intrigue}",
+      "ko": "당신이 {agent_icon_emperor} 영향력 2에 도달할 때: {intrigue}"
+     },
+     "title": {
+      "en": "Imperial Birthright",
+      "ko": "타고난 권리"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Corrino",
+    "ko": "코리노 가문"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "You may choose: Acquire a card that costs {persuasion:1} to your hand —OR— Trash a card from your hand. If it has a cost of {persuasion:1} or more: {spice:2}",
+     "ko": "선택 가능: 비용이 {persuasion:1} 인 카드 1장 획득해서 당신의 핸드로 가져옴 —또는— 당신의 핸드에서 카드 1장 폐기. 그 카드의 비용이 {persuasion:1} 이상이라면: {spice:2}"
+    },
+    "title": {
+     "en": "Chronicler's Insight",
+     "ko": "기록자의 통찰"
+    }
+   }
+  },
+  "princess_yuna_moritani": {
+   "abilities": [
+    {
+     "text": {
+      "en": "You start the game with no {water}.\nWhenever you gain {solari} on your turn, increase the amount gained by 1."
+     },
+     "title": {
+      "en": "Smuggling Operation"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Moritani"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "{solari:7} {arrow_right} {influence_any}{troop}{spice:1}"
+    },
+    "title": {
+     "en": "Final Delivery"
+    }
+   }
+  },
+  "reverend_mother_jessica": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Once during each turn, when you send an Agent to a {agent_icon_bene_gesserit} or {agent_icon_fremen} board space, you may spend {water} to repeat the effects printed on that space."
+     },
+     "title": {
+      "en": "Reverend Mother"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Atreides"
+   },
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "{spice:1} {arrow_right} {water}"
+    },
+    "title": {
+     "en": "Water of Life"
+    }
+   }
+  },
+  "shaddam_corrino_iv": {
+   "abilities": [
+    {
+     "text": {
+      "en": "Set aside both Sardaukar contracts. Only you can acquire them during the game.",
+      "ko": "사다우카 계약 둘 모두를 따로 치워둠. 이 계약들은 게임 진행 중 당신만 획득할 수 있음."
+     },
+     "title": {
+      "en": "Sardaukar Commander",
+      "ko": "사다우카를 거느린 자"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Corrino",
+    "ko": "코리노 가문"
+   },
+   "mark": "choam",
+   "pips": 2,
+   "signet": {
+    "text": {
+     "en": "Units can't be deployed to the Conflict this turn.\n{solari:1} {troop} —OR— {solari:3} {arrow_right} {influence_any}",
+     "ko": "이번 차례에는 교전 칸에 부대가 배치될 수 없음. {solari:1} {troop} —또는— {solari:3} {arrow_right} {influence_any}"
+    },
+    "title": {
+     "en": "Emperor of the Known Universe",
+     "ko": "알려진 우주의 황제"
+    }
+   }
+  },
+  "staban_tuek": {
+   "abilities": [
+    {
+     "text": {
+      "en": "You start the game without Diplomacy in your deck.",
+      "ko": "당신의 카드덱에서 외교를 제외한 채로 게임을 시작합니다."
+     },
+     "title": {
+      "en": "Limited Allies",
+      "ko": "한정된 조력자"
+     },
+     "tone": "red"
+    },
+    {
+     "text": {
+      "en": "Whenever another player sends an Agent to a Maker board space you are spying on: {spice:1}",
+      "ko": "당신이 정탐하고 있는 메이커 게임판 장소로 다른 플레이어가 에이전트를 보낼 때마다: {spice:1}"
+     },
+     "title": {
+      "en": "Smuggle Spice",
+      "ko": "스파이스 밀수"
+     }
+    }
+   ],
+   "pips": 3,
+   "signet": {
+    "text": {
+     "en": "{spy}\nIf placed on...\n{agent_icon_landsraad}: {spice:1} {arrow_right} {solari:3}\n{agent_icon_emperor}/{agent_icon_spacing_guild}/{agent_icon_bene_gesserit}/{agent_icon_fremen}: {solari:2} {arrow_right} {intrigue}",
+     "ko": "{spy}\n놓은 곳에 따라...\n{agent_icon_landsraad}: {spice:1} {arrow_right} {solari:3}\n{agent_icon_emperor} / {agent_icon_spacing_guild} / {agent_icon_bene_gesserit} / {agent_icon_fremen}: {solari:2} {arrow_right} {intrigue}"
+    },
+    "title": {
+     "en": "Unseen Network",
+     "ko": "보이지 않는 망"
+    }
+   }
+  },
+  "steersman_y_rkoon": {
+   "abilities": [
+    {
+     "text": {
+      "en": "You start the game with no {water} and without Signet Ring in your deck.",
+      "ko": "{water}을 보유하지 않은 채로, 그리고 당신의 카드덱에서 인장 반지를 제외한 채로 게임을 시작합니다."
+     },
+     "title": {
+      "en": "Strange Form",
+      "ko": "기이한 모습"
+     },
+     "tone": "red"
+    },
+    {
+     "text": {
+      "en": "Whenever you gain {spice:3} or more in a single turn: {draw}",
+      "ko": "당신이 한 번의 차례 동안 {spice:3} 이상 얻을 때마다: {draw}"
+     },
+     "title": {
+      "en": "Hungry for Spice",
+      "ko": "스파이스를 갈구하다"
+     }
+    }
+   ],
+   "pips": 3,
+   "signet": {
+    "kind": "navigation",
+    "text": {
+     "en": "<b>Game Start:</b> Shuffle the Navigation cards and draw a hand of five. Choose four to place face down above, in order. Return all others to the box.\nWhenever you reach 2 Influence with a Faction, play the next Navigation card above (starting from the left).",
+     "ko": "<b>게임 시작:</b> 운항 카드를 잘 섞고 5장을 뽑음. 그중 4장을 선택해 이 지도자 위쪽에 원하는 순서로 뒷면이 보이도록 놓고, 나머지는 게임 상자에 다시 넣음. 당신이 어떤 팩션에서 영향력 2에 도달할 때마다, 위쪽에서 아직 플레이하지 않은 가장 왼쪽 운항 카드를 플레이함."
+    },
+    "title": {
+     "en": "Plot Course",
+     "ko": "항로 결정"
+    }
+   },
+   "slots": 4
+  },
+  "tessia_vernius": {
+   "abilities": [
+    {
+     "text": {
+      "en": "<b>Game Start:</b> Put a Snooper token at 2 Influence on each Influence track.\nWhenever you reach a Snooper token, move it to the topmost uncovered space above and take that reward."
+     },
+     "title": {
+      "en": "Careful Observation"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Vernius"
+   },
+   "pips": 4,
+   "signet": {
+    "text": {
+     "en": "{influence_lose} {arrow_right} Gain one Influence with a Faction where you have a Snooper token."
+    },
+    "title": {
+     "en": "Duplicity"
+    }
+   },
+   "track": {
+    "cells": [
+     {
+      "en": "{discard} {arrow_right} {spice:1}"
+     },
+     {
+      "en": "Gain the bonus from this token’s Influence track."
+     },
+     {
+      "en": "Gain one Influence on this token’s Influence track."
+     },
+     {
+      "en": "Gain the bonus from this token’s Influence track and one Influence on that track."
+     }
+    ],
+    "kind": "snooper"
+   }
+  },
+  "viscount_hundro_moritani": {
+   "abilities": [
+    {
+     "text": {
+      "en": "At the start of the game, look at the top two cards of the Intrigue deck. Keep one and put the other back on top."
+     },
+     "title": {
+      "en": "Intelligence"
+     }
+    }
+   ],
+   "house": {
+    "en": "House Moritani"
+   },
+   "pips": 1,
+   "signet": {
+    "text": {
+     "en": "{spice:1} {arrow_right} {freighter}"
+    },
+    "title": {
+     "en": "Couriers"
+    }
+   }
+  }
+ },
+ "objectives": {
+  "objective_crysknife_1": {
+   "kind": "objective",
+   "text": {
+    "en": "This counts as a Conflict card you've already won.",
+    "ko": "이 카드를 당신이 이미 가져온 교전 카드로 간주함."
+   }
+  },
+  "objective_crysknife_2": {
+   "kind": "objective",
+   "players": "4-6P",
+   "text": {
+    "en": "This counts as a Conflict card you've already won.",
+    "ko": "이 카드를 당신이 이미 가져온 교전 카드로 간주함."
+   }
+  },
+  "objective_desert_mouse": {
+   "first_player": true,
+   "kind": "objective",
+   "text": {
+    "en": "This counts as a Conflict card you've already won.",
+    "ko": "이 카드를 당신이 이미 가져온 교전 카드로 간주함."
+   }
+  },
+  "objective_desert_mouse_4_6p": {
+   "kind": "objective",
+   "players": "4-6P",
+   "text": {
+    "en": "This counts as a Conflict card you've already won.",
+    "ko": "이 카드를 당신이 이미 가져온 교전 카드로 간주함."
+   }
+  },
+  "objective_ornithopter_1_3p": {
+   "kind": "objective",
+   "players": "1-3P",
+   "text": {
+    "en": "This counts as a Conflict card you've already won.",
+    "ko": "이 카드를 당신이 이미 가져온 교전 카드로 간주함."
+   }
+  }
+ },
+ "skills": {
+  "canny": {
+   "body": {
+    "en": "If you have an\nAgent on a {agent_icon_landsraad}\nboard space:\n{sword}{sword}",
+    "ko": "{agent_icon_landsraad} 게임판 장소에\n당신의 에이전트가\n놓여 있다면:\n{sword}{sword}"
+   },
+   "kind": "skill"
+  },
+  "charismatic": {
+   "body": {
+    "en": "Reveal Turn:\n{persuasion:1}",
+    "ko": "공개 차례:\n{persuasion:1}"
+   },
+   "kind": "skill"
+  },
+  "desperate": {
+   "body": {
+    "en": "Reveal Turn:\nTrash this\n{arrow_down}\n{sword}{sword}{sword}",
+    "ko": "공개 차례:\n이 토큰 폐기\n{arrow_down}\n{sword}{sword}{sword}"
+   },
+   "kind": "skill"
+  },
+  "driven": {
+   "body": {
+    "en": "Reveal Turn:\n{spice:1}",
+    "ko": "공개 차례:\n{spice:1}"
+   },
+   "kind": "skill"
+  },
+  "fierce": {
+   "body": {
+    "en": "{sword}\nIf any opponent\nhas a sandworm in\nthe Conflict:\n+{sword}",
+    "ko": "{sword}\n아무 다른 플레이어가\n교전 칸에 모래벌레를\n놓은 상태라면:\n+{sword}"
+   },
+   "kind": "skill"
+  },
+  "hardy": {
+   "body": {
+    "en": "Reveal Turn:\n{troop}",
+    "ko": "공개 차례:\n{troop}"
+   },
+   "kind": "skill"
+  },
+  "loyal": {
+   "body": {
+    "en": "{agent_icon_emperor} 3 Influence:\n{sword}{sword}",
+    "ko": "{agent_icon_emperor} 영향력 3:\n{sword}{sword}"
+   },
+   "kind": "skill"
+  }
+ },
+ "tech": {
+  "advanced_data_analysis": {
+   "body": {
+    "en": "To acquire this,\nyou must trash one of your\nSpies from the board.\n<i>(Return it to the box.)</i>\n\n{flip} {arrow_right} {intrigue}",
+    "ko": "이 타일을 획득하려면, 게임판에서\n당신의 스파이 하나를 폐기해야 함.\n(게임 상자에 다시 넣음.)\n\n{flip} {arrow_right} {intrigue}"
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   },
+   "tone": "bloodlines"
+  },
+  "artillery": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n+{sword} for each revealed card\nthat provides 1 or more\n{sword} this turn."
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "chaumurky": {
+   "body": {
+    "en": "<b>Endgame:</b>\nYou win tiebreakers."
+   },
+   "strip": {
+    "en": "{intrigue}\n{intrigue}"
+   }
+  },
+  "choam_transports": {
+   "body": {
+    "en": "When you complete\na contract: {draw}\n\n<b>Endgame:</b>\nWorth {victory_point} if you have\ncompleted four or\nmore contracts.",
+    "ko": "당신이 계약을 완수할 때: {draw}\n\n<b>종료 단계:</b>\n당신이 계약을 넷 이상\n완수했다면 {victory_point} 획득."
+   },
+   "strip": {
+    "en": "{contract}",
+    "ko": "{contract}"
+   },
+   "tone": "bloodlines"
+  },
+  "delivery_bay": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n\nCommand\n({persuasion:6}+): {solari:2}",
+    "ko": "<b>공개 차례:</b>\n\n통솔\n({persuasion:6}+): {solari:2}"
+   },
+   "strip": {
+    "en": "{draw}",
+    "ko": "{draw}"
+   },
+   "tone": "bloodlines"
+  },
+  "detonation_devices": {
+   "body": {
+    "en": "When you win a Conflict\nusing a dreadnought, you\nmay return a dreadnought\nto your supply to gain {victory_point}\ninstead of taking control\nof a board space with it."
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "disposal_facility": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\nIf you have {persuasion:6} or more,\nyou may trash one of\nyour cards <i>in play</i>."
+   },
+   "strip": {
+    "en": "{trash}"
+   }
+  },
+  "flagship": {
+   "body": {
+    "en": "{flip} {solari:4}\n{arrow_down}\n{troop} {troop} {troop}",
+    "ko": "{flip} {solari:4}\n{arrow_down}\n{troop} {troop} {troop}"
+   },
+   "strip": {
+    "en": "{victory_point}",
+    "ko": "{victory_point}"
+   }
+  },
+  "forbidden_weapons": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\nYou <i>must</i> choose:\n{sword}{sword}{sword} {influence_lose}\n—OR—\nLose all your spice\nand trash this.",
+    "ko": "<b>공개 차례:</b>\n다음 중 하나 반드시 선택:\n{sword}{sword}{sword} {influence_lose}\n—또는—\n보유한 스파이스를\n모두 잃고 이 타일 폐기."
+   },
+   "strip": {
+    "en": "{shield_wall}\n{troop}",
+    "ko": "{shield_wall}\n{troop}"
+   },
+   "tone": "bloodlines"
+  },
+  "gene_locked_vault": {
+   "body": {
+    "en": "Your Intrigue cards\ncan't be stolen unless\nyou have five or more.",
+    "ko": "당신이 책략 카드를 5장 이상 갖고\n있지 않다면, 당신의 책략 카드는\n훔쳐질 수 없음."
+   },
+   "strip": {
+    "en": "{intrigue}\n–OR–\n{draw}",
+    "ko": "{intrigue}\n—또는—\n{draw}"
+   },
+   "tone": "bloodlines"
+  },
+  "glowglobes": {
+   "body": {
+    "en": "You may look at\nthe top card of your deck\nat any time.",
+    "ko": "언제든지 당신의 카드덱 맨 위\n카드 1장 확인 가능."
+   },
+   "strip": {
+    "en": "{influence_any}",
+    "ko": "{influence_any}"
+   },
+   "tone": "bloodlines"
+  },
+  "holoprojectors": {
+   "body": {
+    "en": "{flip} {discard} {arrow_right} {draw}",
+    "ko": "{flip} {discard} {arrow_right} {draw}"
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   }
+  },
+  "holtzman_engine": {
+   "body": {
+    "en": "<b>Round Start:</b>\n{draw}\n<b>Endgame:</b>\nWorth {victory_point} if you\nhave at least two\nThe Spice Must Flow."
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "invasion_ships": {
+   "body": {
+    "en": "{flip} {discard}\n{arrow_down}\nEnemy Agents don't block your Agent this turn."
+   },
+   "strip": {
+    "en": "{troop}\n{troop}\n{troop}\n{troop}"
+   }
+  },
+  "memocorders": {
+   "body": {
+    "en": "<b>Endgame:</b>\n3 Influence (or more) on\n<i>all four</i> Influence tracks:\n{victory_point}"
+   },
+   "strip": {
+    "en": "{influence_any}"
+   }
+  },
+  "minimic_film": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n{persuasion:1}"
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "navigation_chamber": {
+   "body": {
+    "en": "Board spaces cost you\n{spice:1} or {solari:1} less.",
+    "ko": "당신이 지불하는 게임판 장소의\n비용이 {spice:1} 또는 {solari:1} 만큼 감소."
+   },
+   "strip": {
+    "en": "{influence_any}",
+    "ko": "{influence_any}"
+   },
+   "tone": "bloodlines"
+  },
+  "ornithopter_fleet": {
+   "body": {
+    "en": "All of your\nbattle icons are {battle_ornithopter}.",
+    "ko": "당신이 보유한 모든 배틀\n아이콘이 {battle_ornithopter} 가 됨."
+   },
+   "strip": {
+    "en": "{troop}\n{troop}",
+    "ko": "{troop}\n{troop}"
+   },
+   "tone": "bloodlines"
+  },
+  "panopticon": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n{spy}{troop}\n\n<b>Endgame:</b>\nGain 1 Influence with each\nFaction where you have\n1 or less Influence.",
+    "ko": "<b>공개 차례:</b>\n{spy}{troop}\n\n<b>종료 단계:</b>\n당신의 영향력이 1 이하인 각\n팩션에서 영향력을 1씩 얻음."
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   },
+   "tone": "bloodlines"
+  },
+  "planetary_array": {
+   "body": {
+    "en": "When you win a Conflict:\n{draw}",
+    "ko": "당신이 교전에서 승리할 때:\n{draw}"
+   },
+   "strip": {
+    "en": "{trash}",
+    "ko": "{trash}"
+   },
+   "tone": "bloodlines"
+  },
+  "plasteel_blades": {
+   "body": {
+    "en": "Whenever you recruit\na Sardaukar Commander:\n\nTrash this {arrow_right} Gain an\nadditional Sardaukar\nCommander Skill.",
+    "ko": "당신이 사다우카 지휘관을\n소집할 때마다:\n\n이 타일 폐기 {arrow_right} 사다우카\n지휘관 기술 토큰 1개 추가 획득."
+   },
+   "strip": {
+    "en": "{solari:4}",
+    "ko": "{solari:4}"
+   },
+   "tone": "bloodlines"
+  },
+  "rapid_dropships": {
+   "body": {
+    "en": "<b>Agent Turn:</b>\n\n{flip} {arrow_right} {conflict}",
+    "ko": "<b>에이전트 차례:</b>\n\n{flip} {arrow_right} {conflict}"
+   },
+   "strip": {
+    "en": "{troop}\n{troop}",
+    "ko": "{troop}\n{troop}"
+   },
+   "tone": "bloodlines"
+  },
+  "restricted_ordnance": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\nIf you have a seat\non the High Council:\n{sword}{sword}{sword}{sword}"
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "sardaukar_high_command": {
+   "body": {
+    "en": "Recruiting a Sardaukar\nCommander (including\nwhen you acquire one)\ncosts you {solari:1} less.",
+    "ko": "획득할 때를 포함해서, 당신이\n사다우카 지휘관의 소집에\n지불하는 비용이 {solari:1} 감소."
+   },
+   "strip": {
+    "en": "{victory_point}",
+    "ko": "{victory_point}"
+   },
+   "tone": "bloodlines"
+  },
+  "self_destroying_messages": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n{persuasion:1}",
+    "ko": "<b>공개 차례:</b>\n{persuasion:1}"
+   },
+   "strip": {
+    "en": "{intrigue}\n{intrigue}",
+    "ko": "{intrigue}\n{intrigue}"
+   },
+   "tone": "bloodlines"
+  },
+  "servo_receivers": {
+   "body": {
+    "en": "Your <b>Signet Ring</b>\nhas the following icons:\n{agent_icon_emperor} {agent_icon_spacing_guild}\n{agent_icon_bene_gesserit} {agent_icon_fremen}",
+    "ko": "당신의 인장 반지는\n다음 아이콘을 보유:\n{agent_icon_emperor} {agent_icon_spacing_guild}\n{agent_icon_bene_gesserit} {agent_icon_fremen}"
+   },
+   "strip": {
+    "en": "{signet_ring}",
+    "ko": "{signet_ring}"
+   },
+   "tone": "bloodlines"
+  },
+  "shuttle_fleet": {
+   "body": {
+    "en": "<b>Round Start:</b>\n\n{solari:2}"
+   },
+   "strip": {
+    "en": "Choose\ntwo:\n{influence_emperor}\n{influence_spacing_guild}\n{influence_bene_gesserit}\n{influence_fremen}"
+   }
+  },
+  "sonic_snoopers": {
+   "body": {
+    "en": "Trash this {arrow_right} Put any\nnumber of your Intrigue\ncards on the bottom\nof the Intrigue deck,\nthen draw that many\nIntrigue cards."
+   },
+   "strip": {
+    "en": "{intrigue}"
+   }
+  },
+  "spaceport": {
+   "body": {
+    "en": "You may put cards\nyou acquire on top\nof your deck."
+   },
+   "strip": {
+    "en": "{draw}\n{draw}"
+   }
+  },
+  "spy_drones": {
+   "body": {
+    "en": "{flip}\n{arrow_down}\n{solari:1} —AND—\nIf you recalled\na Spy this turn: {trash}",
+    "ko": "{flip}\n{arrow_down}\n{solari:1} —그리고—\n이번 차례에 스파이를\n소환했다면: {trash}"
+   },
+   "strip": {
+    "en": "{spy_deep_cover}\n{spy_deep_cover}",
+    "ko": "{spy_deep_cover}\n{spy_deep_cover}"
+   },
+   "tone": "bloodlines"
+  },
+  "spy_satellites": {
+   "body": {
+    "en": "{spice:3} Trash this {arrow_right} {victory_point}\n<b>Endgame:</b>\nWorth {victory_point} for each\nFaction where you have\n1 or less Influence."
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "suspensor_suits": {
+   "body": {
+    "en": "For each Intrigue card\nyou draw or steal\nduring your turn:\n{troop}\nDeploy it to the Conflict.",
+    "ko": "당신의 차례 동안 뽑거나\n훔치는 책략 카드 1장당:\n{troop}\n이 병력을 교전 칸에 배치."
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   },
+   "tone": "bloodlines"
+  },
+  "training_depot": {
+   "body": {
+    "en": "<b>Reveal Turn:</b>\n\nCommand\n({persuasion:6}+): {sword}{sword}",
+    "ko": "<b>공개 차례:</b>\n\n통솔\n({persuasion:6}+): {sword}{sword}"
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   },
+   "tone": "bloodlines"
+  },
+  "training_drones": {
+   "body": {
+    "en": "{flip} {arrow_right} {troop}",
+    "ko": "{flip} {arrow_right} {troop}"
+   },
+   "strip": {
+    "en": "",
+    "ko": ""
+   }
+  },
+  "troop_transports": {
+   "body": {
+    "en": "Whenever you recruit\ntroops from the Shipping\ntrack, recruit an additional\ntroop. You may deploy any\nof them to the Conflict."
+   },
+   "strip": {
+    "en": ""
+   }
+  },
+  "windtraps": {
+   "body": {
+    "en": "When you win a Conflict:\n{water}"
+   },
+   "strip": {
+    "en": "{water}"
+   }
+  }
+ }
+}

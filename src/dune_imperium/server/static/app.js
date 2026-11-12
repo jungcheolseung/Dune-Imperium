@@ -1,0 +1,236 @@
+"use strict";
+
+/* The host's link is `#admin=<key>`: trade the key for an HttpOnly cookie
+   and take it out of the address bar at once. */
+async function adoptAdminLink() {
+  const key = hashParams().get("admin");
+  if (!key) return null;
+  setRoomHash(null);
+  try {
+    await api("/auth/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    return null;
+  } catch (error) {
+    return t("app.admin_link_invalid", { message: error.message });
+  }
+}
+
+/* A server that knows the host's Tailscale account lets the host's own
+   devices in without the link (server/tailnet.py). Anyone else's device is
+   refused, silently: it is a player's, and stays one. */
+async function adoptTailscaleSignIn(server) {
+  if (server.admin || !server.tailscale_sign_in) return server;
+  try {
+    await api("/auth/tailscale", { method: "POST" });
+  } catch (error) {
+    return server;
+  }
+  return api("/whoami");
+}
+
+async function init() {
+  /* First: everything below, errors included, speaks the chosen language. */
+  loadLanguage();
+  loadCollapsedStrips();
+  /* The column widths and the hand's own order (layout.js). */
+  watchColumnSplitters();
+  watchHandOrder();
+  window.addEventListener("resize", positionPlayEffect);
+  window.addEventListener("resize", positionPhaseBanner);
+  el("side").classList.toggle("log-expanded", storageGet(LOG_EXPANDED_KEY) === "1");
+  watchTableLayout();
+  /* Below 600px: the tab bar and the header menu (phone.js). */
+  watchPhoneLayout();
+  /* 700px and wider: the header's panel toggles (layout.js). */
+  watchPanelToggles();
+  state.catalog = await api("/catalog");
+  localizeCatalog(state.catalog);
+  /* #cards or #gallery: the card encyclopedia alone (gallery.js). */
+  if (window.location.hash === "#cards" || window.location.hash === "#gallery") {
+    await openGallery(false);
+    return;
+  }
+  el("open-encyclopedia").addEventListener("click", () => {
+    openGallery(true).catch(() => {});
+  });
+  const adminError = await adoptAdminLink();
+  state.server = await adoptTailscaleSignIn(await api("/whoami"));
+  /* The host of a remote game plays too and must not know the seed. */
+  el("opt-seed-row").hidden = isRemote();
+  /* The server's --first-player (OQ-132): "player1" opens the box checked. */
+  el("opt-first-player-seat-zero").checked = state.server.first_player !== "deal";
+  buildSeatSelects();
+  el("open-help").addEventListener("click", () => openHelp());
+  el("language-toggle").addEventListener("click", () =>
+    setLanguage(TERM_LANGUAGE === "en" ? "ko" : "en"),
+  );
+  el("help").addEventListener("click", (event) => {
+    /* The backdrop closes it; a click inside the panel does not. */
+    if (event.target === el("help")) closeHelp();
+  });
+  el("bt-zoom").addEventListener("click", (event) => {
+    /* the backdrop, not the board itself */
+    if (event.target === el("bt-zoom")) closeBeneTleilaxZoom();
+  });
+  /* A click elsewhere closes the card popover, inside the pile viewer too;
+     the viewer itself only closes by its ×, Escape or its opener. */
+  document.addEventListener("click", (event) => {
+    const pop = el("card-popover");
+    if (!pop.hidden && !pop.contains(event.target)) closePopover();
+  });
+  el("pile-viewer-close").addEventListener("click", () => closePileViewer());
+  watchScoutsStage();
+  window.addEventListener("resize", keepPileViewerInWindow);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (!el("help").hidden) closeHelp();
+      else if (!el("bt-zoom").hidden) closeBeneTleilaxZoom();
+      else if (state.pick) clearPick();
+      else if (!closeResultBoard() && !clearHeldChoice()) {
+        /* The topmost first: a pinned card popover (one from the pile viewer
+           lies above it), then the viewer, with any hover enlargement. */
+        const pinned = popoverPinned && !el("card-popover").hidden;
+        if (pileViewerOpen() && !pinned) {
+          closePopover();
+          closePileViewer();
+        } else {
+          closePopover();
+        }
+      }
+      return;
+    }
+    /* Shortcuts are matched on event.code, the physical key, not event.key.
+       This UI is Korean and the keyboard usually is too: with the Hangul IME
+       on, the `c` key arrives as event.key "ㅊ" and the shortcut silently did
+       nothing. event.code stays "KeyC" whatever the input mode, and event.key
+       is still accepted so a layout that puts c elsewhere keeps working.
+
+       Not while typing a name or a seed, not mid-composition, and not when
+       the key belongs to a browser shortcut. */
+    const target = event.target;
+    const typing =
+      target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+    if (typing || event.isComposing || event.ctrlKey || event.metaKey) return;
+    if (event.altKey) return;
+    const pressed = (code, letter) =>
+      event.code === code || event.key === letter || event.key === letter.toUpperCase();
+    /* `?` opens the help: Shift and the slash key, which with the Hangul IME
+       on still arrives as event.code "Slash" (event.key is "?" either way). */
+    if ((event.code === "Slash" && event.shiftKey) || event.key === "?") {
+      event.preventDefault();
+      openHelp();
+      return;
+    }
+    if (!el("help").hidden) return;
+    /* `c` folds the shared card columns away, so the board can have the room
+       when you are not shopping. */
+    if (pressed("KeyC", "c")) {
+      if (el("game-screen").hidden) return;
+      event.preventDefault();
+      toggleAllStrips();
+    }
+    /* `a` folds the Arrakeen Scouts card over the board away, or brings it
+       back (scouts_stage.js); nothing in a round with no revealed item. */
+    if (pressed("KeyA", "a")) {
+      if (el("game-screen").hidden) return;
+      if (toggleScoutsStage()) event.preventDefault();
+    }
+  });
+  el("setup-form").addEventListener("submit", createGame);
+  /* The screen is in the page before init() has the catalog and /whoami, and
+     the button waits disabled (index.html): pressed earlier, the form
+     submitted itself, the browser reloaded the page and the press was lost
+     (scripts/e2e/server_errors.py [2] on a busy machine, 2026-10-30). */
+  el("create-game").disabled = false;
+  el("opt-bloodlines").addEventListener("change", syncTechOption);
+  syncTechOption();
+  el("opt-immortality").addEventListener("change", syncGoTo11Option);
+  syncGoTo11Option();
+  el("opt-base-game").addEventListener("change", syncBaseGameOption);
+  el("opt-rise-of-ix").addEventListener("change", syncOptionLocks);
+  el("opt-tech").addEventListener("change", syncIxPartsOption);
+  el("opt-scouts").addEventListener("change", syncIxPartsOption);
+  for (const radio of document.querySelectorAll('input[name="opt-ix-parts"]')) {
+    radio.addEventListener("change", syncIxPartsOption);
+  }
+  el("setup-form").addEventListener("change", updateSetupSummary);
+  el("leave-game").addEventListener("click", () => leaveGame());
+  el("open-lobby").addEventListener("click", () => showLobby());
+  el("lobby-enter").addEventListener("click", () => enterTable(state.summary));
+  el("host-panel").addEventListener("toggle", () => {
+    /* The host opened the panel: show what is on disk for this game. */
+    if (el("host-panel").open) loadHostSaves().catch(() => {});
+  });
+  el("landing-resume-button").addEventListener("click", () => {
+    const last = roomId(storageGet("dune.lastGame"));
+    if (last) openGame(last).catch(() => {});
+  });
+  window.addEventListener("hashchange", () => {
+    /* #cards or #gallery typed over an open page: the encyclopedia on top. */
+    if (window.location.hash === "#cards" || window.location.hash === "#gallery") {
+      openGallery(true).catch(() => {});
+      return;
+    }
+    const wanted = roomFromHash();
+    if (wanted && wanted !== state.gameId) openGame(wanted).catch(() => {});
+  });
+  el("save-game").addEventListener("click", () => {
+    saveGame().catch(() => {});
+  });
+  el("ai-pace").addEventListener("change", (event) => {
+    setAiPace(event.target.value).catch(showRefreshError);
+    event.target.blur();
+  });
+  el("review-exit").addEventListener("click", exitReview);
+  el("review-first").addEventListener("click", () => reviewSeek(0));
+  el("review-last").addEventListener("click", () => {
+    if (state.review) reviewSeek(state.review.meta.step_count);
+  });
+  el("review-prev").addEventListener("click", () =>
+    reviewStep(() => reviewGoto(state.review.cursor - 1).catch(() => {}))
+  );
+  el("review-next").addEventListener("click", () =>
+    reviewStep(() => reviewGoto(state.review.cursor + 1).catch(() => {}))
+  );
+  el("review-prev-own").addEventListener("click", () =>
+    reviewStep(() => reviewJumpOwn(-1))
+  );
+  el("review-next-own").addEventListener("click", () =>
+    reviewStep(() => reviewJumpOwn(1))
+  );
+  el("review-slider").addEventListener("change", (event) =>
+    reviewSeek(Number(event.target.value))
+  );
+  el("review-seat").addEventListener("change", (event) => {
+    if (!state.review) return;
+    /* Another seat's eyes on the same position; playback carries on. */
+    const play = playback.playing;
+    stopPlayback();
+    enterReview(Number(event.target.value), {
+      cursor: state.review.cursor,
+      play,
+    }).catch(() => {});
+  });
+  el("review-play").addEventListener("click", () => {
+    if (playback.playing) stopPlayback();
+    else startPlayback(0);
+  });
+  el("review-unit").addEventListener("change", (event) => {
+    playback.unit = event.target.value === "step" ? "step" : "turn";
+  });
+  el("review-interval").addEventListener("change", (event) => {
+    playback.intervalMs = Number(event.target.value) || 1000;
+    if (playback.playing) schedulePlayback(playback.intervalMs);
+  });
+  const room = roomFromHash();
+  if (room) await openGame(room);
+  else await showHome(adminError);
+}
+
+init().catch((error) => {
+  el("setup-error").textContent = t("app.init_failed", { message: error.message });
+  el("setup-error").hidden = false;
+});

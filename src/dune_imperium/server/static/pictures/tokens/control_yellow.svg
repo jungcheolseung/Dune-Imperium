@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="84" height="97" viewBox="0 0 84 97">
+  <!-- Control marker (yellow): a banner with two broad arches over a disc. Drawn by hand for the public build. -->
+  <defs><linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4c242"/><stop offset="1" stop-color="#dba921"/></linearGradient></defs>
+  <polygon points="1.5,1.5 82.5,1.5 82.5,95.5 42,78 1.5,95.5" fill="#0a0a0a"/><polygon points="4,4 80,4 80,91.5 42,74.5 4,91.5" fill="url(#cb)"/><rect x="12" y="8" width="60" height="12" fill="#000" opacity=".18"/><path d="M12,66 A30,30 0 0 1 72,66" fill="none" stroke="#ffdc78" stroke-width="8"/><path d="M23,66 A19,19 0 0 1 61,66" fill="none" stroke="#ffdc78" stroke-width="4.5" opacity=".8"/><circle cx="42" cy="59" r="7.5" fill="#9a6309" stroke="#0a0a0a" stroke-width="1.8"/>
+</svg>

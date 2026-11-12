@@ -1,0 +1,5 @@
+<nav class="breadcrumbs" aria-label="{{ i18n "location" }}">
+  <a href="{{ .Site.Home.RelPermalink }}">{{ i18n "home" }}</a>
+  {{ range .Ancestors.Reverse }}{{ if not .IsHome }}<span aria-hidden="true">/</span><a href="{{ .RelPermalink }}">{{ partial "term-label.html" .LinkTitle }}</a>{{ end }}{{ end }}
+  <span aria-hidden="true">/</span><span aria-current="page">{{ partial "term-label.html" .LinkTitle }}</span>
+</nav>

@@ -1,0 +1,7 @@
+{{- $items := slice -}}
+{{- range site.Pages -}}
+  {{- if and (in (slice "page" "section") .Kind) (ne .Type "search") -}}
+    {{- $items = $items | append (dict "title" .Title "description" .Description "url" .RelPermalink "section" .Section "text" .Plain) -}}
+  {{- end -}}
+{{- end -}}
+{{- $items | jsonify -}}

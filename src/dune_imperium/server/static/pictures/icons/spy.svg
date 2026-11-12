@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="126" height="180" viewBox="0 0 70 100">
+  <!-- Spy: a grey cylinder. Drawn by hand for the public build. -->
+  <defs><linearGradient id="cyl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8e8e8e"/><stop offset="1" stop-color="#dadada"/></linearGradient><linearGradient id="cyltop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fafafa"/><stop offset="1" stop-color="#c4c4c4"/></linearGradient></defs>
+  <path d="M5,18 V82 A30,13.5 0 0 0 65,82 V18 A30,13.5 0 0 0 5,18 Z" fill="#232323"/><path d="M10,19 V81 A25,10 0 0 0 60,81 V19 Z" fill="url(#cyl)"/><ellipse cx="35" cy="19" rx="25" ry="10" fill="url(#cyltop)" stroke="#232323" stroke-width="2"/><path d="M17,30 V80" stroke="#fff" stroke-width="3" opacity=".35" stroke-linecap="round"/>
+</svg>

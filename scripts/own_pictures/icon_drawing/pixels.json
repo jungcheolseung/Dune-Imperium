@@ -1,0 +1,318 @@
+{
+"log_round_5": [
+52,
+52
+],
+"log_round_4": [
+52,
+52
+],
+"log_round_6": [
+52,
+52
+],
+"arrow_right": [
+96,
+84
+],
+"freighter": [
+104,
+126
+],
+"log_influence_down_fremen": [
+54,
+54
+],
+"signet_ring": [
+179,
+158
+],
+"log_round_7": [
+52,
+52
+],
+"log_round_3": [
+52,
+52
+],
+"log_tech": [
+64,
+64
+],
+"agent": [
+70,
+108
+],
+"log_influence_down_emperor": [
+55,
+55
+],
+"log_round_2": [
+52,
+52
+],
+"maker": [
+124,
+108
+],
+"influence_fremen": [
+155,
+177
+],
+"victory_point": [
+177,
+176
+],
+"agent_icon_landsraad": [
+177,
+131
+],
+"log_round_1": [
+52,
+52
+],
+"log_intrigue": [
+57,
+57
+],
+"battle_wild": [
+153,
+87
+],
+"agent_icon_spy": [
+177,
+131
+],
+"battle_crysknife": [
+153,
+87
+],
+"log_intrigue_played": [
+55,
+55
+],
+"control": [
+88,
+101
+],
+"log_reshuffle": [
+51,
+51
+],
+"discard": [
+135,
+206
+],
+"battle_ornithopter": [
+153,
+87
+],
+"log_influence_down_spacing_guild": [
+54,
+54
+],
+"agent_icon_fremen": [
+179,
+131
+],
+"agent_icon_emperor": [
+179,
+131
+],
+"agent_icon_spacing_guild": [
+179,
+131
+],
+"influence_lose": [
+154,
+176
+],
+"sandworm": [
+80,
+76
+],
+"influence_bene_gesserit": [
+156,
+178
+],
+"steal_intrigue": [
+119,
+108
+],
+"trash_intrigue": [
+118,
+180
+],
+"log_troop_deploy": [
+40,
+40
+],
+"draw": [
+135,
+206
+],
+"influence_emperor": [
+158,
+180
+],
+"troop": [
+102,
+108
+],
+"acquire_tech": [
+226,
+133
+],
+"shield_wall": [
+196,
+224
+],
+"spy": [
+126,
+180
+],
+"dreadnought": [
+182,
+167
+],
+"log_conflict": [
+127,
+127
+],
+"log_card_trashed": [
+50,
+50
+],
+"log_tleilaxu": [
+106,
+106
+],
+"sword": [
+132,
+179
+],
+"agent_icon_city": [
+178,
+131
+],
+"battle_desert_mouse": [
+153,
+87
+],
+"water": [
+126,
+184
+],
+"acquire_tech_minus1": [
+174,
+107
+],
+"log_round_10": [
+52,
+52
+],
+"acquire_tech_minus2": [
+174,
+107
+],
+"log_vp_winner": [
+64,
+64
+],
+"maker_hooks": [
+80,
+72
+],
+"log_research": [
+113,
+113
+],
+"persuasion": [
+156,
+157
+],
+"trash": [
+135,
+206
+],
+"intrigue": [
+135,
+206
+],
+"influence_any": [
+156,
+177
+],
+"agent_icon_bene_gesserit": [
+178,
+131
+],
+"log_troop_retreat": [
+41,
+41
+],
+"log_family_atomics": [
+119,
+119
+],
+"influence_spacing_guild": [
+154,
+176
+],
+"arrow_down": [
+54,
+61
+],
+"unload": [
+163,
+108
+],
+"spice": [
+176,
+156
+],
+"contract": [
+130,
+87
+],
+"specimen": [
+100,
+106
+],
+"agent_icon_spice_trade": [
+178,
+131
+],
+"log_round_9": [
+52,
+52
+],
+"influence_any_two": [
+137,
+180
+],
+"tech_negotiation": [
+208,
+223
+],
+"recall_spy": [
+123,
+155
+],
+"solari": [
+107,
+107
+],
+"recall_agent": [
+100,
+158
+],
+"log_influence_down_bene_gesserit": [
+55,
+55
+],
+"log_round_8": [
+52,
+52
+]
+}

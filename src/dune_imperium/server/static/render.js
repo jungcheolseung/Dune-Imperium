@@ -1,0 +1,2744 @@
+"use strict";
+
+/* ---------- rendering ---------- */
+
+/* ---------- icons ---------- */
+
+/* Rulebook icons (catalog.icons, served from the machine-local extraction
+   of the official Icon Guide) with a text fallback when the set is absent. */
+/* The seats' colours (green, red, yellow, blue): the Steam app's player
+   colours, the values it gives a player's leader band, Action Log outline
+   and lobby entry (the troop cube pictures are the same hues).
+   The app's brighter set (#2a6cff, #ff001d, #2bba71, #ffc438) only lights
+   the spaces an Agent may go to. Since 2026-10-08 (owner); before, a light
+   palette of our own. Their order is the app's default for its Players 1-4
+   (Green, Red, Yellow, Blue) since 2026-10-25
+   (play feedback); before, blue, red, green, yellow. Keep it in step with
+   display/token_images.py STRENGTH_TOKEN_COLORS. */
+const SEAT_COLORS = ["#006e4a", "#c01326", "#d59d18", "#1c49ac"];
+
+/* Player pieces traced from the rulebook art.  The rulebook Icon Guide's
+   agent.png has a + because it means gaining the third Agent; ordinary UI
+   references to an Agent use this unadorned piece silhouette instead. */
+const PIECE_SHAPES = {
+  agent: {
+    viewBox: "0 0 52 81",
+    outline:
+      "M26 1 C29.6 1 35.2 5.5 35.8 12.6 L39 14.6 L50.6 42.2 C51.3 43 51.3 43.8 50.6 44.6" +
+      " L41.6 54 L41.6 65 L47 76.6 L47 80 L5 80 L5 76.6 L10.4 65 L10.4 54 L1.4 44.6" +
+      " C0.7 43.8 0.7 43 1.4 42.2 L13 14.6 L16.2 12.6 C16.8 5.5 22.4 1 26 1 Z",
+  },
+  spy: {
+    viewBox: "0 0 56 80",
+    outline: "M1 16 A27 15 0 0 1 55 16 L55 64 A27 15 0 0 1 1 64 Z",
+    top: { cx: 28, cy: 18, rx: 20, ry: 9 },
+  },
+};
+
+function agentPieceIcon(label) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const shape = PIECE_SHAPES.agent;
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("class", "icon agent-piece-icon");
+  svg.setAttribute("viewBox", shape.viewBox);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", label);
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = label;
+  const path = document.createElementNS(svgNs, "path");
+  path.setAttribute("d", shape.outline);
+  svg.append(title, path);
+  return svg;
+}
+
+function iconUrl(name) {
+  const icons = state.catalog && state.catalog.icons;
+  return icons && icons[name] ? icons[name] : null;
+}
+
+/* `text` is what stands in for the image when the icon set is absent; it
+   defaults to the label. Card text passes its own English words there, so
+   only the tooltip speaks the chosen language. */
+function icon(name, label, text = label) {
+  const url = iconUrl(name);
+  if (url) {
+    const img = document.createElement("img");
+    img.className = "icon";
+    img.src = url;
+    img.alt = label;
+    img.title = label;
+    return img;
+  }
+  const span = document.createElement("span");
+  span.className = "icon-text";
+  span.textContent = text;
+  if (text !== label) span.title = label;
+  return span;
+}
+
+function amount(name, label, count, text = label) {
+  const wrap = document.createElement("span");
+  wrap.className = "amount";
+  wrap.title = `${count} ${label}`;
+  wrap.append(String(count), icon(name, label, text));
+  return wrap;
+}
+
+/* Rise of Ix's Tech Discount badges that have a picture (the Acquire Tech
+   icon with -1 or -2): the TERMS row of each. */
+const TECH_DISCOUNT_TERM = { 1: "acquire_tech_minus_one", 2: "acquire_tech_minus_two" };
+
+const FACTION_ICON_KEY = {
+  Emperor: "emperor",
+  "Spacing Guild": "spacing_guild",
+  "Bene Gesserit": "bene_gesserit",
+  Fremen: "fremen",
+};
+
+/* A card-text icon for a TERMS entry: the tooltip is the glossary word in
+   the chosen language, the fallback text the card's own English `words`
+   (glossary-ko.md: card text stays English, with term tooltips). */
+function termLabel(term) {
+  return TERMS[term][TERM_LANGUAGE] || TERMS[term].en;
+}
+
+function textIcon(term, words) {
+  return icon(TERMS[term].icon, termLabel(term), words);
+}
+
+function textAmount(term, count, words) {
+  return amount(TERMS[term].icon, termLabel(term), count, words);
+}
+
+/* Glossary that turns the catalog's English effect text into the printed
+   iconography: each rule is tried at the current position (sticky), the
+   first match wins, and unmatched text is copied through. Only display —
+   the text itself stays the server's. */
+const ICON_RULES = [
+  [/(?:Gain |Pay )?(\d+) (solari|spice|water)\b/y, (m) => textAmount(m[2], m[1], m[2])],
+  [/\b(solari|spice|water)\b/y, (m) => textIcon(m[1], m[1])],
+  [/Draw (\d+) Intrigue cards?/y, (m) => textAmount("intrigue", m[1], "Intrigue card")],
+  [/Draw (\d+) cards?/y, (m) => textAmount("draw", m[1], "Draw")],
+  [/Intrigue cards?/y, () => textIcon("intrigue", "Intrigue card")],
+  [/(?:Recruit |Gain )?(\d+) troops?\b/y, (m) => textAmount("troop", m[1], "troop")],
+  [/\btroops?\b/y, () => textIcon("troop", "troop")],
+  [
+    /(?:Gain )?(\d+) (Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
+    (m) => textAmount(`influence_${FACTION_ICON_KEY[m[2]]}`, m[1], `${m[2]} Influence`),
+  ],
+  [
+    /(Emperor|Spacing Guild|Bene Gesserit|Fremen) Influence/y,
+    (m) => textIcon(`influence_${FACTION_ICON_KEY[m[1]]}`, `${m[1]} Influence`),
+  ],
+  [/Lose (\d+) Influence/y, (m) => textAmount("influence_lose", m[1], "Lose Influence")],
+  [/(?:Gain )?(\d+) Influence/y, (m) => textAmount("influence_any", m[1], "Influence")],
+  /* No glossary row names "the visited Faction"; the icon is the any-Faction
+     Influence, so its tooltip is that word. */
+  [
+    /Influence with the visited Faction/y,
+    () => icon(
+      "influence_any",
+      TERM_LANGUAGE === "en" ? "visited Faction Influence" : termLabel("influence_any"),
+      "visited Faction Influence",
+    ),
+  ],
+  [/(\d+) Persuasion/y, (m) => textAmount("persuasion", m[1], "Persuasion")],
+  [/\bPersuasion\b/y, () => textIcon("persuasion", "Persuasion")],
+  [/(\d+) (?:swords?|strength)\b/y, (m) => textAmount("sword", m[1], "sword")],
+  [/\bswords?\b/y, () => textIcon("sword", "sword")],
+  [
+    /(?:Gain )?(\d+) (?:Victory Points?|VP)\b/y,
+    (m) => textAmount("victory_point", m[1], "Victory Point"),
+  ],
+  [/\b(?:Victory Points?|VP)\b/y, () => textIcon("victory_point", "Victory Point")],
+  [/\b[Tt]rash an Intrigue card\b/y, () => textIcon("trash_intrigue", "Trash an Intrigue card")],
+  [/\b[Tt]rash\b/y, () => textIcon("trash", "Trash")],
+  /* "your discard pile" names the pile, which has no icon: kept as words so
+     the Discard rule does not title it with the discard action. */
+  [/\b[Dd]iscard piles?\b/y, (m) => document.createTextNode(m[0])],
+  [/\b[Dd]iscard\b/y, () => textIcon("discard", "Discard")],
+  [/\b(?:a |an )?Sp(?:y|ies)\b/y, (m) => textIcon("spy", m[0].trim())],
+  /* A line's box label ("Agent: …" for an Agent box, "Agent Turn: …",
+     "On discard: …") names where the effect sits, not a piece: kept as
+     words. As an icon it read like part of the card title above it
+     ("Double Agent" / "[Agent]: Place a Spy"). */
+  [/(?:Agent(?: Turn)?|On discard):/y, (m) => document.createTextNode(m[0])],
+  /* "Agent" inside a sentence stays the word too, in both languages (user,
+     2026-10-06: "한글/영어 둘다 글자가 나오는게 맞지"); the piece figure is
+     for the seat's supply and the board. */
+  [/\bAgents?\b/y, (m) => document.createTextNode(m[0])],
+  [/\b[Ss]andworms?\b/y, (m) => textIcon("sandworm", m[0])],
+  [/\bMaker Hooks\b/y, () => textIcon("maker_hooks", "Maker Hooks")],
+  [/\bShield Wall\b/y, () => textIcon("shield_wall", "Shield Wall")],
+  [/\bSignet Ring\b/y, () => textIcon("signet_ring", "Signet Ring")],
+  [/\bContracts?\b/y, (m) => textIcon("contract", m[0])],
+  /* Rise of Ix's action icons ([Rise of Ix pp. 4-6], docs/rules/rise-of-ix.md
+     4-6). Like "Draw 2 cards", each names a whole effect, so its rule takes
+     the whole phrase the engine's text uses for it (display/effect_dsl_text.py,
+     structs.py, spaces.py) and the verb goes with it. The discounted Acquire
+     Tech comes first and takes its "(N spice off)" with it; a discount other
+     than 1 or 2 has no picture and keeps its words after the plain icon.
+     "Tech Negotiation" is the icon's name on a printed Leader face (the
+     board space of that name is shown by its name, which does not pass
+     through here). A Freighter move counts its icons: "once" is one, "N
+     times" is N. */
+  [
+    /Acquire a Tech tile \(([12]) spice off\)/y,
+    (m) => textIcon(TECH_DISCOUNT_TERM[m[1]], m[0]),
+  ],
+  [/Acquire a Tech tile/y, (m) => textIcon("acquire_tech", m[0])],
+  [/\bTech Negotiation\b/y, (m) => textIcon("tech_negotiation", m[0])],
+  [
+    /Place a troop from your supply on the Ix board as a Negotiator/y,
+    () => textIcon("tech_negotiation", "Negotiator"),
+  ],
+  [/Commission a dreadnought/y, (m) => textIcon("dreadnought", m[0])],
+  [/Move your Freighter once/y, (m) => textIcon("freighter", m[0])],
+  [/Move your Freighter (\d+) times/y, (m) => textAmount("freighter", m[1], m[0])],
+  [/Move your Freighter/y, (m) => textIcon("freighter", m[0])],
+  [/→/y, () => icon("arrow_right", "→")],
+];
+
+/* Expand a label of ours into nodes: `{term}` becomes that term's icon (or
+   its word where there is no icon) and `{term:3}` the icon with a count.
+   Everything else is copied through as text.
+
+   This is what our own generated labels use instead of iconize(). The
+   difference that matters: a card, Leader or space name is never handed to
+   it, so "Signet Ring" the card can never be swallowed by the Signet Ring
+   icon the way ICON_RULES swallowed it. */
+function termNode(name, count) {
+  const term = TERMS[name];
+  if (!term) return document.createTextNode(`{${name}}`);
+  const label = term[TERM_LANGUAGE] || term.en;
+  if (!term.icon) {
+    const span = document.createElement("span");
+    span.className = "term-text";
+    span.textContent = count === undefined ? label : `${count} ${label}`;
+    return span;
+  }
+  if (name === "agent") {
+    /* In a sentence the Agent is the word (user, 2026-10-06), like the
+       text-only terms above; the piece figure stays on the seat panel and
+       the board. */
+    const span = document.createElement("span");
+    span.className = "term-text";
+    span.dataset.term = "agent";
+    span.textContent = count === undefined ? label : `${label} ${count}`;
+    return span;
+  }
+  return count === undefined ? icon(term.icon, label) : amount(term.icon, label, count);
+}
+
+/* The same expansion as plain text, for places that take a string rather
+   than nodes: a title or alt attribute, or a line built by joining. An
+   icon becomes its word, which is what a title should read anyway. */
+function phraseText(template) {
+  return String(template).replace(/\{([a-z_]+)(?::(\d+))?\}/g, (whole, name, count) => {
+    const term = TERMS[name];
+    if (!term) return whole;
+    const label = term[TERM_LANGUAGE] || term.en;
+    return count === undefined ? label : `${count} ${label}`;
+  });
+}
+
+function phrase(template) {
+  const fragment = document.createDocumentFragment();
+  let index = 0;
+  for (const match of String(template).matchAll(/\{([a-z_]+)(?::(\d+))?\}/g)) {
+    if (match.index > index) fragment.append(template.slice(index, match.index));
+    fragment.appendChild(
+      termNode(match[1], match[2] === undefined ? undefined : Number(match[2])),
+    );
+    index = match.index + match[0].length;
+  }
+  if (index < template.length) fragment.append(template.slice(index));
+  return fragment;
+}
+
+/* Printed card wording, iconized. The wrapper marks it as the card's own
+   English text (glossary-ko.md keeps it English), which lang.py's Korean
+   check skips; its icons' tooltips follow the chosen language. */
+function iconize(text) {
+  const fragment = document.createElement("span");
+  fragment.className = "card-text";
+  let plain = "";
+  let index = 0;
+  const flush = () => {
+    if (plain) fragment.append(plain);
+    plain = "";
+  };
+  while (index < text.length) {
+    let matched = false;
+    for (const [pattern, build] of ICON_RULES) {
+      pattern.lastIndex = index;
+      const match = pattern.exec(text);
+      if (match && match.index === index) {
+        flush();
+        fragment.appendChild(build(match));
+        index += match[0].length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      plain += text[index];
+      index += 1;
+    }
+  }
+  flush();
+  return fragment;
+}
+
+function iconLine(text, className) {
+  const line = document.createElement("div");
+  line.className = className || "popover-line";
+  line.appendChild(iconize(text));
+  return line;
+}
+
+/* One line of engine-*generated* effect text (a card's Agent/Reveal line, a
+   Contract's condition/reward, a space option, ...), as opposed to printed
+   card wording (which stays English in both languages and always goes
+   through iconize() above). The catalog serves such a field's Korean twin
+   beside the English one, suffixed `_ko` (server/catalog.py); ``ko`` is
+   that twin, possibly ``undefined`` where a later step's generator has not
+   filled it in yet.
+
+   Korean reads `ko` through phrase(), the same `{term}`/`{term:count}`
+   expansion our own hand-written labels use (TERMS, static/labels.js) — a
+   Korean line names its icons this way instead of English words for
+   iconize()'s regex to catch. It is wrapped in its own class, not
+   `card-text` (which marks *printed* wording and is what lang.py's/
+   log_words.py's Korean-leak checks skip): this text is not printed on any
+   card, so it must read as ordinary Korean and stays inside those checks.
+
+   English, or Korean with no twin yet, reads `en` through iconize() exactly
+   as before — the fallback that keeps every renderer working before its
+   own step fills in a `_ko` field. */
+function effectNode(en, ko) {
+  if (TERM_LANGUAGE === "ko" && ko) {
+    const span = document.createElement("span");
+    span.className = "effect-text-ko";
+    span.appendChild(phrase(ko));
+    return span;
+  }
+  return iconize(en);
+}
+
+function effectLine(en, ko, className) {
+  const line = document.createElement("div");
+  line.className = className || "popover-line";
+  line.appendChild(effectNode(en, ko));
+  return line;
+}
+
+function costNode(cost) {
+  const wrap = document.createElement("span");
+  wrap.className = "cost";
+  let any = false;
+  for (const resource of ["solari", "spice", "water"]) {
+    if (cost[resource]) {
+      wrap.appendChild(amount(resource, termLabel(resource), cost[resource]));
+      any = true;
+    }
+  }
+  if (!any) wrap.textContent = t("render.free");
+  return wrap;
+}
+
+/* ---------- board spotlight ----------
+
+   The action log's turn cards (renderLog) light what they refer to on the
+   table while the pointer rests on them: the spaces and cards named by
+   the steps' arguments or events. The stage is rebuilt by every render,
+   so the spotlight is re-applied afterwards. */
+
+let spotlightGroup = null;
+
+function setSpotlight(group) {
+  spotlightGroup = group;
+  applySpotlight();
+}
+
+/* Why the log names a card, by the event that names it (play feedback
+   2026-10-26: a picture in the log did not say whether the card was
+   bought, trashed or used). Effect events of a card already played read as
+   a use. Kinds left out (a card back in the hand, a Row card set aside)
+   name the card without a mark. */
+const LOG_CARD_EVENT_REASONS = {
+  card_acquired: "acquired",
+  tleilaxu_card_acquired: "acquired",
+  tech_acquired: "acquired",
+  skill_gained: "acquired",
+  scouts_card_bought: "acquired",
+  card_trashed: "trashed",
+  intrigue_card_trashed: "trashed",
+  tech_trashed: "trashed",
+  usurped_card_trashed: "trashed",
+  agent_card_trashed_for_vp: "trashed",
+  contract_reveal_card_trashed_for_vp: "trashed",
+  skill_trashed: "trashed",
+  card_discarded: "discarded",
+  intrigue_card_discarded: "discarded",
+  top_card_discarded: "discarded",
+  tech_flipped: "flipped",
+  card_grafted: "grafted",
+  contract_completed: "completed",
+  agent_card_picked: "used",
+  agent_placed: "used",
+  intrigue_played: "used",
+  turn_start_card_played: "used",
+  navigation_card_played: "used",
+  agent_card_effect_resolved: "used",
+  intrigue_effect_used: "used",
+  tech_acquire_effect_resolved: "used",
+  tech_reveal_bonus: "used",
+  leader_signet_resolved: "used",
+};
+
+/* The same for a card an action's own argument names, by the action. A
+   waiting effect's `printed` names the card whose line is used (a trash
+   line's card is not the one trashed), except a purchase's, which names
+   the card bought, and a flip's, the Tech tile flipped. */
+function logActionReason(actionId, key, args) {
+  if (key === "printed") {
+    if (args.source === "purchase") return "acquired";
+    if (/^flip/.test(actionId)) return "flipped";
+    return "used";
+  }
+  if (/^acquire|^take_(trigger_)?contract$/.test(actionId)) return "acquired";
+  if (/^trash/.test(actionId)) return "trashed";
+  if (/^discard/.test(actionId)) return "discarded";
+  if (/^flip/.test(actionId)) return "flipped";
+  if (/^complete_contract/.test(actionId)) return "completed";
+  if (actionId === "choose_graft_partner") return "grafted";
+  if (
+    ["choose_agent_card", "play_intrigue", "choose_intrigue_card", "play_turn_start_card"]
+      .includes(actionId)
+  ) {
+    return "used";
+  }
+  return null;
+}
+
+/* Everything a group of steps points at: spaces and cards named by the
+   action arguments or by the events (acquired card, placed Agent), and for
+   each card why (`reasons`, keyed by baseId: LOG_CARD_EVENT_REASONS and
+   logActionReason, in the order they first apply). Only what the log
+   entries carry is read, and the server already left out of them what
+   this seat may not see. */
+function logTargets(group) {
+  const spaces = [];
+  const cards = [];
+  const reasons = new Map();
+  const seen = new Set();
+  const consider = (value, reason) => {
+    if (typeof value !== "string") return;
+    /* An event may name a card both by kind (card_id) and by the exact
+       copy (instance_id); one image per printed card is enough. A bare
+       space id and a card sharing it ("contract:deliver_supplies") are two
+       targets, so a space is kept apart in `seen`. */
+    const space = state.catalog.spaces[value];
+    const key = space ? `space:${value}` : baseId(value);
+    if (!seen.has(key)) {
+      seen.add(key);
+      if (space) spaces.push(value);
+      else if (entryOf(value)) cards.push(value);
+    }
+    if (space || !reason) return;
+    const known = reasons.get(key) || [];
+    if (!known.includes(reason)) reasons.set(key, [...known, reason]);
+  };
+  for (const entry of group.entries) {
+    /* A step taken back named nothing that stayed. */
+    if (entry.type !== "action" || entry.undone) continue;
+    for (const [key, value] of Object.entries(entry.arguments)) {
+      consider(value, logActionReason(entry.action_id, key, entry.arguments));
+    }
+    for (const event of entry.events) {
+      if (!event.payload) continue;
+      /* The stack's next Tech tile turning face up after a purchase is the
+         market's, not the buyer's (independent review, 2026-10-26). */
+      if (event.kind === "tech_revealed") continue;
+      for (const [key, value] of Object.entries(event.payload)) {
+        if (
+          key === "card_id" ||
+          key === "space_id" ||
+          key === "tech_id" ||
+          key === "contract_id" ||
+          key.endsWith("instance_id")
+        ) {
+          consider(value, LOG_CARD_EVENT_REASONS[event.kind] || null);
+        }
+      }
+    }
+  }
+  return { spaces, cards, reasons };
+}
+
+function applySpotlight() {
+  for (const node of document.querySelectorAll(".spotlight")) {
+    node.classList.remove("spotlight");
+  }
+  if (!spotlightGroup) return;
+  const { spaces, cards } = logTargets(spotlightGroup);
+  for (const spaceId of spaces) {
+    for (const node of document.querySelectorAll(`[data-space="${spaceId}"]`)) {
+      node.classList.add("spotlight");
+    }
+  }
+  for (const id of cards) {
+    for (const node of document.querySelectorAll(`#game-screen [data-instance="${id}"]`)) {
+      if (!node.closest("#action-log")) node.classList.add("spotlight");
+    }
+  }
+}
+
+/* ---------- rendering ---------- */
+
+/* Keep every independently scrolling pane when another player acts. The
+   decision header stays in place while #actions scrolls below it. */
+const SCROLL_PANES = [
+  "seats",
+  "side",
+  "side-main",
+  "side-log",
+  "board",
+  "market",
+  "private-zone",
+  "actions",
+];
+
+/* Panes with something to restore, as [element, top, left]. A pane sitting at
+   the origin needs no entry: putting it back would be a no-op. */
+function keepScroll() {
+  const kept = [];
+  for (const id of SCROLL_PANES) {
+    const pane = el(id);
+    if (!pane || (!pane.scrollTop && !pane.scrollLeft)) continue;
+    kept.push([pane, pane.scrollTop, pane.scrollLeft]);
+  }
+  return kept;
+}
+
+/* `foreign`: somebody else changed the game (the doorbell asked for this
+   pass). The player did nothing, so a pinned popover stays open and every
+   pane keeps its scroll position. */
+/* The header's ruleset badges, in the setup form's order of the options. */
+const RULESET_BADGES = [
+  ["choam_module", "render.badge_choam"],
+  ["promo_cards", "render.badge_promo"],
+  ["imperium_cards", "render.badge_imperium_cards"],
+  ["bloodlines", "render.badge_bloodlines"],
+  ["tech_module", "render.badge_tech"],
+  /* Part of Rise of Ix beside the Tech Module (P8-1): all of it shows its
+     board, so it has no badge; its Tech tiles alone, or with its Leaders. */
+  ["ix_tech_tiles", "render.badge_ix_tech"],
+  ["ix_leaders", "render.badge_ix_leaders"],
+  ["immortality", "render.badge_immortality"],
+  ["go_to_11", "render.badge_go_to_11"],
+  ["epic_game", "render.badge_epic_game"],
+  ["arrakeen_scouts", "render.badge_scouts"],
+  ["leader_draft", "render.badge_draft"],
+];
+
+function render(options) {
+  const summary = state.summary;
+  if (!summary) return;
+  sanitizePick();
+  const foreign = Boolean(options && options.foreign);
+  const kept = foreign ? keepScroll() : [];
+  /* A pinned popover survives a foreign update, unless it shows the seat's
+     current decision (a space's cost option out of reach, plan 4 row 18). */
+  if (!(foreign && popoverPinned) || popoverHasDecisionNote) closePopover();
+  renderHeaderStatus();
+  el("decision-banner").hidden = Boolean(state.review);
+  renderBanner();
+  renderStandings();
+  renderScouts();
+  renderBoard();
+  /* After the board: whether the board answers the seat's decision. */
+  renderScoutsStage();
+  renderMarket();
+  renderSeats();
+  renderLog();
+  renderPrivate();
+  renderDisclosure();
+  el("host-panel").hidden = !(isRemote() && isAdmin());
+  renderHostBlock(el("host-panel-body"));
+  renderPaceControl();
+  applySpotlight();
+  for (const [pane, top, left] of kept) {
+    pane.scrollTop = top;
+    pane.scrollLeft = left;
+  }
+  fitActionLog();
+  renderEffects();
+  refreshConflictHistory();
+  /* The pile viewer outlives every update, anyone's move included: drawn
+     again from the state just rendered, or closed when its pile is gone
+     (panels.js refreshPileViewer). */
+  refreshPileViewer();
+  paintClocks();
+  /* The phone's tabs mark the views the decision can use (phone.js), and
+     so do the toggles of hidden panels (layout.js). */
+  markPhoneTabs();
+  markPanelToggles();
+}
+
+/* A height-limited board can leave broad margins on a wide window. Spend
+   that space on history, keeping the scan at the size it would have with
+   the normal action column. Include the room already lent to history in
+   that baseline, so the observer cannot alternate between two layouts. */
+let tableLogGeometry = null;
+
+function fitActionLog() {
+  const table = el("table");
+  const board = el("board");
+  const stage = board.querySelector(".board-stage");
+  const list = el("action-log").querySelector(".log-list");
+  const previous = tableLogGeometry && tableLogGeometry.list === list
+    ? tableLogGeometry : null;
+  const before = list && { width: list.clientWidth, height: list.clientHeight };
+  const following = list && (
+    list.scrollHeight - list.scrollTop - list.clientHeight < 24 ||
+    (previous && Math.abs(previous.scrollHeight - previous.height - list.scrollTop) < 24)
+  );
+  let historyWidth = 0;
+  if (
+    !el("game-screen").hidden &&
+    !el("action-log").hidden &&
+    !panelHidden("log") &&
+    stage &&
+    window.matchMedia("(min-width: 1341px)").matches
+  ) {
+    const side = el("side");
+    const actionWidth = parseFloat(
+      getComputedStyle(table).getPropertyValue("--actions-width"),
+    );
+    const gap = parseFloat(getComputedStyle(side).columnGap);
+    const [width, height = 1] = getComputedStyle(stage).aspectRatio.split("/").map(Number);
+    const box = board.getBoundingClientRect();
+    const borrowed = table.classList.contains("log-beside")
+      ? side.getBoundingClientRect().width - actionWidth
+      : 0;
+    /* A side column the player has just widened (layout.js) can push the
+       table past its right edge while history still stands beside the
+       actions, the board column held at its floor: what sticks out is room
+       the board column does not have. */
+    const inner = table.getBoundingClientRect().right
+      - parseFloat(getComputedStyle(table).paddingRight);
+    const overflow = Math.max(0, side.getBoundingClientRect().right - inner);
+    const room = box.width + borrowed - overflow;
+    const spare = Math.floor(room - box.height * width / height - gap - 2);
+    /* Keep history at least as readable as the normal 340px column, and
+       cap its width rather than stretching a log card across a monitor or
+       taking the board column under its floor (--board-min). */
+    const floor =
+      parseFloat(getComputedStyle(el("game-screen")).getPropertyValue("--board-min")) || 0;
+    const allowed = Math.min(spare, 600, Math.floor(room - floor - gap));
+    if (allowed >= 340) historyWidth = allowed;
+  }
+  table.classList.toggle("log-beside", historyWidth > 0);
+  if (historyWidth) table.style.setProperty("--history-width", `${historyWidth}px`);
+  else table.style.removeProperty("--history-width");
+  /* Resizing keeps a reader's offset. A reader at the end stays at the
+     end, even when rewrapping into the narrower vertical history. */
+  if (list) {
+    const width = list.clientWidth;
+    const height = list.clientHeight;
+    const resized = before.width !== width || before.height !== height ||
+      (previous && (previous.width !== width || previous.height !== height));
+    if (resized && following) list.scrollTop = list.scrollHeight;
+    tableLogGeometry = { list, width, height, scrollHeight: list.scrollHeight };
+  } else tableLogGeometry = null;
+  positionPlayEffect();
+  positionPhaseBanner();
+}
+
+function watchTableLayout() {
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(fitActionLog);
+    /* The hand's height, window size and folded market all affect how
+       much horizontal space the board actually needs. */
+    observer.observe(el("table"));
+    observer.observe(el("board"));
+  } else {
+    window.addEventListener("resize", fitActionLog);
+  }
+}
+
+/* #header-status in two spans (style.css): the round and phase, and the
+   review label; both always stay whole. The full text, with the seed and
+   the ruleset badges, goes in the title. */
+function renderHeaderStatus() {
+  const summary = state.summary;
+  /* The header names the shown game: the original game's table its own. */
+  const heading = document.querySelector("header h1");
+  if (heading) heading.textContent = baseTitle();
+  const shown = state.review && state.review.phase ? state.review : null;
+  const round = shown ? shown.round : summary.round_number;
+  const phase = shown ? shown.phase : summary.phase;
+  const pieces = [
+    ["status-core", t("render.round_status", { round, phase: PHASE_LABELS[phase] || phase })],
+  ];
+  if (state.review) {
+    const label = spectatorOnly() ? t("render.spectating_ai") : t("render.replay_review");
+    pieces.push(["status-label", " · " + label]);
+  }
+  const status = el("header-status");
+  status.textContent = "";
+  for (const [className, text] of pieces) {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    status.appendChild(span);
+  }
+  /* The seed and the ruleset badges are not on the line (user 2026-11-06:
+     nothing a player needs during the game, and the panel toggles want the
+     header's room); the line's title and the help (help.js) name them. */
+  const extras = gameSettingBadges(summary);
+  status.title = status.textContent + (extras.length ? " · " + extras.join(" · ") : "");
+}
+
+/* The seed and the ruleset badges of a game, which never change during it:
+   the original game first, every badge after it an option on it. */
+function gameSettingBadges(summary) {
+  const extras = RULESET_BADGES.filter(([field]) => summary[field]).map(([, key]) => t(key));
+  if (summary.base_game === "imperium") extras.unshift(t("screens.base_game_imperium_badge"));
+  if (summary.game_seed !== null) extras.unshift(t("common.seed", { seed: summary.game_seed }));
+  return extras;
+}
+
+/* Post-game full disclosure (OQ-010 ruling 4): once a game has finished,
+   the server adds every hidden zone to the view, both live and in review. */
+function renderDisclosure() {
+  const panel = el("disclosure");
+  panel.textContent = "";
+  const view = state.view;
+  if (!view || !view.disclosure) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const heading = document.createElement("h2");
+  const title = t("render.disclosure_title");
+  panel.appendChild(heading);
+  /* A review opens it folded: it holds every hand and deck order as of the
+     reviewed step — the draws the replay is walking towards, the way the
+     standings are its result (사용자 결정 2026-09-21). One click opens it. */
+  const review = state.review;
+  if (!review) {
+    heading.textContent = title;
+  } else {
+    const open = Boolean(review.disclosureOpen);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "strip-toggle";
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.title = open ? t("common.collapse") : t("common.expand");
+    button.append(open ? "▾" : "▸", " ", title);
+    button.addEventListener("click", () => {
+      if (!state.review) return;
+      state.review.disclosureOpen = !open;
+      renderDisclosure();
+    });
+    heading.appendChild(button);
+    if (!open) {
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = t("render.disclosure_closed_note");
+      panel.appendChild(note);
+      return;
+    }
+  }
+  for (const zones of view.disclosure.players) {
+    const seat = section(panel, t("common.seat", { seat: zones.player }));
+    const line = (label, ids, empty) => {
+      const row = document.createElement("div");
+      row.className = "cardline";
+      const strong = document.createElement("strong");
+      strong.textContent = `${label} `;
+      row.appendChild(strong);
+      if (!ids.length) row.append(empty);
+      for (const id of ids) row.appendChild(chip(id));
+      seat.appendChild(row);
+    };
+    line(t("render.hand_line", { count: zones.hand.length }), zones.hand, t("common.empty"));
+    line(t("render.deck_order_line", { count: zones.deck.length }), zones.deck, t("common.empty"));
+    line(
+      t("render.intrigue_line", { count: zones.intrigue_cards.length }),
+      zones.intrigue_cards,
+      t("common.none"),
+    );
+  }
+  const decks = section(panel, t("render.shared_deck_order_title"));
+  const deckLine = (label, ids) => {
+    const row = document.createElement("div");
+    row.className = "cardline";
+    const strong = document.createElement("strong");
+    strong.textContent = `${label} (${ids.length}) `;
+    row.appendChild(strong);
+    for (const id of ids) row.appendChild(chip(id));
+    decks.appendChild(row);
+  };
+  deckLine(t("render.deck_imperium"), view.disclosure.imperium_deck);
+  deckLine(t("render.deck_intrigue"), view.disclosure.intrigue_deck);
+  deckLine(t("render.deck_conflict"), view.disclosure.conflict_deck);
+  if (view.disclosure.contract_bank.length) {
+    deckLine(t("render.contract_bank"), view.disclosure.contract_bank);
+  }
+  if (view.disclosure.scouts_board_cards && view.disclosure.scouts_board_cards.length) {
+    deckLine(t("panels.scouts_face_down", { count: "" }).trim(), view.disclosure.scouts_board_cards);
+  }
+  /* Arrakeen Scouts: secret picks the game ended before (OQ-085 (a)). */
+  const lost = view.disclosure.scouts_secret_picks || [];
+  if (lost.length) {
+    const box = section(panel, t("panels.scouts_lost_picks"));
+    /* With the Faction a pick named (round, seat, Faction), stage P8. */
+    const named = new Map((view.disclosure.scouts_secret_factions || [])
+      .map(([round, seat, faction]) => [`${round}|${seat}`, faction]));
+    for (const [round, event, seat, pick] of lost) {
+      const item = scoutsItem(event);
+      const row = document.createElement("div");
+      row.className = "cardline";
+      row.append(`${t("common.seat", { seat })} · ${t("panels.scouts_round", { round })} ${item.name}: `);
+      /* Dated: the round it would have fallen due in, after the last. */
+      row.appendChild(scoutsSecretLineNode(item, pick, round));
+      const faction = named.get(`${round}|${seat}`);
+      if (faction) row.appendChild(scoutsPickFaction(faction));
+      box.appendChild(row);
+    }
+  }
+}
+
+/* Actions whose whole meaning is "I am done": applying one IS the seat's
+   own turn-end press, so it renders as the banner's turn-end row instead
+   of an item in the action list. Mirrors EXPLICIT_TURN_ENDS in
+   server/turn_end.py — keep the two lists in step. */
+const EXPLICIT_TURN_END_IDS = new Set([
+  "finish_agent_turn",
+  "finish_leader_draft",
+  "finish_reveal",
+  "pass_combat_intrigue",
+  "pass_endgame_intrigue",
+  "decline_conflict_end_intrigue",
+  "finish_conflict_end_intrigue",
+  "confirm_scouts_bid",
+  "resolve_scouts_choice_without_option",
+  "resolve_scouts_loss_without_influence",
+  "scouts_call",
+]);
+
+/* Arrakeen Scouts auction amounts: the stepper only sets the amount, and
+   the turn-end press sends it -- the open call itself, or a sealed bid
+   followed by its confirmation (user, 2026-10-05: "경매 0 누르면 바로
+   확정되버리네. 이거도 턴 종료를 눌러야 확정되게 해줘."). */
+const AUCTION_AMOUNT_IDS = new Set(["scouts_bid", "scouts_call"]);
+
+/* The seat's own explicit turn-end action among its legal actions, if the
+   pending decision offers one. There is at most one kind: the ids belong to
+   different decision kinds. An open call has one action per amount; the
+   one the stepper holds is the turn's end. */
+function turnEndAction(actions) {
+  const found = actions.find((action) => EXPLICIT_TURN_END_IDS.has(action.action_id));
+  if (!found || found.action_id !== "scouts_call") return found || null;
+  return chosenOf("scouts_call", countFamilies(actions).get("scouts_call"));
+}
+
+/* The sealed bid the stepper holds (a scouts_bid action), or null. */
+function stagedBid(actions) {
+  const family = countFamilies(actions).get("scouts_bid");
+  return family ? chosenOf("scouts_bid", family) : null;
+}
+
+/* The seat's sealed bid as the engine records it (0 when none is chosen:
+   confirming without one confirms 0, rules/scouts_auctions.py). */
+function recordedBid() {
+  const own = state.view && state.view.private;
+  return own ? Math.max(0, own.scouts_bid ?? 0) : 0;
+}
+
+/* The turn-end press of a sealed bid: send the staged amount when it is not
+   the recorded one, then the confirmation, which is the seat's turn end. */
+async function confirmStagedBid(actions) {
+  const bid = stagedBid(actions);
+  if (bid && bid.arguments.count !== recordedBid()) {
+    const count = bid.arguments.count;
+    await applyAction(bid.index);
+    /* A failed or overtaken bid leaves the seat on its decision. */
+    if (recordedBid() !== count || !state.actions) return;
+  }
+  const confirm = state.actions && state.actions.actions.find(
+    (action) => action.action_id === "confirm_scouts_bid",
+  );
+  if (confirm) await applyAction(confirm.index);
+}
+
+/* The turn-end row's label for the seat's own explicit action: plain, or
+   with the prefix that marks a Reveal that still offers buyable cards (the
+   same isAcquire test renderRevealPanel uses for its own `buys`, not
+   whether anything was already bought), an Intrigue pass, a declined
+   Conflict-end window ("쓰지 않음"), or a Scouts choice with nothing the
+   seat can take (cleanup-2a). */
+function turnEndButtonLabel(action, actions) {
+  if (action.action_id === "confirm_scouts_bid" || action.action_id === "scouts_call") {
+    const currency = scoutsAuctionCurrency();
+    const count = action.action_id === "scouts_call"
+      ? action.arguments.count
+      : (stagedBid(actions) || { arguments: { count: recordedBid() } }).arguments.count;
+    if (currency) {
+      const key = action.action_id === "confirm_scouts_bid" ? "render.turn_end_bid"
+        : count === 0 ? "render.turn_end_pass_call" : "render.turn_end_call";
+      return t(key, { resource: termLabel(currency), count });
+    }
+  }
+  if (action.action_id === "finish_reveal" && actions.some(isAcquire)) {
+    return t("render.turn_end_button_with_buys");
+  }
+  if (action.action_id === "pass_combat_intrigue" || action.action_id === "pass_endgame_intrigue") {
+    return t("render.turn_end_button_pass");
+  }
+  if (action.action_id === "decline_conflict_end_intrigue") {
+    return t("render.turn_end_button_decline");
+  }
+  if (action.action_id === "finish_conflict_end_intrigue") {
+    /* After a card was played in the window, its one press ends it
+       (user decision 2026-10-18: "끝내기", not "쓰지 않음"). */
+    return t("render.turn_end_button_finish");
+  }
+  if (action.action_id === "resolve_scouts_choice_without_option") {
+    return t("render.turn_end_button_nothing");
+  }
+  if (action.action_id === "resolve_scouts_loss_without_influence") {
+    return t("render.turn_end_button_no_influence");
+  }
+  return t("render.turn_end_button");
+}
+
+/* The one turn-end control, always the same row in the same place: a hold
+   waiting for confirmTurn(), or the seat's own explicit turn-end action
+   applied directly (onClick). Built by hand, not through actionItem(), so
+   it is never marked irreversible (a turn end always seals the turn). For
+   the explicit action (`action`) it carries the shortfall badge of the
+   server's dry run all the same (appendShortfallBadge): held Contract icons
+   that fizzle as the turn ends (OQ-059), or the passer's own short reward
+   on the last Combat Intrigue pass, warned before the press (user ruling
+   2026-10-02, L2-Q4: "로그 + 클릭 전 경고"). A hold has no action, and no
+   badge: its step was already taken. */
+function appendTurnEndRow(container, label, onClick, action = null, kind = "turn-end-row") {
+  const row = document.createElement("div");
+  row.className = `confirm-row ${kind}`;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.disabled = state.busy;
+  button.addEventListener("click", onClick);
+  if (action) appendShortfallBadge(row, button, action);
+  row.appendChild(button);
+  if (action) appendTurnEndNotes(row, action);
+  container.appendChild(row);
+}
+
+/* The Agent turn's deployments a turn end leaves unmade, each with the
+   glossary term of its unit: the units stay in the garrison. */
+const DEPLOY_UNITS = [
+  ["deploy_troops", "troop"],
+  ["deploy_commanders", "commander"],
+  ["deploy_dreadnoughts", "dreadnought"],
+];
+
+/* "병력 2 · 사다우카 지휘관 1": the most units of each kind the seat could
+   still deploy, the largest count its deploy rows offer. */
+function deployableUnits(actions) {
+  const parts = [];
+  for (const [actionId, term] of DEPLOY_UNITS) {
+    const counts = actions
+      .filter((action) => action.action_id === actionId)
+      .map((action) => action.arguments.count)
+      .filter(Number.isInteger);
+    const most = counts.length ? Math.max(...counts) : 0;
+    if (most <= 0) continue;
+    const label = phraseText(`{${term}}`);
+    /* English counts in the plural ("2 troops"); Korean has no plural. */
+    parts.push(
+      TERM_LANGUAGE === "ko" ? `${label} ${most}` : `${most} ${label}${most === 1 ? "" : "s"}`,
+    );
+  }
+  return parts;
+}
+
+/* What the turn-end press leaves behind, said on its row before the press
+   (user request 2026-10-31); the press is still the one press (OQ-095),
+   the notes are only words:
+   - the optional effects it lapses unused (OQ-095 (2)): the row's `lapses`,
+     the public events of its own dry run (sessions.py, forfeits.py
+     lapsed_effects), named as the log names them (lapseItem);
+   - a Reveal's Persuasion left over while a card it can pay for with
+     Persuasion is still offered;
+   - an Agent turn's units it could still deploy to the Conflict, which
+     stay in the garrison, with how many of each (the words the user chose,
+     2026-10-31: "주둔지에 남음: 병력 N").
+   One line each under the button (the lit button would swallow amber
+   words), in the shortfall badge's amber: a reminder of a choice not
+   made, not a card's effect lost (appendForfeitNotes). */
+function appendTurnEndNotes(row, action) {
+  const notes = [];
+  const lapses = action.lapses || [];
+  if (lapses.length) {
+    const note = turnEndNote("lapses", "render.turn_end_lapses");
+    lapses.forEach((lapse, position) => {
+      note.append(position ? " · " : " ");
+      note.appendChild(lapseItem(lapse));
+    });
+    notes.push(note);
+  }
+  const actions = (state.actions && state.actions.actions) || [];
+  const decision = state.summary && state.summary.decision;
+  if (action.action_id === "finish_reveal" && decision) {
+    const left = decision.persuasion;
+    const buys = persuasionBuyCards(actions);
+    if (typeof left === "number" && left > 0 && buys > 0) {
+      notes.push(turnEndNote("persuasion", "render.turn_end_persuasion", { left, buys }));
+    }
+  }
+  if (action.action_id === "finish_agent_turn") {
+    const units = deployableUnits(actions);
+    if (units.length) {
+      notes.push(turnEndNote("deploy", "render.turn_end_deploy", { units: units.join(" · ") }));
+    }
+  }
+  if (!notes.length) return;
+  row.classList.add("turn-end-noted");
+  for (const note of notes) row.appendChild(note);
+}
+
+/* The Reveal turn while an Agent turn is still open to the seat: "Agent
+   turn은 선택 사항이다. 배치하지 않은 Agent가 남아 있어도 Reveal turn을
+   선택할 수 있다", and a seat that has revealed skips its turns until
+   everyone has (docs/rules/player-turns.md [Main p. 8]), so its Agents not
+   sent stay unsent this round. Said on the row with how many are left (the
+   words the user chose, 2026-10-31: "에이전트 N 남음"); the click is
+   unchanged. An Agent turn open with no Agent left to send (Kwisatz
+   Haderach taking one from the board) leaves no count to say. */
+function appendRevealTurnNote(row, button) {
+  const actions = (state.actions && state.actions.actions) || [];
+  if (!actions.some((action) => action.action_id === "choose_agent_card")) return;
+  const own = state.view && state.view.players && state.view.players[state.viewSeat];
+  const left = own ? own.agents_available : 0;
+  if (!(left > 0)) return;
+  row.classList.add("turn-end-noted");
+  button.appendChild(turnEndNote("agents", "render.reveal_turn_agents_left", { count: left }));
+}
+
+function turnEndNote(kind, key, vars) {
+  const note = document.createElement("span");
+  note.className = "turn-end-note";
+  note.dataset.note = kind;
+  note.appendChild(tNode(key, vars));
+  return note;
+}
+
+/* An acquisition paid with Persuasion: not a Tleilaxu card or Reclaimed
+   Forces (specimens [Immortality pp. 8-9]), nor a Solari purchase
+   (acquireCostNode reads the cost the same way). */
+function paidWithPersuasion(action) {
+  if (!isAcquire(action)) return false;
+  const id = action.action_id;
+  return !id.includes("tleilaxu") && !id.includes("reclaimed_forces") && !id.includes("solari");
+}
+
+/* How many distinct cards the seat can still buy with Persuasion: Recruitment
+   Mission and Spaceport offer each card twice, to the discard pile and onto
+   the deck (`to_deck_top`), and the line counts cards, not rows (2026-10-31
+   review). */
+function persuasionBuyCards(actions) {
+  const cards = actions.filter(paidWithPersuasion).map(
+    (action) => action.arguments.instance_id
+      || action.arguments.card_id
+      || `${action.action_id}:${JSON.stringify(action.arguments)}`,
+  );
+  return new Set(cards).size;
+}
+
+/* One lapsed effect, named as the log names it: a board icon by its label,
+   a card's Agent box or Reveal choice by the card (and the icon, or the
+   choice's own words), anything else by its event's label. */
+function lapseItem(lapse) {
+  const payload = lapse.payload || {};
+  const fragment = document.createDocumentFragment();
+  const label = typeof payload.effect === "string" ? EFFECT_ICON_LABELS[payload.effect] : null;
+  const card = typeof payload.card_id === "string" ? entryOf(payload.card_id) : null;
+  if (lapse.kind === "board_effect_lapsed" && label) {
+    fragment.appendChild(phrase(label));
+  } else if (
+    card && (lapse.kind === "agent_card_effect_lapsed" || lapse.kind === "leader_signet_lapsed")
+  ) {
+    fragment.append(`${card.name} `);
+    fragment.appendChild(label ? phrase(label) : tNode("render.lapse_agent_box"));
+  } else if (card && lapse.kind === "reveal_choice_lapsed") {
+    const choices = (state.actions && state.actions.reveal_choices) || [];
+    const choice = choices.find((entry) => entry.key === `${payload.card_id}:${payload.effect}`);
+    fragment.append(card.name);
+    if (choice) {
+      fragment.append(" — ");
+      fragment.appendChild(effectNode(choice.text, choice.text_ko));
+    }
+  } else {
+    fragment.appendChild(phrase(EVENT_LABELS[lapse.kind] || prettify(lapse.kind)));
+  }
+  return fragment;
+}
+
+/* ---------- combat result line (banner) ----------
+
+   ITEM 5: nothing on screen said who won a Conflict or what a seat got —
+   the reward is a public log event (combat_reward_gained, conflict_won),
+   just never surfaced. One muted line above the prompt reports the most
+   recently resolved Conflict from the live log, from the moment its
+   reward events appear (so the winner reads it while still choosing an
+   optional reward) until the viewing seat's own next turn-taking step. */
+
+/* The action ids that start the viewing seat's own next turn, at which
+   point an older combat result stops being news. */
+const OWN_TURN_ACTION_IDS = new Set(["place_agent", "reveal_turn", "play_turn_start_card"]);
+
+/* The reward group for the most recently resolved Conflict the given seat
+   has seen, or null when none has resolved yet, it already resolved with
+   no participants (rank_combat's zero-strength rule leaves no reward
+   events to report), or the seat has since taken its own next turn. Reads
+   only the live log (undone steps dropped, like board.js's spyArrivals).
+   `conflictId` is null when the log never revealed that Conflict (see
+   resolvedConflictId); `laterReveals` counts the Conflicts revealed
+   after it. */
+function latestCombatResolution(seat) {
+  const entries = (state.log && state.log.entries) || [];
+  let conflictId = null;
+  let bundle = null;
+  let sawRewards = false;
+  for (const entry of entries) {
+    if (entry.undone) continue;
+    for (const event of entry.events || []) {
+      if (event.kind === "conflict_revealed") {
+        conflictId = event.payload.conflict_id;
+        sawRewards = false;
+        if (bundle) bundle.laterReveals += 1;
+      } else if (event.kind === "combat_reward_gained") {
+        if (!sawRewards) {
+          bundle = { conflictId, laterReveals: 0, rewards: [] };
+          sawRewards = true;
+        }
+        /* The recipient's reward begins; its icons follow (stage B2). */
+        bundle.rewards.push({ ...event.payload });
+      } else if (sawRewards && isCombatRewardGain(event)) {
+        addCombatRewardGain(bundle, event);
+      } else if (event.kind === "conflict_won" && sawRewards) {
+        /* Cleanup names the card it hands the sole winner. */
+        bundle.conflictId = event.payload.conflict_id;
+      } else if (event.kind === "combat_cleaned_up" && !sawRewards) {
+        bundle = null;
+      }
+    }
+    if (
+      bundle &&
+      entry.type === "action" &&
+      entry.actor === seat &&
+      OWN_TURN_ACTION_IDS.has(entry.action_id)
+    ) {
+      bundle = null;
+    }
+  }
+  return bundle;
+}
+
+/* The id of the Conflict a resolution reports. Without a Leader draft the
+   setup itself reveals the first Conflict (engine.reset runs Round Start),
+   so its conflict_revealed event never reaches the log and the line once
+   read "Null". Until cleanup hands it to a sole winner (conflict_won),
+   that card is still on the board: the last of current_conflict_ids, or
+   just under the one Conflict revealed since (a tie leaves it there, and
+   the line closes before that next Conflict resolves). */
+function resolvedConflictId(bundle) {
+  if (bundle.conflictId) return bundle.conflictId;
+  const onBoard = (state.view && state.view.current_conflict_ids) || [];
+  return onBoard[onBoard.length - 1 - bundle.laterReveals] || null;
+}
+
+const COMBAT_RESULT_RANK_KEYS = {
+  1: "render.combat_result_rank_1",
+  2: "render.combat_result_rank_2",
+  3: "render.combat_result_rank_3",
+};
+
+/* "1위: 좌석 0 (사람) · 2위: 좌석 1 (사람), 좌석 2 (사람)" — ties share a rank
+   and are read from left in turn order (the ranking's own order, combat.py's
+   _rewards). Plain text: ranks and names are never a rule term. */
+function combatResultRanksText(bundle) {
+  const byRank = new Map();
+  for (const reward of bundle.rewards) {
+    if (!byRank.has(reward.rank)) byRank.set(reward.rank, []);
+    byRank.get(reward.rank).push(reward.player);
+  }
+  return [...byRank.keys()]
+    .sort((a, b) => a - b)
+    .map(
+      (rank) => `${t(COMBAT_RESULT_RANK_KEYS[rank])}: ${byRank.get(rank).map(playerLabel).join(", ")}`,
+    )
+    .join(" · ");
+}
+
+/* A Conflict reward is answered icon by icon (stage B2, OQ-112): each icon
+   leaves combat_reward_icon_resolved, and its resources a resources_gained
+   whose source is the recipient's reward itself (with ":contract", a
+   Contract icon's 2 Solari without CHOAM). A Contract taken through the
+   reward pays under a longer source of its own and is no part of it. */
+const COMBAT_REWARD_SOURCE = /^round:\d+:combat_reward:\d+:\d+(?::contract)?$/;
+
+function isCombatRewardGain(event) {
+  if (event.kind === "combat_reward_icon_resolved") return true;
+  return (
+    event.kind === "resources_gained" &&
+    typeof event.payload.source === "string" &&
+    COMBAT_REWARD_SOURCE.test(event.payload.source)
+  );
+}
+
+/* Add one icon's gain to its recipient's reward in the bundle. */
+function addCombatRewardGain(bundle, event) {
+  const payload = event.payload;
+  const reward = [...bundle.rewards].reverse().find((item) => item.player === payload.player);
+  if (!reward) return;
+  const add = (key, amount) => {
+    if (amount) reward[key] = (reward[key] || 0) + amount;
+  };
+  if (event.kind === "resources_gained") {
+    add("solari", payload.solari);
+    add("spice", payload.spice);
+    add("water", payload.water);
+    return;
+  }
+  add("troops", payload.troops);
+  add("intrigue", payload.intrigue);
+  add("victory_points", payload.victory_points);
+  add("contracts", payload.effect === "contract" ? payload.contracts : 0);
+  if (payload.effect === "faction_influence") {
+    reward.faction = payload.faction;
+    add("faction_influence", payload.influence);
+  }
+  if (payload.effect === "choose_influence") add("choose_influence", 1);
+  if (payload.effect === "control") reward.control_space_id = payload.space_id;
+}
+
+/* What one recipient's reward has granted so far (its icons, gathered by
+   addCombatRewardGain), as term icons in printed order. The amounts are
+   the ones the seat actually got, a sandworm's double included. */
+function combatRewardNodes(reward) {
+  const nodes = [];
+  const add = (term, count) => nodes.push(termNode(term, count));
+  if (reward.victory_points) add("victory_point", reward.victory_points);
+  if (reward.solari) add("solari", reward.solari);
+  if (reward.spice) add("spice", reward.spice);
+  if (reward.water) add("water", reward.water);
+  if (reward.troops) add("troop", reward.troops);
+  if (reward.intrigue) add("intrigue", reward.intrigue);
+  if (reward.contracts) add("contract", reward.contracts);
+  if (reward.faction_influence && reward.faction) {
+    nodes.push(termNode(`influence_${reward.faction}`, reward.faction_influence));
+  }
+  if (reward.choose_influence) add("influence_any", reward.choose_influence);
+  if (reward.control_space_id) nodes.push(termNode("control"));
+  return nodes;
+}
+
+/* The banner's one-line Conflict summary for `seat`, or null to show
+   nothing (no Conflict has resolved yet, review mode, or the line's
+   window has closed). */
+function combatResultLine(seat) {
+  /* A finished game has its own headline; review shows the log instead. */
+  if (state.review || state.summary.finished) return null;
+  const bundle = latestCombatResolution(seat);
+  if (!bundle) return null;
+  const own = bundle.rewards.find((reward) => reward.player === seat);
+  const conflictId = resolvedConflictId(bundle);
+  const conflict = conflictId && lookup(conflictId, "conflicts");
+  const vars = {
+    name: conflict ? conflict.name : conflictId ? prettify(conflictId) : termLabel("conflict"),
+    ranks: combatResultRanksText(bundle),
+  };
+  let key = "render.combat_result_line";
+  if (!own) {
+    vars.reward = t("render.combat_result_unranked");
+  } else {
+    const nodes = combatRewardNodes(own);
+    if (nodes.length) {
+      vars.reward = document.createDocumentFragment();
+      nodes.forEach((node, index) => {
+        if (index) vars.reward.append(" ");
+        vars.reward.appendChild(node);
+      });
+    } else {
+      /* A reward the event does not itemize (a Spy, a trash, two distinct
+         Influences) is the choice the seat is shown next. */
+      key = "render.combat_result_line_ranks";
+    }
+  }
+  const line = document.createElement("div");
+  line.className = "combat-result";
+  line.appendChild(tNode(key, vars));
+  return line;
+}
+
+function renderBanner() {
+  const summary = state.summary;
+  const info = el("decision-info");
+  info.textContent = "";
+  const resultLine = combatResultLine(state.viewSeat);
+  if (resultLine) info.appendChild(resultLine);
+  const actionsBox = el("actions");
+  actionsBox.textContent = "";
+
+  const prompt = document.createElement("div");
+  prompt.className = "prompt";
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  if (summary.finished) {
+    const [first, second] = [...(summary.standings || [])].sort(
+      (a, b) => a.rank - b.rank,
+    );
+    if (!first) {
+      prompt.textContent = t("render.game_over_no_standings");
+      info.append(prompt);
+    } else {
+      prompt.textContent = t("render.game_over_winner", { winner: playerLabel(first.player) });
+      /* Names are other people's input: text nodes, never phrase() input. */
+      if (second) {
+        const margin = gameOverMargin(first, second);
+        meta.append(
+          tNode(margin.key, margin.vars),
+          t("render.second_place", { name: playerLabel(second.player) }),
+        );
+      } else {
+        meta.append(phrase(`{victory_point:${first.victory_points}}`));
+      }
+      info.append(prompt, meta);
+    }
+  } else {
+    const decision = summary.decision;
+    /* A held unit end may sit before a chance outcome (the next round's
+       draw, the next Arrakeen Scouts card), which the press resolves: then
+       no seat owns a decision yet and there is no next seat to name. */
+    if (summary.confirmation === state.viewSeat) {
+      /* The viewing seat's turn has ended: nothing advances until it
+         presses the turn-end row (confirmTurn); until then its steps can
+         be taken back (the undo row below). */
+      prompt.textContent = t("render.turn_end_prompt");
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
+      appendTurnEndRow(info, t("render.turn_end_button"), () => confirmTurn());
+    } else if (typeof summary.confirmation === "number") {
+      /* Another seat's turn has ended; nobody moves until that seat
+         presses its own turn-end row. */
+      prompt.textContent =
+        t("render.waiting_turn_end", { name: playerLabel(summary.confirmation) }) +
+        waitingHint(summary.confirmation);
+      info.append(prompt);
+      if (decision) {
+        meta.textContent = t("render.next_label", { name: playerLabel(decision.owner) });
+        info.append(meta);
+      }
+    } else if (!decision) {
+      prompt.textContent = t("render.in_progress");
+      info.append(prompt);
+    } else if (aiPlays(decision.owner) && decision.owner === state.viewSeat) {
+      /* The AI plays this screen's own seat for it (sessions.py
+         hand_to_ai): no actions, and the seat card's button takes it back. */
+      prompt.textContent = t("render.ai_plays_own_seat", { name: playerLabel(decision.owner) });
+      info.append(prompt);
+    } else if (decision.owner !== state.viewSeat && summary.thinking === decision.owner) {
+      /* A search seat thinks on the server's worker (summary.thinking),
+         whatever it is deciding, an Agent turn's end included. */
+      prompt.textContent = t("render.thinking_decision", { name: playerLabel(decision.owner) });
+      info.append(prompt);
+      if (!decision.turn_end_ready) {
+        meta.textContent = promptText(decision.prompt);
+        info.append(meta);
+      }
+    } else if (decision.owner !== state.viewSeat && decision.turn_end_ready) {
+      /* Another seat's Agent turn has nothing mandatory left; it ends with
+         that seat's own press (OQ-095), optional steps first if it likes. */
+      prompt.textContent =
+        t("render.waiting_turn_end", { name: playerLabel(decision.owner) }) +
+        waitingHint(decision.owner);
+      info.append(prompt);
+    } else if (decision.owner !== state.viewSeat) {
+      prompt.textContent =
+        t("render.waiting_decision", { name: playerLabel(decision.owner) }) +
+        waitingHint(decision.owner);
+      meta.textContent = promptText(decision.prompt);
+      info.append(prompt, meta);
+    } else {
+      /* The turn-start window asks its own question (turn.js); the engine's
+         prompt is the turn's, which follows once it is put aside. */
+      prompt.textContent = turnStartWindowPrompt() || promptText(decision.prompt);
+      meta.textContent = t("render.seat_you", { seat: decision.owner });
+      info.append(prompt, meta);
+
+      /* A choice held for the press (turn.js chooseAction) takes the row,
+         as "확정 ▶": the press sends it. Until then the seat may pick
+         another one, and an explicit end the decision also offers (a Combat
+         Intrigue pass) goes back into the list below. */
+      const held = heldChoice();
+      /* The seat's own explicit turn-end action (EXPLICIT_TURN_END_IDS),
+         when the pending decision offers one, IS this turn's end: it
+         renders as the same banner row and is pulled out of every action
+         list below (renderActionPanel). */
+      const turnEnd = !held && state.actions ? turnEndAction(state.actions.actions) : null;
+      if (held) {
+        const hint = document.createElement("div");
+        hint.className = "meta held-hint";
+        hint.textContent = t("render.held_choice_hint");
+        info.append(hint);
+        appendTurnEndRow(
+          info, t("render.held_send_button"), () => applyAction(held.index), held, "held-send-row",
+        );
+      } else if (turnEnd) {
+        const actions = state.actions.actions;
+        appendTurnEndRow(
+          info,
+          turnEndButtonLabel(turnEnd, actions),
+          turnEnd.action_id === "confirm_scouts_bid"
+            ? () => confirmStagedBid(actions)
+            : () => applyAction(turnEnd.index),
+          turnEnd,
+        );
+      }
+      if (state.actions) renderActionPanel(actionsBox, turnEnd);
+    }
+    /* While the Arrakeen Scouts step resolves an item, name it (and its
+       lines) under the prompt, above the turn-end or 확정 row, for the
+       deciding seat and the waiting ones alike (panels.js). */
+    const scoutsHeader = scoutsDecisionHeader();
+    if (scoutsHeader) {
+      const below = info.querySelector(":scope > .held-hint, :scope > .confirm-row");
+      info.insertBefore(scoutsHeader, below);
+    }
+    /* How long the seat holding control has held it (clock.js). */
+    appendSpellClock(info);
+  }
+
+  /* A human seat may still have takeable-back steps after the game ends
+     (its last live step), so the undo row renders in both branches above. */
+  appendUndoRow(info);
+}
+
+/* The tiebreaks after equal Victory Points, in order: spice, Solari, water,
+   troops in garrison [Main p. 15], a garrisoned Sardaukar Commander counting
+   as a troop (OQ-047). The server ranks on the same keys (rules/endgame.py). */
+const VP_TIEBREAKS = [
+  ["{spice}", (entry) => entry.spice],
+  ["{solari}", (entry) => entry.solari],
+  ["{water}", (entry) => entry.water],
+  ["{garrison} {troop}", (entry) => entry.troops_garrison + (entry.commanders_garrison || 0)],
+];
+
+/* What put the winner ahead of second place, as a t()/tNode() key and vars:
+   the victory-point count is a pre-built term node (a hole value), so it
+   never sits inside a stored template's {term:count} slot. */
+function gameOverMargin(first, second) {
+  const vp = first.victory_points;
+  if (vp !== second.victory_points) {
+    return {
+      key: "render.margin_vp",
+      vars: { vp: termNode("victory_point", vp), diff: vp - second.victory_points },
+    };
+  }
+  for (const [label, value] of VP_TIEBREAKS) {
+    if (value(first) !== value(second)) {
+      return {
+        key: "render.margin_tiebreak",
+        vars: {
+          vp: termNode("victory_point", vp),
+          tiebreak: phrase(label),
+          first: value(first),
+          second: value(second),
+        },
+      };
+    }
+  }
+  /* Still tied: whoever took a Reveal turn most recently wins [FAQ p. 2]. */
+  return { key: "render.margin_all_tied", vars: { vp: termNode("victory_point", vp) } };
+}
+
+/* Why a wait may be a long one: nobody sits there yet, or they dropped off. */
+function waitingHint(seat) {
+  const info = playerInfo(seat);
+  if (!isRemote() || info.kind !== "human") return "";
+  if (!info.claimed) return t("render.waiting_hint_empty");
+  return info.online ? "" : t("render.waiting_hint_offline");
+}
+
+/* How many steps the seat's last move took: a placement the staged turn
+   sent is its card pick and its space pick (stage B1), taken back together
+   as it was made; anything else is one step. */
+function lastMoveSteps(available) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  const [pick, space] = live.slice(-2);
+  const placement =
+    available >= 2 &&
+    pick && space &&
+    pick.actor === state.viewSeat && space.actor === state.viewSeat &&
+    pick.action_id === "choose_agent_card" && space.action_id === "place_agent";
+  return placement ? 2 : 1;
+}
+
+/* How many moves the seat's last ``steps`` steps make, as the seat made
+   them: a placement's card pick (stage B1) and a step toward a waiting
+   effect (``pick``, stage B3) go on into the seat's next step. */
+function undoMoves(steps) {
+  const live = ((state.log && state.log.entries) || []).filter(
+    (entry) => entry.type === "action" && !entry.undone
+  );
+  return live
+    .slice(-steps)
+    .filter((entry) => !entry.pick && entry.action_id !== "choose_agent_card").length;
+}
+
+/* Undo controls for the viewing seat (M11 slice 6): a single-step button
+   and, when more than one step is available, a take-back-everything button. */
+function appendUndoRow(container) {
+  if (state.review) return;
+  const entry = (state.summary.undo || []).find(
+    (item) => item.seat === state.viewSeat
+  );
+  if (!entry || entry.steps <= 0) return;
+  const row = document.createElement("div");
+  row.className = "undo-row";
+
+  const one = document.createElement("button");
+  one.type = "button";
+  one.textContent = t("render.undo_one_step");
+  one.disabled = state.busy;
+  const last = lastMoveSteps(entry.steps);
+  one.addEventListener("click", () => submitUndo(state.viewSeat, last));
+  row.appendChild(one);
+
+  const moves = undoMoves(entry.steps);
+  if (moves > 1) {
+    const all = document.createElement("button");
+    all.type = "button";
+    all.textContent = t("render.undo_all_steps", { steps: moves });
+    all.disabled = state.busy;
+    all.addEventListener("click", () => submitUndo(state.viewSeat, entry.steps));
+    row.appendChild(all);
+  }
+  container.appendChild(row);
+}
+
+/* Effect preview for one legal action: resolve its referenced space/cards
+   against the catalog. space_id resolves against the spaces section
+   explicitly (a contract may share its id with a space). */
+function actionPreviewEntries(action) {
+  const entries = [];
+  const args = action.arguments;
+  if (typeof args.space_id === "string" && state.catalog.spaces[args.space_id]) {
+    entries.push(state.catalog.spaces[args.space_id]);
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (key === "space_id" || typeof value !== "string") continue;
+    /* A Reveal choice's own card (core.js revealSourceEntry): its header
+       already names it, and it lies face up in play. */
+    if (key === "source" && revealSourceEntry(action)) continue;
+    const entry = entryOf(value);
+    if (entry && !entries.includes(entry)) entries.push(entry);
+  }
+  return entries;
+}
+
+function spaceOptionLine(option) {
+  const line = document.createElement("div");
+  line.className = "popover-line option-line";
+  line.appendChild(costNode(option.cost));
+  line.appendChild(icon("arrow_right", "→"));
+  line.appendChild(effectNode(option.effect, option.effect_ko));
+  return line;
+}
+
+function actionPreviewNodes(action, entry) {
+  if (entry.options) {
+    const options = spaceOptionsFor(entry);
+    const index =
+      typeof action.arguments.cost_option === "number"
+        ? action.arguments.cost_option
+        : 0;
+    const option = options[index] || options[0];
+    const nodes = [];
+    if (entry.requirement) nodes.push(requirementNode(entry.requirement));
+    nodes.push(spaceOptionLine(option));
+    const notesKo = entry.notes_ko || [];
+    entry.notes.forEach((text, i) => {
+      nodes.push(effectLine(text, notesKo[i], "popover-line muted"));
+    });
+    return nodes;
+  }
+  const optionIndex = action.arguments.option;
+  if (
+    action.action_id === "play_intrigue" &&
+    entry.text &&
+    typeof optionIndex === "number" &&
+    entry.text[optionIndex]
+  ) {
+    const textKo = entry.text_ko || [];
+    return [effectLine(entry.text[optionIndex], textKo[optionIndex])];
+  }
+  return popoverNodes(entry);
+}
+
+/* Argument values that name a card instance or space, for hotspot and hand
+   click matching (data-refs) — the same strings describeAction resolves. */
+function actionRefs(action) {
+  return Object.values(action.arguments).filter((value) => typeof value === "string");
+}
+
+/* What the seat's running combat strength becomes with a step: the
+   server's dry run of that step (`strength_after`), so the engine's own
+   figure. */
+function strengthPreview(after) {
+  const own = state.view && state.view.players[state.viewSeat];
+  const now = own ? own.combat_strength || 0 : 0;
+  const badge = document.createElement("span");
+  badge.className = "strength-preview";
+  badge.title = t("render.strength_preview_title");
+  badge.append(icon("sword", phraseText("{strength}")), ` ${now} → ${after}`);
+  return badge;
+}
+
+/* What revealing the hand right now would give: the server's dry run of
+   `reveal_turn` (`reveal_preview`: the Persuasion the Reveal opens with and
+   the strength once the revealed swords count), so the engine's own sum. */
+function revealPreview(preview) {
+  const badge = document.createElement("span");
+  badge.className = "reveal-preview";
+  badge.title = t("render.reveal_preview_title");
+  badge.append(icon("persuasion", phraseText("{persuasion}")), ` ${preview.persuasion}`);
+  const own = state.view && state.view.players[state.viewSeat];
+  const now = own ? own.combat_strength || 0 : 0;
+  if (typeof preview.strength === "number" && preview.strength !== now) {
+    badge.append(" · ", icon("sword", phraseText("{strength}")), ` ${now} → ${preview.strength}`);
+  }
+  return badge;
+}
+
+/* The `reveal_turn` step among the seat's legal actions, if it is there and
+   the server previewed it. */
+function revealTurnPreview() {
+  if (state.review || !state.actions) return null;
+  const reveal = state.actions.actions.find((action) => action.action_id === "reveal_turn");
+  return reveal && reveal.reveal_preview ? reveal.reveal_preview : null;
+}
+
+/* ---------- count steppers ----------
+
+   "Deploy 1", "Deploy 2", "Deploy 3" are one decision with a number in it.
+   Actions of one id that differ only in a `count` argument are shown as a
+   single row with a stepper over the legal counts; the panel and the
+   Conflict area share the chosen number. */
+/* Count families shown as a stepper in the panel even with one count left:
+   Scouts bids keep their amount and currency together. A sealed bid keeps
+   the same control even when only 0 is affordable (D5, Scouts design). */
+const SINGLE_COUNT_STEPPERS = new Set(["scouts_bid", "scouts_call"]);
+
+function countFamilies(actions) {
+  const byId = new Map();
+  for (const action of actions) {
+    if (!byId.has(action.action_id)) byId.set(action.action_id, []);
+    byId.get(action.action_id).push(action);
+  }
+  const families = new Map();
+  for (const [id, group] of byId) {
+    const onlyCount = group.every((action) => {
+      const keys = Object.keys(action.arguments);
+      return keys.length === 1 && keys[0] === "count" && Number.isInteger(action.arguments.count);
+    });
+    /* Units go in and out of the Conflict through the same control even
+       when a single count is left to choose. */
+    if (
+      !onlyCount ||
+      (group.length < 2 && !FORCE_STEPPER_ACTIONS.has(id) && !SINGLE_COUNT_STEPPERS.has(id))
+    ) {
+      continue;
+    }
+    families.set(id, [...group].sort((a, b) => a.arguments.count - b.arguments.count));
+  }
+  return families;
+}
+
+/* Critical Moment: an amount already called cannot be called again
+   (docs/rules/arrakeen-scouts.md 8.3, OQ-086); the original game's Mentat:
+   only a call higher than the highest (stage P8, OQ-162). The engine leaves
+   the other amounts out of the seat's calls, so the stepper skips them;
+   this says why, beside it (play feedback 2026-10-26). Null before any
+   amount. */
+function calledAmountsNote() {
+  const calls = (state.view && state.view.scouts_calls) || [];
+  const amounts = [...new Set(calls.map(([, amount]) => amount).filter((amount) => amount > 0))]
+    .sort((a, b) => a - b);
+  if (!amounts.length) return null;
+  const note = document.createElement("span");
+  note.className = "muted scouts-called-note";
+  const auction = scoutsItem(state.view.scouts_item);
+  note.textContent = auction.auction_kind === "open_mentat"
+    ? t("render.scouts_highest_call", { amount: amounts[amounts.length - 1] })
+    : t("render.scouts_called_amounts", { amounts: amounts.join(", ") });
+  return note;
+}
+
+/* The family's action for the chosen count. Sending units defaults to all
+   of them, taking them back to one. */
+function chosenOf(id, family) {
+  const staged = AUCTION_AMOUNT_IDS.has(id) ? auctionStaged(id) : state.counts[id];
+  const found = family.find((action) => action.arguments.count === staged);
+  if (found) return found;
+  if (id === "scouts_bid") {
+    const recorded = family.find((action) => action.arguments.count === recordedBid());
+    if (recorded) return recorded;
+  }
+  return id.startsWith("deploy") ? family[family.length - 1] : family[0];
+}
+
+/* An auction amount is staged for the decision it was set in only, so the
+   next auction starts from the recorded bid (or 0), not an old amount. */
+function auctionKey() {
+  const decision = state.summary && state.summary.decision;
+  return decision ? `${state.summary.round_number}:${decision.kind}:${decision.owner}` : "";
+}
+
+function auctionStaged(id) {
+  const staged = state.counts[id];
+  return staged && staged.key === auctionKey() ? staged.count : undefined;
+}
+
+function countRow(id, family, compact) {
+  const chosen = chosenOf(id, family);
+  const position = family.indexOf(chosen);
+  const row = document.createElement("div");
+  row.className = "action-item count-row" + (compact ? " compact" : "");
+  row.dataset.action = id;
+  row.dataset.index = String(chosen.index);
+  const label = document.createElement("span");
+  label.className = "count-label";
+  label.appendChild(phrase(ACTION_LABELS[id] || prettify(id)));
+  const stepper = document.createElement("span");
+  stepper.className = "stepper";
+  const step = (text, target, title) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.title = title;
+    button.disabled = state.busy || !family[target];
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const count = family[target].arguments.count;
+      state.counts[id] = AUCTION_AMOUNT_IDS.has(id) ? { key: auctionKey(), count } : count;
+      /* A count held for the press is the old one: let it go. */
+      const held = heldChoice();
+      if (held && held.action_id === id) state.held = null;
+      render();
+    });
+    return button;
+  };
+  const value = document.createElement("strong");
+  value.className = "stepper-value";
+  value.textContent = String(chosen.arguments.count);
+  const currency = (id === "scouts_bid" || id === "scouts_call")
+    ? scoutsAuctionCurrency() : null;
+  if (currency) value.append(" ", scoutsCurrencyNode(currency));
+  stepper.append(
+    step("−", position - 1, t("render.count_step_down")),
+    value,
+    step("+", position + 1, t("render.count_step_up")),
+  );
+  if (AUCTION_AMOUNT_IDS.has(id)) {
+    /* The amount goes in with the banner's turn-end press. */
+    row.append(label, stepper);
+    if (id === "scouts_call") {
+      const note = calledAmountsNote();
+      if (note) row.appendChild(note);
+    }
+    return row;
+  }
+  const confirm = document.createElement("button");
+  confirm.type = "button";
+  confirm.className = "count-confirm";
+  confirm.disabled = state.busy;
+  const confirmText = compact
+      ? t("render.confirm_short")
+      : t("render.confirm_count_label", {
+        count: chosen.arguments.count, label: label.textContent,
+      });
+  confirm.append(confirmText);
+  if (typeof chosen.strength_after === "number") {
+    confirm.appendChild(strengthPreview(chosen.strength_after));
+  }
+  confirm.addEventListener("click", (event) => {
+    event.stopPropagation();
+    chooseAction(chosen);
+  });
+  row.append(label, stepper, confirm);
+  return row;
+}
+
+/* The viewing seat's own pile holding a card instance ("hand", "discard_pile"
+   or "in_play"), or null when the card sits in none of them (a board or
+   reserve card, or another seat's). Zones come from the viewing seat's own
+   view: its hand in the private block, its discard pile and in-play list in
+   its public player block. */
+function ownCardZone(cardId) {
+  const hand = (state.view && state.view.private && state.view.private.hand) || [];
+  if (hand.includes(cardId)) return "hand";
+  const own = state.view && state.view.players && state.view.players[state.viewSeat];
+  if (own && own.discard_pile.includes(cardId)) return "discard_pile";
+  if (own && own.in_play.includes(cardId)) return "in_play";
+  return null;
+}
+
+/* Rows of this list that need a zone suffix: two or more rows of the same
+   action_id naming the same card (same baseId) but sitting in different
+   piles of the viewing seat. Trashing the hand copy costs that card's play
+   this round, and nothing else on the row says which pile a row means
+   (item 8c: the Feyd track, Desert Tactics and Combat reward trashes all
+   offer hand, then discard pile, then in-play candidates). A duplicate
+   that shares one pile with its sibling rows is interchangeable and keeps
+   its plain label -- unless it is a trash row of a card the open Agent turn
+   played (turnCardSuffixes). What a row would lose is its own line
+   (appendForfeitNotes). */
+function zoneSuffixes(actions) {
+  const groups = new Map();
+  for (const action of actions) {
+    const cardId = action.arguments.card_id;
+    if (typeof cardId !== "string") continue;
+    const zone = ownCardZone(cardId);
+    if (!zone) continue;
+    const key = `${action.action_id}\u0000${baseId(cardId)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ action, zone });
+  }
+  const suffixes = new Map();
+  for (const entries of groups.values()) {
+    if (new Set(entries.map((entry) => entry.zone)).size >= 2) {
+      for (const { action, zone } of entries) suffixes.set(action, zone);
+    }
+    turnCardSuffixes(entries, suffixes);
+  }
+  return suffixes;
+}
+
+/* The words of a turn card's suffix (turnCardSuffixes), by its kind. */
+const TURN_CARD_SUFFIX_TEXT = {
+  turn: "render.turn_card_suffix",
+  earlier_turn: "render.earlier_turn_card_suffix",
+};
+
+/* Within one group of zoneSuffixes (rows of one action naming one card):
+   a trash row of a card the open Agent turn played -- the played card or
+   its graft partner, the server's view.turn_card_ids (sessions.py
+   turn_cards) -- says "card played this turn"; that trashing it loses the
+   rest of its Agent box is the row's own warning line when the server's
+   dry run says so (action.forfeit, appendForfeitNotes; user request
+   2026-10-31: the old suffix said it too quietly to be read). A row of the
+   same action naming an in-play copy of that card
+   from an earlier turn says so, so two copies in play are no longer read
+   as interchangeable (user feedback 2026-10-11: this turn's grafted
+   Experimentation was trashed instead of the earlier one). A hand or
+   discard-pile copy keeps its pile's word. Every trash of a chosen
+   personal card names it in card_id and has "trash" in its id:
+   trash_optional_card, trash_agent_card, trash_card_for_desert_tactics,
+   trash_combat_reward_card, trash_leader_card, trash_reveal_card,
+   trash_intrigue_card (an Intrigue card's personal-card trash),
+   trash_grafted_card_for_influence and scouts_trash_card. */
+function turnCardSuffixes(entries, suffixes) {
+  const view = state.view || {};
+  const turn = view.turn_card_ids || [];
+  if (!turn.length || !entries[0].action.action_id.includes("trash")) return;
+  if (!entries.some(({ action }) => turn.includes(action.arguments.card_id))) return;
+  for (const { action, zone } of entries) {
+    const cardId = action.arguments.card_id;
+    if (turn.includes(cardId)) {
+      suffixes.set(action, "turn");
+    } else if (zone === "in_play") {
+      suffixes.set(action, "earlier_turn");
+    }
+  }
+}
+
+/* " (hand)" / " (discard pile)" / " (in play)": the TERMS glossary word for
+   the zone a row's card sits in ([Main p. 20]), through phrase() so it
+   reads in the chosen language like the rest of the row. A turn card's
+   suffix (turnCardSuffixes) is its own words, in a span of its own. */
+function zoneSuffixNode(zone) {
+  const key = TURN_CARD_SUFFIX_TEXT[zone];
+  if (!key) return phrase(` ({${zone}})`);
+  const node = document.createElement("span");
+  node.className = "turn-card-suffix";
+  node.dataset.turnCard = zone;
+  node.textContent = ` (${t(key)})`;
+  return node;
+}
+
+/* The zone of the card a row names (ownCardZone), or null for a row that
+   names no card of the viewing seat's own piles (a decline or skip row, a
+   count stepper, a board or reserve card). */
+function rowCardZone(action) {
+  const cardId = action.arguments.card_id;
+  return typeof cardId === "string" ? ownCardZone(cardId) : null;
+}
+
+/* A label over a run of card rows that sit in one pile: the pile's word and
+   how many rows follow it ("핸드 · 3" / "Hand · 3"). Not a button and no
+   .action-item, so Tab and focusActions pass it by; the rows keep reading in
+   the list's own order, which is the order the engine offers them in
+   (hand, then discard pile, then in play). Trash, discard and similar
+   candidates list the seat's own piles this way (user request 2026-10-05:
+   "which rows are hand, which are discard pile"). */
+function zoneHeading(zone, count) {
+  const word = phraseText(`{${zone}}`);
+  const heading = document.createElement("div");
+  heading.className = "zone-heading muted";
+  heading.dataset.zone = zone;
+  heading.textContent = t("render.zone_heading", {
+    zone: word.charAt(0).toUpperCase() + word.slice(1),
+    count,
+  });
+  return heading;
+}
+
+/* The line between the card rows and the rows that follow them (a decline
+   or skip). Only drawn, so a screen reader skips it. */
+function zoneDivider() {
+  const divider = document.createElement("div");
+  divider.className = "zone-divider";
+  divider.setAttribute("aria-hidden", "true");
+  return divider;
+}
+
+/* A list of legal actions with its count families folded into rows.
+
+   When the card rows of the list sit in two or more of the viewing seat's
+   own piles (a trash or discard choice offering hand, discard pile and
+   in-play cards), each run of rows in one pile goes under a zone heading
+   and a divider sets the rows that follow (a decline) apart. A list whose
+   card rows share one pile, or that has no card rows, is unchanged.
+
+   `options.boxed`: the rows are one Agent box's, under its card's header
+   (appendDecisionItems), and leave the card's name to it. */
+function appendActionItems(box, actions, options = {}) {
+  const families = countFamilies(actions);
+  const suffixes = zoneSuffixes(actions);
+  const done = new Set();
+  const rows = [];
+  for (const action of actions) {
+    const family = families.get(action.action_id);
+    if (!family) rows.push({ action, zone: rowCardZone(action) });
+    else if (!done.has(action.action_id)) {
+      done.add(action.action_id);
+      rows.push({ action, family, zone: null });
+    }
+  }
+  const grouped = new Set(rows.map((row) => row.zone).filter(Boolean)).size >= 2;
+  let run = null;
+  rows.forEach((row, position) => {
+    if (grouped && row.zone !== run) {
+      if (row.zone) {
+        let length = 0;
+        while (rows[position + length] && rows[position + length].zone === row.zone) {
+          length += 1;
+        }
+        box.appendChild(zoneHeading(row.zone, length));
+      } else {
+        box.appendChild(zoneDivider());
+      }
+      run = row.zone;
+    }
+    if (row.family) box.appendChild(countRow(row.action.action_id, row.family, false));
+    else {
+      box.appendChild(
+        actionItem(row.action, undefined, suffixes.get(row.action), options.boxed),
+      );
+    }
+  });
+}
+
+/* ---------- an Agent turn's boxes ----------
+
+   A grafted Agent turn offers both cards' Agent boxes from the start
+   (codec v143, docs/graft-boxes-plan.md): "You gain the effects on both
+   cards, in addition to the board space effects, in any order you choose."
+   [Immortality pp. 10-11]. The decision panel sets each box's rows under a
+   header naming its card, box 0 (the placed card) first, then box 1 (its
+   graft partner), and the turn's other rows (the space's effects, Intrigue
+   cards, deployments...) after them under a header of their own (user
+   request 2026-10-11, plan 4.11). The server says which box a row is
+   (`box` on a row and on a greyed-out row, display/actions.py
+   agent_box_of_rows) and which boxes the turn has (state.actions.
+   agent_boxes, agent_box_headers). A box's greyed-out rows (an icon
+   waiting on its condition, display/unavailable.py) sit under its header
+   too, after the rows it can take now.
+
+   A single card's turn gets its header only with two or more box rows; with
+   one it is the flat list it always was. A grafted box with no row left
+   (resolved, or waiting for nothing) gets no header. While one box is part
+   way through a bundled selection (a "Choose two" after its first pick, an
+   arrow's rewards once paid; plan 4.3) the server leaves the other box's
+   rows out (`locked`): its header stays, with a line saying it comes back
+   after that choice, so the card does not seem to have lost its box. */
+function agentBoxGroups(actions) {
+  const boxes = state.actions && state.actions.agent_boxes;
+  if (!boxes || !boxes.length) return null;
+  const greyed = (state.actions.unavailable && state.actions.unavailable.rows) || [];
+  const grafted = boxes.length > 1;
+  const groups = boxes.map((entry) => {
+    const rows = actions.filter((action) => action.box === entry.box);
+    const waiting = greyed.filter((row) => row.box === entry.box);
+    const count = rows.length + waiting.length;
+    return {
+      entry,
+      rows,
+      waiting,
+      headed: grafted ? count > 0 || Boolean(entry.locked) : count >= 2,
+    };
+  });
+  return groups.some((group) => group.headed) ? groups : null;
+}
+
+/* "<card> — 에이전트 칸": the card is plain text, never iconized. A heading
+   for a screen reader (its rows follow it), not a control: Tab and
+   focusActions pass it by. */
+function agentBoxHeading(entry) {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading";
+  heading.dataset.box = String(entry.box);
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  const name = TERM_LANGUAGE === "ko" && entry.name_ko ? entry.name_ko : entry.name;
+  heading.textContent = t("render.agent_box_heading", { name });
+  return heading;
+}
+
+/* The line under a box held back by the other box's bundled selection. */
+function agentBoxLockedNote(entry) {
+  const note = document.createElement("div");
+  note.className = "agent-box-note muted";
+  note.dataset.box = String(entry.box);
+  note.textContent = t("render.agent_box_locked");
+  return note;
+}
+
+/* The header over the turn's rows that belong to no Agent box. */
+function agentBoxOthersHeading() {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading agent-box-others";
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  heading.textContent = t("render.agent_box_others_heading");
+  return heading;
+}
+
+/* The decision panel's list (turn.js renderActionPanel): an Agent turn's
+   rows grouped by Agent box (agentBoxGroups), any other list as
+   appendActionItems lays it out. Returns the keys of the greyed-out rows it
+   placed under a box, which appendUnavailableRows then leaves out. */
+function appendDecisionItems(box, actions) {
+  const groups = agentBoxGroups(actions);
+  const placed = new Set();
+  if (!groups) {
+    appendActionItems(box, actions);
+    return placed;
+  }
+  const grouped = new Set();
+  for (const group of groups) {
+    if (!group.headed) continue;
+    box.appendChild(agentBoxHeading(group.entry));
+    if (group.entry.locked && !group.rows.length && !group.waiting.length) {
+      box.appendChild(agentBoxLockedNote(group.entry));
+    }
+    appendActionItems(box, group.rows, { boxed: true });
+    for (const action of group.rows) grouped.add(action);
+    for (const row of group.waiting) {
+      box.appendChild(unavailableRow(row, true));
+      placed.add(row.key);
+    }
+  }
+  const others = actions.filter((action) => !grouped.has(action));
+  if (others.length) {
+    box.appendChild(agentBoxOthersHeading());
+    appendActionItems(box, others);
+  }
+  return placed;
+}
+
+/* ---------- Arrakeen Scouts lines ----------
+
+   A Scouts choice (an event's or a sale's lines, a subcommittee offer, a
+   mission's ways in) lists every line in its printed order, the ones the
+   seat cannot take right now too: the server's scouts_lines (display/
+   scouts.py scouts_choice_lines) says which are legal and why the others
+   are not. A legal line is its ordinary action row; any other is a row
+   shaped like one that takes no click, with the reason on it. Every
+   snapshot works the lines out again, so a line opens as soon as the seat
+   can take it and closes when it no longer can (user request 2026-09-29).
+   The pass or decline, and a specimen stepper, follow as usual. */
+function appendScoutsLines(box, actions, choice) {
+  const byIndex = new Map(actions.map((action) => [action.index, action]));
+  const shown = new Set();
+  for (const line of choice.lines) {
+    const action = line.action_index === null ? undefined : byIndex.get(line.action_index);
+    if (action) {
+      box.appendChild(actionItem(action));
+      shown.add(action.index);
+    } else {
+      box.appendChild(unavailableLineItem(line));
+    }
+  }
+  appendActionItems(box, actions.filter((action) => !shown.has(action.index)));
+}
+
+/* A line the seat cannot take now. Not an .action-item, which focusActions
+   matches by its refs, and not a disabled button either, which means
+   "busy" on this page (cursor: wait). */
+function unavailableLineItem(line) {
+  const row = document.createElement("div");
+  row.className = "scouts-line-item unavailable";
+  // A button that cannot be pressed, announced as such (no tabindex: it
+  // takes no focus and has no handler).
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-disabled", "true");
+  row.dataset.key = line.key;
+  row.title = t("render.scouts_line_unavailable_title");
+  const body = document.createElement("span");
+  body.className = "scouts-line-body";
+  body.appendChild(phrase(ACTION_LABELS[line.action_id] || prettify(line.action_id)));
+  if (line.text) {
+    body.append(" — ");
+    body.appendChild(effectNode(line.text, line.text_ko));
+  }
+  row.append(body, unavailableBadge(line));
+  return row;
+}
+
+/* Why: who joined a claimed subcommittee, or the server's reason. */
+function unavailableBadge(line) {
+  const badge = document.createElement("span");
+  badge.className = "unavailable-badge";
+  if (line.code === "claimed" && typeof line.seat === "number") {
+    badge.append(t("render.scouts_joined_by", { player: playerLabel(line.seat) }));
+  } else if (line.reason) {
+    badge.appendChild(effectNode(line.reason, line.reason_ko));
+  } else {
+    badge.append(t("render.scouts_line_unavailable"));
+  }
+  return badge;
+}
+
+/* ---------- choices the seat cannot take now ----------
+
+   The rest of the game does what a Scouts choice does (user request
+   2026-09-29): the server's `unavailable` (display/unavailable.py
+   unavailable_choices) lists what the seat's own decision offers that it
+   cannot take right now, with the reason — a card of the Reveal shop it
+   cannot afford, one of its Intrigue cards whose cost or condition fails,
+   an effect still waiting on its condition, a branch of an open choice it
+   cannot take ("choice": Desert Power's sandworm without Maker Hooks, a
+   recall with no other Agent to recall).
+   Each is a row shaped like an action row that takes no click; its action
+   is described like a legal one (describeAction, no index), and `refs`
+   dims the table cards with the reason as their title (visualCard). Every
+   snapshot works them out again, so a row becomes an ordinary action row
+   as soon as the seat can take it, and the reverse. */
+const UNAVAILABLE_HEADINGS = {
+  acquire: "render.unavailable_acquire_heading",
+  choice: "render.unavailable_choice_heading",
+  intrigue: "render.unavailable_intrigue_heading",
+  waiting: "render.unavailable_waiting_heading",
+};
+
+function unavailableRows(surface) {
+  const info = state.actions && state.actions.unavailable;
+  return info ? info.rows.filter((row) => row.surface === surface) : [];
+}
+
+/* Why a table object (a card) cannot be taken now, or null. */
+function unavailableRef(ref) {
+  const info = state.actions && state.actions.unavailable;
+  return (info && info.refs && info.refs[ref]) || null;
+}
+
+/* A reason as plain text, for a title or a note. */
+function unavailableText(why) {
+  return TERM_LANGUAGE === "ko" && why.reason_ko ? phraseText(why.reason_ko) : why.reason;
+}
+
+/* One greyed-out row: like unavailableLineItem, not an .action-item (which
+   focusActions matches by its refs) and not a disabled button (which means
+   "busy" on this page). `boxed`: it sits under its Agent box's card header
+   (appendDecisionItems), which names the card for the eye. */
+function unavailableRow(row, boxed = false) {
+  const item = document.createElement("div");
+  item.className = "unavailable-item";
+  item.setAttribute("role", "button");
+  item.setAttribute("aria-disabled", "true");
+  item.dataset.key = row.key;
+  item.dataset.surface = row.surface;
+  if (typeof row.box === "number") item.dataset.box = String(row.box);
+  item.title = t("render.unavailable_title");
+  const body = document.createElement("span");
+  body.className = "unavailable-body";
+  body.appendChild(describeAction(row.action, { boxed }));
+  /* A waiting effect names the card it sits on, unless its row already
+     leads with it (an Agent box, display/actions.py agent_box_row_title).
+     A card that cannot be bought shows no cost of its own: its reason names
+     the cost and what the seat holds ("Needs 5 Persuasion (you have 3)"). */
+  if (row.card_id && !rowLeadsWithCard(row.action, boxed)) {
+    if (boxed) {
+      const name = document.createElement("span");
+      name.className = "box-row-title";
+      name.append(" · ", nameOf(row.card_id));
+      body.appendChild(name);
+    } else {
+      body.append(" · ", nameOf(row.card_id));
+    }
+  }
+  item.append(body, unavailableBadge(row));
+  return item;
+}
+
+/* The greyed-out rows of `surfaces`, each kind under its own heading,
+   leaving out the ones already set under an Agent box (`placed`, their
+   keys: appendDecisionItems). */
+function appendUnavailableRows(box, surfaces, placed = new Set()) {
+  for (const surface of surfaces) {
+    const rows = unavailableRows(surface).filter((row) => !placed.has(row.key));
+    if (!rows.length) continue;
+    const heading = document.createElement("div");
+    heading.className = "pick-others muted unavailable-heading";
+    heading.textContent = t(UNAVAILABLE_HEADINGS[surface]);
+    box.appendChild(heading);
+    for (const row of rows) box.appendChild(unavailableRow(row));
+  }
+}
+
+/* Under a step that takes a High Council seat (Arrakeen Scouts): the
+   subcommittees the seat would let the seat join, then the others it could
+   not join right now and why (server/sessions.py subcommittee_preview; a
+   claimed one is in the Scouts panel). Read off the step's dry run, so it
+   follows the seat's resources until the icon is resolved. The seat may
+   choose its subcommittee any time later in that turn (OQ-076), so with
+   none joinable at once but some still open it says so and gives the
+   reasons; with none open at all (every line "claimed") it says none is
+   left, and the seat will only be offered the decline (OQ-076 (c)). */
+function subcommitteePreview(preview) {
+  const box = document.createElement("div");
+  box.className = "subcommittee-preview";
+  const name = (line) => scoutsItem(line.subcommittee_id).name;
+  const open = preview.lines.filter((line) => line.enabled);
+  const shut = preview.lines.filter((line) => !line.enabled && line.code !== "claimed");
+  if (!preview.joinable && !shut.length) {
+    box.classList.add("muted");
+    box.append(t("render.subcommittee_preview_none"));
+    return box;
+  }
+  const joinable = document.createElement("div");
+  if (preview.joinable) {
+    joinable.append(t("render.subcommittee_preview_join", { names: open.map(name).join(", ") }));
+  } else {
+    joinable.className = "muted";
+    joinable.append(t("render.subcommittee_preview_later"));
+  }
+  box.appendChild(joinable);
+  if (shut.length) {
+    const reasons = document.createDocumentFragment();
+    shut.forEach((line, position) => {
+      reasons.append(`${position ? " · " : ""}${name(line)} — `);
+      reasons.appendChild(
+        line.reason
+          ? effectNode(line.reason, line.reason_ko)
+          : document.createTextNode(t("render.scouts_line_unavailable")),
+      );
+    });
+    const later = document.createElement("div");
+    later.className = "muted";
+    later.appendChild(tNode("render.subcommittee_preview_not_now", { lines: reasons }));
+    box.appendChild(later);
+  }
+  return box;
+}
+
+/* ---------- Reveal purchases ----------
+
+   A Reveal is a small shop: the Persuasion still unspent (the server's
+   summary carries it), what has been bought so far (the session log), the
+   cards that can still be bought, the Reveal effects left to resolve, and
+   one clear way out. */
+function isAcquire(action) {
+  return action.action_id.startsWith("acquire");
+}
+
+/* The card each acquisition event names. A Tleilaxu Row card is acquired
+   like an Imperium card, for specimens [Immortality p. 8]; Reclaimed Forces
+   is "acquired" but stays in the Row [Immortality p. 9] (OQ-066), and its
+   event names no card. */
+const ACQUIRED_CARD = {
+  card_acquired: (payload) => payload.card_id,
+  tleilaxu_card_acquired: (payload) => payload.card_id,
+  reclaimed_forces_acquired: () => "reclaimed_forces",
+};
+
+function boughtThisReveal() {
+  const entries = (state.log && state.log.entries) || [];
+  const seat = state.viewSeat;
+  let start = -1;
+  entries.forEach((entry, position) => {
+    if (entry.action_id === "reveal_turn" && entry.actor === seat && !entry.undone) start = position;
+  });
+  if (start < 0) return [];
+  const bought = [];
+  for (const entry of entries.slice(start + 1)) {
+    if (entry.actor !== seat || entry.undone) continue;
+    for (const event of entry.events || []) {
+      const cardOf = ACQUIRED_CARD[event.kind];
+      if (cardOf && event.payload.player === seat) bought.push(cardOf(event.payload));
+    }
+  }
+  return bought;
+}
+
+function acquireCostNode(action) {
+  /* Reclaimed Forces' only argument is the effect chosen, not the card;
+     Harvest Cells may take it too, for the same specimens. */
+  const reclaimed = action.action_id === "acquire_reclaimed_forces"
+    || action.action_id === "acquire_intrigue_reclaimed_forces";
+  const ref = actionRefs(action)[0];
+  const entry = reclaimed
+    ? lookup("reclaimed_forces", "cards")
+    : ref
+      ? entryOf(ref)
+      : null;
+  if (!entry) return null;
+  const cost = document.createElement("span");
+  cost.className = "acquire-cost";
+  const specimens = reclaimed || action.action_id.includes("tleilaxu");
+  if (specimens && typeof entry.specimens === "number") {
+    cost.append(`${phraseText("{specimen}")} ${entry.specimens}`);
+  } else if (typeof entry.cost === "number") {
+    cost.append(
+      amount(
+        action.action_id.includes("solari") ? "solari" : "persuasion",
+        t("render.acquire_cost_label"),
+        entry.cost,
+      ),
+    );
+  } else {
+    return null;
+  }
+  return cost;
+}
+
+/* ---------- a Reveal's card choices ----------
+
+   Every choice of a revealed card waits on the Reveal frame and is offered
+   there beside the purchases, gains and Plots, in any order (codec v147,
+   OQ-095 (7) addition, user ruling 2026-10-14, [Main p. 12]). The server
+   lists the pending choices (state.actions.reveal_choices, display/
+   actions.py reveal_choice_headers: the card, what the choice does, whether
+   it is optional) and says which one each row takes (`reveal_choice`); the
+   panel sets each card's rows under a header naming the card and its
+   choice, as an Agent turn's boxes are (appendDecisionItems), with a line
+   saying whether the choice may be left (it then lapses unused when the
+   Reveal ends) or must be made before it ends. A choice that offers
+   nothing now is a greyed-out row of its own under "waiting", led by its
+   card, with the reason (display/unavailable.py _deferred). */
+function revealChoiceGroups(effects) {
+  const entries = (state.actions && state.actions.reveal_choices) || [];
+  const greyed = (state.actions.unavailable && state.actions.unavailable.rows) || [];
+  const groups = new Map();
+  for (const entry of entries) {
+    const rows = effects.filter((action) => action.reveal_choice === entry.key);
+    if (!rows.length) continue;
+    const waiting = greyed.filter(
+      (row) => row.reveal_choice === entry.key && row.surface === "choice",
+    );
+    groups.set(entry.key, { entry, rows, greyed: waiting });
+  }
+  return groups;
+}
+
+/* "<card> — <what its choice does>": the card is plain text, never
+   iconized; the choice is the card's own words. A heading for a screen
+   reader, not a control, like agentBoxHeading. */
+function revealChoiceHeading(entry) {
+  const heading = document.createElement("div");
+  heading.className = "agent-box-heading reveal-choice-heading";
+  heading.dataset.choice = entry.key;
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "4");
+  const name = TERM_LANGUAGE === "ko" && entry.name_ko ? entry.name_ko : entry.name;
+  heading.append(name, " — ");
+  heading.appendChild(effectNode(entry.text, entry.text_ko));
+  return heading;
+}
+
+/* Whether the choice may be left: an optional one offers no refusal and
+   lapses unused when the Reveal ends; a mandatory one keeps the Reveal's
+   end away until it is made. */
+function revealChoiceNote(entry) {
+  const note = document.createElement("div");
+  note.className = "agent-box-note muted reveal-choice-note";
+  note.dataset.choice = entry.key;
+  note.dataset.optional = entry.optional ? "true" : "false";
+  note.appendChild(
+    tNode(entry.optional ? "render.reveal_choice_optional" : "render.reveal_choice_mandatory"),
+  );
+  return note;
+}
+
+function renderRevealPanel(box, actions) {
+  const decision = state.summary.decision;
+  const status = document.createElement("div");
+  status.className = "reveal-status";
+  if (typeof decision.persuasion === "number") {
+    const left = document.createElement("span");
+    left.className = "reveal-persuasion";
+    left.dataset.persuasion = String(decision.persuasion);
+    left.append(
+      t("render.persuasion_remaining"),
+      amount("persuasion", phraseText("{persuasion}"), decision.persuasion),
+    );
+    status.appendChild(left);
+  }
+  const bought = boughtThisReveal();
+  if (bought.length) {
+    const list = document.createElement("span");
+    list.className = "reveal-bought";
+    list.append(t("render.bought_cards_label"));
+    bought.forEach((cardId) => list.appendChild(chip(cardId, "cards")));
+    status.appendChild(list);
+  }
+  if (status.childNodes.length) box.appendChild(status);
+
+  const heading = (text) => {
+    const node = document.createElement("div");
+    node.className = "pick-others muted";
+    node.textContent = text;
+    box.appendChild(node);
+  };
+  /* finish_reveal itself never reaches `actions`: it is the seat's
+     explicit turn-end action, already pulled into the banner's turn-end
+     row by renderBanner. */
+  const buys = actions.filter(isAcquire);
+  const effects = actions.filter((action) => !isAcquire(action));
+  const groups = revealChoiceGroups(effects);
+  const others = effects.filter((action) => !action.reveal_choice || !groups.has(action.reveal_choice));
+  if (others.length) {
+    heading(t("render.reveal_effects_heading"));
+    appendActionItems(box, others);
+  }
+  /* Each revealed card's choice under its own header (revealChoiceGroups),
+     with a branch it cannot take now (Desert Power's sandworm) greyed out
+     under it. */
+  const placed = new Set();
+  for (const group of groups.values()) {
+    box.appendChild(revealChoiceHeading(group.entry));
+    box.appendChild(revealChoiceNote(group.entry));
+    appendActionItems(box, group.rows, { boxed: true });
+    for (const row of group.greyed) {
+      box.appendChild(unavailableRow(row, true));
+      placed.add(row.key);
+    }
+  }
+  /* What the seat cannot take now, under what it can (server's
+     `unavailable`): a card's choice still waiting on its condition, an
+     Intrigue card it cannot play, the cards it cannot afford. */
+  appendUnavailableRows(box, ["choice", "waiting", "intrigue"], placed);
+  if (buys.length) {
+    heading(t("render.buyable_cards_heading"));
+    for (const action of buys) {
+      const item = actionItem(action);
+      const cost = acquireCostNode(action);
+      if (cost) item.querySelector("button").appendChild(cost);
+      box.appendChild(item);
+    }
+  }
+  appendUnavailableRows(box, ["acquire"]);
+}
+
+/* The arguments of an action that name something on the table: a board
+   space or an observation post, or a card instance (ids with a colon). */
+function tableRefs(action) {
+  return actionRefs(action).filter(
+    (ref) => ref.includes(":") || state.catalog.spaces[ref] || state.catalog.posts[ref]
+  );
+}
+
+/* The words for each shortfall kind of the server's dry run (sessions.py
+   shortfall_details). */
+const SHORTFALL_TEXT = {
+  contract: "render.shortfall_contract",
+  intrigue: "render.shortfall_intrigue",
+  no_effect: "render.shortfall_no_effect",
+  specimens: "render.shortfall_specimens",
+  suspensor: "render.shortfall_suspensor",
+  troops: "render.shortfall_troops",
+};
+
+function shortfallText(short) {
+  const tile = lookup("suspensor_suits", "tech");
+  /* An Intrigue shortfall with Twisted Intrigue left in the discard says
+     why the visible discard did not cover it (OQ-097: never reshuffled). */
+  const key =
+    short.kind === "intrigue" && short.twisted
+      ? "render.shortfall_intrigue_twisted"
+      : SHORTFALL_TEXT[short.kind];
+  return t(key, {
+    requested: short.requested,
+    made: short.made,
+    short: short.requested - short.made,
+    twisted: short.twisted || 0,
+    tile: tile ? tile.name : "Suspensor Suits",
+  });
+}
+
+/* The warning badge of a step the server dry-ran (sessions.py
+   shortfall_warning), on `button`, with `row` marked .shortfall; nothing
+   when the step has no warning. The step does less than printed: the troop
+   supply cannot cover a specimen or a recruit (OQ-030, OQ-049), or nothing
+   is left to choose (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고")
+   -- an Intrigue draw the Intrigue deck and discard cannot cover together,
+   Suspensor Suits troops kept in the garrison (OQ-042), held Contract
+   icons that fizzle as the turn ends (OQ-059), an Intrigue play that
+   changes nothing (OQ-113 (5)), played all the same. Shared by actionItem() and the
+   turn-end row (appendTurnEndRow), which is built by hand. */
+function appendShortfallBadge(row, button, action) {
+  if (!action.warning) return;
+  row.classList.add("shortfall");
+  const badge = document.createElement("span");
+  badge.className = "shortfall-badge";
+  /* The server's `warning` is Korean; `shortfall` is the same as data. */
+  const known = (action.shortfall || []).filter(
+    (short) => SHORTFALL_TEXT[short.kind],
+  );
+  badge.textContent = known.length
+    ? known.map(shortfallText).join(" · ")
+    : action.warning;
+  badge.title = t("render.shortfall_title");
+  button.appendChild(badge);
+}
+
+/* What the step would lose of the seat's own cards' unused effects (server
+   forfeits.py, the row's `forfeit` from its dry run): "you can't receive or
+   activate an effect from a card that is already trashed" (OQ-022). One
+   line per card under the row's words, naming the card and the effects it
+   still had, in the "cannot undo" red, so it is read before the click (user
+   request 2026-10-31: a grafted Show of Strength's draw was lost to
+   Dissecting Kit's trash behind a small suffix the player never read). An
+   Agent box ("agent") or a Reveal choice ("reveal"). Text only: the click
+   is the same one press. */
+function appendForfeitNotes(row, button, action) {
+  const forfeits = action.forfeit || [];
+  if (!forfeits.length) return;
+  row.classList.add("forfeits");
+  for (const entry of forfeits) {
+    const note = document.createElement("span");
+    note.className = "forfeit-note";
+    note.dataset.card = entry.card_id;
+    note.title = t("render.forfeit_title");
+    const name = TERM_LANGUAGE === "ko" && entry.name_ko ? entry.name_ko : entry.name;
+    const key = entry.kind === "reveal" ? "render.forfeit_reveal" : "render.forfeit_agent";
+    note.append(t(key, { card: name }));
+    (entry.effects || []).forEach((text, position) => {
+      note.append(position ? " · " : ": ");
+      note.appendChild(effectNode(text, (entry.effects_ko || [])[position]));
+    });
+    button.appendChild(note);
+  }
+}
+
+/* `boxed`: the row sits under its Agent box's card header
+   (appendDecisionItems) and leaves the card's name to it (core.js
+   rowTitleNode). */
+function actionItem(action, onApply, zone, boxed = false) {
+  const wrap = document.createElement("div");
+  wrap.className = "action-item";
+  wrap.dataset.index = String(action.index);
+  /* A staged Agent turn's placement (turn.js placementActions). */
+  if (typeof action.placement === "number") wrap.dataset.placement = String(action.placement);
+  wrap.dataset.refs = JSON.stringify(actionRefs(action));
+  if (typeof action.box === "number") wrap.dataset.box = String(action.box);
+  const button = document.createElement("button");
+  /* Controlled's choice names the top card the seat is looking at on its
+     own buttons only (panels.js deckTopChoiceLabel), never in the log. */
+  button.appendChild(deckTopChoiceLabel(action) || describeAction(action, { boxed }));
+  if (zone) button.appendChild(zoneSuffixNode(zone));
+  if (action.action_id === "acquire_intrigue_reclaimed_forces") {
+    const cost = acquireCostNode(action);
+    if (cost) button.appendChild(cost);
+  }
+  button.disabled = state.busy;
+  button.addEventListener("click", () =>
+    onApply ? onApply(action) : chooseAction(action)
+  );
+  if (action.sent_by_turn_end) {
+    /* Held, not sent, until the turn-end press (turn.js chooseAction): the
+       seat can still change it, so it carries no "cannot undo" badge. */
+    const chosen = heldChoice();
+    const held = Boolean(chosen && chosen.index === action.index);
+    wrap.classList.toggle("held-choice", held);
+    button.setAttribute("aria-pressed", held ? "true" : "false");
+  } else if (action.undoable === false) {
+    /* The server dry-ran the step: it reveals hidden information or hands
+       the game to a chance outcome, so it cannot be taken back afterwards. */
+    wrap.classList.add("irreversible");
+    const badge = document.createElement("span");
+    badge.className = "irreversible-badge";
+    badge.textContent = t("render.irreversible_badge");
+    badge.title = t("render.irreversible_title");
+    button.appendChild(badge);
+  }
+  if (typeof action.strength_after === "number") {
+    button.appendChild(strengthPreview(action.strength_after));
+  }
+  if (action.reveal_preview) button.appendChild(revealPreview(action.reveal_preview));
+  appendShortfallBadge(wrap, button, action);
+  appendForfeitNotes(wrap, button, action);
+  if (action.action_id === "reveal_turn") appendRevealTurnNote(wrap, button);
+  wrap.appendChild(button);
+
+  const entries = actionPreviewEntries(action);
+  if (entries.length) {
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "action-info";
+    info.textContent = "ⓘ";
+    info.title = t("render.effect_preview_title");
+    const detail = document.createElement("div");
+    detail.className = "action-detail";
+    detail.hidden = true;
+    for (const entry of entries) {
+      const head = document.createElement("div");
+      head.className = "popover-title";
+      head.textContent = entry.name;
+      detail.appendChild(head);
+      for (const node of actionPreviewNodes(action, entry)) detail.appendChild(node);
+      if (entry.image && !entry.options) {
+        const image = document.createElement("img");
+        image.className = "detail-card";
+        image.loading = "lazy";
+        image.src = entry.image;
+        image.alt = entry.name;
+        detail.appendChild(image);
+      }
+    }
+    info.addEventListener("click", (event) => {
+      event.stopPropagation();
+      detail.hidden = !detail.hidden;
+    });
+    wrap.append(info, detail);
+  }
+  if (action.subcommittee_preview) wrap.appendChild(subcommitteePreview(action.subcommittee_preview));
+  rowCardPreview(wrap, action);
+  return wrap;
+}
+
+/* The card a row is about: the first argument naming a card (cardEntryOf),
+   read as actionPreviewEntries() reads them, so it is one of the "ⓘ"
+   entries. Null for a row about a space, a post or nothing. */
+function actionCardEntry(action) {
+  for (const [key, value] of Object.entries(action.arguments)) {
+    if (key === "space_id" || typeof value !== "string") continue;
+    if (key === "source" && revealSourceEntry(action)) continue;
+    const card = cardEntryOf(value);
+    if (card) return card;
+  }
+  return null;
+}
+
+/* A row about a card shows the card's popover beside the decision column
+   while the pointer rests on the row (user request 2026-10-11: choosing
+   which card to trash meant opening "ⓘ" on every row). The usual hover
+   delay, gone when the pointer leaves; "ⓘ" stays for the keyboard and
+   touch. In hover mode the popover takes no clicks, so the row and the
+   table under it still do. A click on the row cancels a popover still on
+   its delay, so it does not open over the step the click starts. Not for
+   the rows of the placement chooser, which lives in the popover itself
+   (turn.js openPlacementChooser). */
+function rowCardPreview(wrap, action) {
+  const card = actionCardEntry(action);
+  if (!card) return;
+  hoverPopover(
+    wrap,
+    () => (wrap.closest("#card-popover") ? null : card),
+    undefined,
+    placePopoverBeside,
+  );
+  wrap.addEventListener("click", () => clearTimeout(hoverTimer), true);
+}
+
+/* Focus the action list on one card instance or space (table click with
+   several options): the matching actions move to the top under a header
+   that names the object, the rest stay below dimmed. The list is rebuilt
+   by every render, so the focus lasts until the next state change or the
+   header's "전체 보기". */
+function focusActions(ref, label) {
+  clearActionFocus();
+  const box = el("actions");
+  // The rows' own order, restored as is by clearActionFocus (a Scouts line
+  // list mixes .action-item rows with greyed rows that have no index).
+  box._rowOrder = [...box.children];
+  const items = [...box.querySelectorAll(".action-item")];
+  const matches = items.filter((item) =>
+    JSON.parse(item.dataset.refs || "[]").includes(ref)
+  );
+  if (!matches.length) return;
+  for (const item of items) {
+    const hit = matches.includes(item);
+    item.classList.toggle("action-match", hit);
+    item.classList.toggle("action-dim", !hit);
+  }
+  // The matches move to the top, so the pile headings no longer sit over
+  // their rows; clearActionFocus brings them back.
+  for (const mark of box.querySelectorAll(".zone-heading, .zone-divider")) mark.hidden = true;
+  const header = document.createElement("div");
+  header.className = "action-focus";
+  const text = document.createElement("span");
+  text.append(t("render.action_focus_label", { label: label || ref, count: matches.length }));
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = t("render.view_all");
+  clear.addEventListener("click", clearActionFocus);
+  header.append(text, clear);
+  box.prepend(header);
+  let anchor = header;
+  for (const item of matches) {
+    anchor.after(item);
+    anchor = item;
+  }
+  header.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function clearActionFocus() {
+  const box = el("actions");
+  const header = box.querySelector(".action-focus");
+  if (header) header.remove();
+  for (const item of box.querySelectorAll(".action-item")) {
+    item.classList.remove("action-match", "action-dim");
+  }
+  for (const mark of box.querySelectorAll(".zone-heading, .zone-divider")) mark.hidden = false;
+  // Rows a render has since replaced are gone from the box: skip them.
+  const order = (box._rowOrder || []).filter((row) => row.parentNode === box);
+  delete box._rowOrder;
+  for (const row of order) box.appendChild(row);
+}

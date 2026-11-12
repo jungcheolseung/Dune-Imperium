@@ -1,0 +1,2 @@
+# Windows command scripts need CRLF line ends in the working tree.
+*.cmd text eol=crlf

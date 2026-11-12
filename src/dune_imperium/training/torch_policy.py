@@ -1,0 +1,403 @@
+"""Network-backed policies: the batched self-play policy and the tournament agent.
+
+``TorchBatchPolicy`` implements ``BatchPolicy`` for data collection: one
+forward pass per batch, then a seeded sample from the masked distribution
+(or the greedy action for evaluation). ``NetworkAgent`` wraps a checkpoint
+in the plain ``Agent`` contract so a trained policy enters tournaments by
+name: ``checkpoint:<path>`` resolves through ``agents.registry.make_agent``,
+which lets tournament worker processes load the file themselves.
+
+Greedy play needs a cycle guard: several legal actions are reversible
+(deploy/withdraw troops under OQ-029, defer/resume a Reveal choice), and a
+deterministic argmax that prefers the reversing pair never finishes the
+turn. ``_CycleGuard`` remembers which actions were already taken at an
+identical observation within the current round (the observation carries no
+revision counter, so a reversed move reproduces the same bytes) and masks
+them out on the next visit, so greedy play always makes progress. Sampled
+self-play is deliberately left unguarded (see ``act``).
+"""
+
+import os
+from collections.abc import Sequence
+from functools import lru_cache
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from dune_imperium.adapters.action_codec import ActionCodec
+from dune_imperium.agents.heuristic_agent import HeuristicAgent
+from dune_imperium.config import RulesetConfig
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.observation import PlayerView
+from dune_imperium.core.state import GameState
+from dune_imperium.training.checkpoint import CheckpointInfo, load_checkpoint
+from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
+from dune_imperium.training.policy import (
+    PolicyRequest,
+    encoded_view,
+    without_undo_actions,
+    without_window_specimen_return,
+)
+
+
+class _CycleGuard:
+    """Mask actions already taken at an identical observation this round."""
+
+    def __init__(self) -> None:
+        self._round = -1
+        self._taken: dict[bytes, set[int]] = {}
+
+    def restrict(
+        self, round_number: int, observation: np.ndarray, logits: torch.Tensor
+    ) -> torch.Tensor:
+        """Mask the actions already taken at this observation this round.
+
+        Returns the logits unchanged when every legal action was already
+        taken here, so a decision never loses its whole legal set.
+        """
+
+        if round_number != self._round:
+            self._round = round_number
+            self._taken.clear()
+        taken = self._taken.get(observation.tobytes())
+        if not taken:
+            return logits
+        candidate = logits.clone()
+        candidate[list(taken)] = MASKED_LOGIT
+        if bool((candidate > MASKED_LOGIT / 2).any()):
+            return candidate
+        return logits
+
+    def record(self, observation: np.ndarray, index: int) -> None:
+        self._taken.setdefault(observation.tobytes(), set()).add(index)
+
+    def greedy(
+        self, round_number: int, observation: np.ndarray, logits: torch.Tensor
+    ) -> int:
+        """Return the argmax over legal actions not yet taken here."""
+
+        index = int(self.restrict(round_number, observation, logits).argmax().item())
+        self.record(observation, index)
+        return index
+
+
+def resolve_device(name: str) -> torch.device:
+    """Map ``cpu`` / ``mps`` / ``cuda`` / ``auto`` to an available device."""
+
+    if name == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    device = torch.device(name)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError("cuda requested but not available")
+    if device.type == "mps" and not torch.backends.mps.is_available():
+        raise ValueError("mps requested but not available")
+    return device
+
+
+class TorchBatchPolicy:
+    """Answer self-play requests with one masked forward pass per batch."""
+
+    def __init__(
+        self,
+        network: PolicyValueNetwork,
+        device: torch.device,
+        *,
+        seed: int,
+        sample: bool = True,
+        temperature: float = 1.0,
+    ) -> None:
+        if seed < 0:
+            raise ValueError("policy seed must not be negative")
+        if temperature <= 0.0:
+            raise ValueError("temperature must be positive")
+        self.network = network
+        self.device = device
+        self.sample = sample
+        self.temperature = temperature
+        self._generator = torch.Generator().manual_seed(seed)
+        self._guards: dict[tuple[int, int], _CycleGuard] = {}
+
+    def act(self, requests: Sequence[PolicyRequest]) -> Sequence[int]:
+        if not requests:
+            return ()
+        if self.sample:
+            # Sampling stays unguarded on purpose: masking already-taken
+            # actions changes the behaviour distribution without any
+            # correction in the learner, and a from-scratch comparison
+            # (2026-09-06, baseline report section 7) collapsed entropy to
+            # 0.2 and doubled decisions per game. The collector withholds
+            # the pure-undo pair at the mask level instead (on-policy, since
+            # the learner sees the same mask); what loops remain are priced
+            # by the step penalty and bounded by the game cap.
+            catalog, probabilities = self.distribution(requests)
+            chosen = torch.multinomial(probabilities, 1, generator=self._generator)
+            return tuple(int(catalog[index]) for index in chosen.squeeze(-1).tolist())
+        observations = torch.from_numpy(
+            np.stack([request.observation for request in requests])
+        ).to(self.device)
+        masks = torch.from_numpy(np.stack([request.mask for request in requests])).to(
+            self.device
+        )
+        self.network.eval()
+        with torch.no_grad():
+            logits, _ = self.network(observations, masks)
+        logits = logits.to("cpu")
+        answers: list[int] = []
+        for row, request in enumerate(requests):
+            answers.append(
+                self._guard(request).greedy(
+                    request.view.round_number, request.observation, logits[row]
+                )
+            )
+        return tuple(answers)
+
+    def distribution(
+        self, requests: Sequence[PolicyRequest]
+    ) -> tuple[np.ndarray, torch.Tensor]:
+        """Return the sampling distribution of every request.
+
+        ``catalog`` is the sorted union of the requests' legal indices and
+        ``probabilities[i, j]`` the chance that request ``i`` plays
+        ``catalog[j]``: the masked softmax of the full forward pass, read
+        over the actions legal somewhere in the batch. A decision offers
+        about five of the catalog's 34,000 actions, and the full policy head
+        and a 34,000-wide multinomial were two thirds of a self-play
+        worker's time (2026-10-12); the head reads only these rows
+        (``action_logits``, as the learner's ``local_legal`` does). An
+        action legal in another request but not in this one gets
+        ``MASKED_LOGIT`` and so exactly zero probability, as before.
+        """
+
+        if not requests:
+            raise ValueError("a distribution needs at least one request")
+        observations = torch.from_numpy(
+            np.stack([request.observation for request in requests])
+        ).to(self.device)
+        legal = [
+            np.asarray(request.legal_indices, dtype=np.int64) for request in requests
+        ]
+        catalog, columns = np.unique(np.concatenate(legal), return_inverse=True)
+        allowed = np.zeros((len(requests), catalog.shape[0]), dtype=np.bool_)
+        rows = np.repeat(np.arange(len(requests)), [row.shape[0] for row in legal])
+        allowed[rows, columns.reshape(-1)] = True
+        self.network.eval()
+        with torch.no_grad():
+            hidden = self.network.trunk(observations)
+            logits = self.network.action_logits(
+                hidden, torch.from_numpy(catalog).to(self.device)
+            )
+            logits = logits.masked_fill(
+                ~torch.from_numpy(allowed).to(self.device), MASKED_LOGIT
+            )
+        probabilities = torch.softmax(logits.to("cpu") / self.temperature, dim=-1)
+        return catalog, probabilities
+
+    def _guard(self, request: PolicyRequest) -> _CycleGuard:
+        return self._guards.setdefault((request.game, request.seat), _CycleGuard())
+
+
+class NetworkAgent:
+    """Greedy single-decision agent over a policy network (tournament use).
+
+    ``untrained`` names the catalog rows the network was never trained on:
+    the templates a checkpoint's policy head gained when it was moved onto
+    a newer codec or onto another game's catalog (``load_checkpoint``; an
+    Arrakeen Scouts or Epic Game Mode game). Those rows start at zero, so
+    when *every* legal action of a decision is one of them the logits tie
+    and the argmax is simply the lowest catalog row -- a seat that always
+    confirms a sealed bid of 0, never calls, never joins a mission and
+    always takes an event's first line (measured on Scouts, 2026-09-30,
+    docs/arrakeen-scouts-design.md section 4.9). Such a decision goes to a
+    ``HeuristicAgent`` seeded with ``seed`` instead. A decision that mixes
+    trained and untrained actions stays with the network, which ranks the
+    new ones at logit 0 against its trained ones. With ``untrained`` empty
+    (a file written at the current codec, playing its own ruleset) the
+    agent is the plain greedy network. An older file on its own ruleset
+    can still carry untrained rows that later codecs added (the pinned
+    5081 and 5600 controls: 43 and 16 rows); they reach an all-untrained
+    decision only rarely (a ``take_contract`` choice, 2-3 times in 10
+    games in the 2026-09-30 review, with the same choice as the network).
+    """
+
+    def __init__(
+        self,
+        network: PolicyValueNetwork,
+        config: RulesetConfig,
+        *,
+        untrained: frozenset[int] = frozenset(),
+        seed: int = 0,
+    ) -> None:
+        self.network = network
+        self.codec = ActionCodec(config)
+        if self.codec.size != network.action_size:
+            raise ValueError(
+                f"network action size {network.action_size} does not match the "
+                f"{config.identifier} catalog ({self.codec.size})"
+            )
+        if any(row < 0 or row >= self.codec.size for row in untrained):
+            raise ValueError("untrained rows must be rows of the catalog")
+        self.network.eval()
+        self.untrained = untrained
+        self._seed = seed
+        self._fallback: HeuristicAgent | None = None
+        self._guard = _CycleGuard()
+
+    def untrained_only(self, legal_indices: Sequence[int]) -> bool:
+        """Whether every one of ``legal_indices`` is an untrained row."""
+
+        return bool(self.untrained) and all(
+            index in self.untrained for index in legal_indices
+        )
+
+    @property
+    def fallback(self) -> HeuristicAgent:
+        """The heuristic that answers decisions made only of untrained rows."""
+
+        if self._fallback is None:
+            self._fallback = HeuristicAgent(seed=self._seed)
+        return self._fallback
+
+    def choose_action(
+        self,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        return self._choose(None, observation, legal_actions)
+
+    def choose_action_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        """The network's choice; with the state, a decision made only of
+        untrained rows goes to the heuristic as a decision of whole actions
+        (an Agent placement, an effect with its target: stages B1 and B3),
+        as the heuristic plays everywhere else. The network itself reads
+        only the view."""
+
+        return self._choose(state, observation, legal_actions)
+
+    def _choose(
+        self,
+        state: GameState | None,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> DomainAction:
+        if not legal_actions:
+            raise ValueError("a network agent requires at least one legal action")
+        # The network was never offered the pure-undo actions in training, so
+        # their logits are untrained noise; keep them out of greedy play too.
+        legal_actions = without_window_specimen_return(
+            without_undo_actions(legal_actions), observation.decision_kind
+        )
+        legal_indices = tuple(self.codec.encode(action) for action in legal_actions)
+        if self.untrained_only(legal_indices):
+            if state is not None:
+                return self.fallback.choose_action_with_state(
+                    state, observation, legal_actions
+                )
+            return self.fallback.choose_action(observation, legal_actions)
+        mask = np.zeros(self.codec.size, dtype=np.int8)
+        mask[list(legal_indices)] = 1
+        encoded = encoded_view(observation)
+        with torch.no_grad():
+            logits, _ = self.network(
+                torch.from_numpy(encoded).unsqueeze(0),
+                torch.from_numpy(mask).unsqueeze(0),
+            )
+        index = self._guard.greedy(observation.round_number, encoded, logits[0])
+        return legal_actions[legal_indices.index(index)]
+
+
+@lru_cache(maxsize=8)
+def _cached_network(
+    path: str, modified: float, game_ruleset: str | None = None
+) -> tuple[PolicyValueNetwork, str, frozenset[int]]:
+    """Load ``path`` once per process; return the network, its catalog, and
+    the rows of that catalog the file was never trained on.
+
+    With ``game_ruleset``, a game whose catalog holds templates the file's
+    catalog lacks (an Epic Game Mode game's Control the Spice, an Arrakeen
+    Scouts game's bids and picks, a game without Immortality's Dune, the
+    Desert Planet) gets the policy head moved onto that game's catalog
+    (``load_checkpoint(ruleset=...)``); a game the file's catalog already
+    covers keeps the file as it is. Either way a file written under an
+    older codec is migrated, and the templates that codec lacked are new.
+    """
+
+    del modified  # part of the cache key so a rewritten file reloads
+    network, info = load_checkpoint(Path(path))
+    if game_ruleset is None or _catalog_covers(info.ruleset, game_ruleset):
+        return network, info.ruleset, _new_rows(info)
+    network, info = load_checkpoint(
+        Path(path), ruleset=RulesetConfig.from_identifier(game_ruleset)
+    )
+    return network, game_ruleset, _new_rows(info)
+
+
+def _new_rows(info: CheckpointInfo) -> frozenset[int]:
+    return frozenset() if info.migration is None else info.migration.new_action_rows
+
+
+@lru_cache(maxsize=16)
+def _catalog_covers(ruleset: str, game_ruleset: str) -> bool:
+    """Return whether ``ruleset``'s catalog holds every ``game_ruleset`` template."""
+
+    if ruleset == game_ruleset:
+        return True
+    held = set(ActionCodec(RulesetConfig.from_identifier(ruleset)).catalog)
+    wanted = ActionCodec(RulesetConfig.from_identifier(game_ruleset)).catalog
+    return all(template in held for template in wanted)
+
+
+def load_network_agent(
+    path: str, config: RulesetConfig | None = None, *, seed: int = 0
+) -> NetworkAgent:
+    """Build a greedy agent from a checkpoint file, cached per process.
+
+    ``config`` is the game the agent will play. When its catalog has
+    templates the checkpoint was never trained on, the policy head is moved
+    onto the game's catalog by template identity and the new templates
+    start at zero logits, as for a checkpoint of an older codec
+    (``training.checkpoint``); OQ-092 lets checkpoint seats play Epic Game
+    Mode this way, and design D6 Arrakeen Scouts. A decision made only of
+    such templates goes to a heuristic seeded with ``seed``
+    (``NetworkAgent``). Without ``config`` the agent answers for the file's
+    own ruleset.
+    """
+
+    resolved = str(Path(path).expanduser())
+    network, ruleset, untrained = _cached_network(
+        resolved,
+        os.path.getmtime(resolved),
+        None if config is None else config.identifier,
+    )
+    return NetworkAgent(
+        network,
+        RulesetConfig.from_identifier(ruleset),
+        untrained=untrained,
+        seed=seed,
+    )
+
+
+def load_frozen_network(path: str) -> PolicyValueNetwork:
+    """Load a checkpoint's network to play frozen seats, cached per process.
+
+    The same cache as ``load_network_agent``, so a worker that plays a
+    frozen opponent for a whole run loads its weights once. A frozen
+    opponent is wrapped in a greedy ``TorchBatchPolicy`` rather than one
+    ``NetworkAgent`` per seat: the policy is the same argmax behind the same
+    per-(game, seat) cycle guard, but it answers every pending decision of
+    a lockstep round in one forward pass instead of one each.
+    """
+
+    resolved = str(Path(path).expanduser())
+    network, _, _ = _cached_network(resolved, os.path.getmtime(resolved))
+    network.eval()
+    return network

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="126" height="184" viewBox="0 0 68 100">
+  <!-- Water: a blue drop. Drawn by hand for the public build. -->
+  <defs><linearGradient id="wt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8dcff"/><stop offset="1" stop-color="#3a8ed0"/></linearGradient></defs>
+  <path d="M34,4 Q46,30 58,48 Q72,72 56,88 Q34,104 14,88 Q-2,72 10,48 Q22,30 34,4 Z" fill="url(#wt)" stroke="#123a5a" stroke-width="3" stroke-linejoin="round"/><path d="M18,64 Q16,78 28,86" fill="none" stroke="#e8f6ff" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+</svg>

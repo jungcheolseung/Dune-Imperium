@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="87" viewBox="0 0 149 100">
+  <!-- Contract: a black ring-sealed hole on a brown tile. Drawn by hand for the public build. -->
+  <defs><linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c26a3a"/><stop offset="1" stop-color="#7a3414"/></linearGradient></defs>
+  <polygon points="14,8 141,8 141,74 123,92 8,92 8,14" fill="url(#leather)" stroke="#2a1608" stroke-width="3" stroke-linejoin="round"/><circle cx="74.5" cy="50" r="28" fill="#1a0806" stroke="#e0322a" stroke-width="5"/><circle cx="74.5" cy="50" r="17" fill="#000"/>
+</svg>

@@ -1,0 +1,113 @@
+# Combat and Round End
+
+이 문서는 **Dune: Imperium — Uprising 기본 4인 게임**의 Combat부터 Endgame까지를 구현하기 위한 규칙 메모다. 규칙은 지정된 메인 룰북 텍스트와 2025-01-13 FAQ 텍스트만 간결하게 옮겼다.
+
+## 1. Combat 시작과 strength
+
+- 모든 플레이어가 Reveal turn을 마치면 Player Turns 단계가 끝나고, 라운드 순서에 따라 Phase 3: Combat가 시작된다. [Main p. 8]
+- 플레이어는 Reveal turn의 Reveal 효과를 처리하는 동안 원하는 시점에 strength를 정하고, 이후 변화가 생기면 갱신한다. 이는 Reveal 효과와 Clean Up 사이의 별도 단계가 아니다. [Main p. 12] [Main p. 13]
+- Conflict의 troop 하나는 strength 2, sandworm 하나는 strength 3을 제공한다. garrison이나 supply의 유닛은 strength를 제공하지 않으며, 이번 Reveal turn에 공개한 sword 하나는 strength 1을 제공한다. [Main p. 12]
+- Conflict에 유닛이 하나도 없으면 sword가 있어도 strength는 0이다. 마지막 유닛이 제거되는 즉시 strength도 0이 된다. [Main p. 12]
+- strength를 공개하고 Combat marker를 Combat track의 해당 칸으로 옮긴다. 20을 넘으면 marker의 `+20` 면을 사용해 track 처음부터 남은 수치를 센다. [Main p. 12]
+  - 구현 메모(2026-09-06, 사용자 결정, 규칙 판정 아님): 엔진은 `combat_strength` 하나를 매 step 뒤 갱신해 둔다. Reveal 전에는 Conflict 유닛이 제공하는 값(troop 2, sandworm 3, 유닛 없으면 0)이고, Reveal 시작이 그 값에 공개한 sword를 더하며 이후 변화는 증분으로 반영한다(`rules/combat.py`의 `refresh_pre_reveal_strength`, `reveal_turn.py`의 `begin_reveal_turn`). marker를 옮기는 시점만 앞당긴 표현이며 Combat 결과는 규칙의 합계와 같다. UI는 이 값을 그대로 전투력 토큰으로 그린다.
+
+## 2. Combat Intrigue 우선권과 pass
+
+- First Player marker를 가진 플레이어부터 시계 방향으로, 현재 Conflict에 유닛이 하나 이상 있는 플레이어만 Combat Intrigue 기회를 갖는다. 해당 플레이어는 Combat Intrigue 카드를 원하는 수만큼 플레이하거나 pass한다. [Main p. 14]
+- 앞선 기회에 pass했어도 Combat 단계에서 탈락하지 않는다. 전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고 Combat를 해결한다. [Main p. 14]
+- 한 번의 기회는 카드를 내거나 pass하는 것이다: "each player with at least one unit in the Conflict may play any number of Combat Intrigue cards, or may pass." [Main p. 14] 그래서 이번 기회에 Combat Intrigue 카드를 낸 플레이어가 우선권을 넘기는 것은 연속 pass에 세지 않는다. 공식 예시가 이 셈이다: John이 pass하고, Abby가 "does play an Intrigue card, Contingency Plan."한 뒤, John이 "He passes again."해도 마지막 결정은 Abby의 것이다 — "Abby, satisfied with her victory, also passes." [Main p. 15] 2026-10-07 전에는 Abby의 넘김을 첫 연속 pass로 세어 John의 두 번째 pass에서 Combat를 해결했다(codec v139에서 고침). 구현: `rules/combat.py`의 `COMBAT_INTRIGUE_PLAYED_KEY`(frame context `played_at_priority`), `rules/intrigue.py`. 테스트: `tests/unit/rules/test_intrigue.py`(`test_playing_combat_intrigue_restarts_the_consecutive_pass_count`, `test_a_combat_intrigue_player_decides_again_after_every_other_seat_passes`).
+  - 구현 convention(공식 규칙 아님): 참여자가 한 명뿐이면 카드를 낸 뒤의 pass가 곧 마지막 pass다 — 다음 기회가 사이에 아무도 없이 다시 자기에게 오므로 두 번 묻지 않는다(`test_a_lone_combat_intrigue_participant_passes_once_after_playing`).
+  - 플레이 서버 convention(공식 규칙 아님, 사용자 요청 2026-11-09 "전투단계에서 책략카드가 없는 사람한테는 굳이 책략 사용 여부를 물어보지 않아도 좋을 것 같아. 어차피 모든 플레이어가 그 플레이어가 책략카드가 없는 걸 알고 있기 때문에 바로 넘어가도 무관할 듯해"): 사람 좌석의 기회에서 그 좌석이 Intrigue 카드를 한 장도 쥐지 않았고, 이번 기회에 낸 카드가 없고, pass 말고 받을 행동이 없으면(표본 반환은 빼고 센다. 규칙: "You may return any of your specimens to your supply at any time. (This could be useful if you need to recruit troops but have no more in your supply.)" [Immortality p. 8]. 그래서 이 넘김은 그 기회에서 표본을 돌릴 선택을 그 좌석에게서 빼지만, 엔진은 같은 Combat의 그 좌석 자신의 Conflict 보상 창에서도 반환을 제시하고(OQ-050, 2026-11-09) Combat 중 그 좌석의 supply에서 troop을 가져가는 일은 모두 그 창의 행 뒤에 오며(보상의 troop 아이콘, 그 창의 Influence가 여는 Alliance가 완수하는 Contract 등; 보상을 받지 않는 좌석은 recruit하지 않는다), 같은 날 저녁부터는 그 행이 여는 차례 밖 창들(Contract 보상, Tech 획득, Shipping 보상, Influence 선택 등)에서도 반환을 제시한다(OQ-050 재판정, [immortality.md](immortality.md) 3절 5번). 그래서 미리 물을 까닭이 없다 — 2026-11-09 사용자 결정 "보상 받을 때 그때 표본을 반환하면 되는거 아니야? 그러면 손해 안 보잖아" → "보상 창에도 반환 + 넘김". 사용자 저장본 27판: 0장·표본 보유 좌석의 기회 69번, 그때 supply는 늘 2 이상, 그 Combat의 recruit 부족 0번) 서버가 그 좌석의 pass로 답한다(`server/sessions.py` `_auto_pass_intrigue_locked`). 엔진은 그대로 묻고 pass를 기록하므로 codec·저장·재생·AI 좌석은 바뀌지 않는다. 기준은 공개된 손패 수뿐이다 — "낼 수 있는 Combat 카드가 없음"이 기준이면 쥔 카드의 정체를 알리므로, 카드를 쥐었으나 지금 낼 수 없는 좌석은 그대로 묻는다. 우선권이 돌아올 때마다 다시 판단하므로 그 사이 카드를 얻은 좌석은 묻는다. 누른 pass와 같은 기록·로그로 남고 봉인되어 되돌리기가 그 기회로 돌아가지 않는다. 사람 좌석 수와 상관없이 답한다(답 여부가 숨은 정보에 기대지 않으므로 기다림이 단서가 되지 않는다). 로그 항목은 `without_choice`를 달고(위치와 바로 앞 로그 항목에서 다시 읽으므로 불러오기 재생이 다시 만들고, 저장하지 않는다; 바로 앞 단계가 같은 좌석의 것이면(표본을 돌려놓은 AI 좌석의 pass 등) 달지 않는다), 화면의 "새로 온 것" 표시는 그런 pass를 경계로 삼지 않는다(`server/static/panels.js` `ownGlowFrom`). 조건 함수는 `server/session_log.py` `combat_pass_without_choice`. 테스트: `tests/server/test_combat_intrigue_auto_pass.py`, `tests/server/test_turn_end.py`의 속성 sweep.
+- Combat Intrigue가 유닛 수나 strength를 바꾸면 즉시 Combat marker를 갱신한다. 효과가 strength를 낮추는 경우도 marker를 아래로 옮긴다. [Main p. 14] [FAQ p. 4]
+- Intrigue 카드는 명시된 조건을 만족하고 비용을 지불해야 플레이할 수 있다. [FAQ p. 2]
+  - 사용자 판정(2026-10-06, "원로회 자리 차지 안 하고 아무 효과 없이 책략을 쓸 수 없는거지"; 공식 문장에 없는 셋째 조건): 그 option의 효과 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다. Combat에서 이것이 갈리는 예: Impress는 검 2가 있어 늘 내고 대상 없는 획득만 불발한다; Reach Agreement는 가져갈 수 있는 Contract가 없으면(시장에 Bloodlines Immediate만 남고 trash할 다른 Intrigue가 없을 때) 내지 않는다; Battlefield Research는 살 수 있는 Tech tile이 없으면 내지 않는다; Gruesome Sacrifice는 Tleilaxu track이 끝났고 specimen으로 만들 troop도 없으면 내지 않는다. 세부는 [open-questions.md](open-questions.md)의 OQ-071 카드 확장 2.
+  - 재판정(2026-10-24 사용자, [OQ-113](open-questions.md#oq-113--효과-없는-intrigue-금지-원칙과-원판ix-디자이너-판정-다섯-건)의 통일 기준 (C) "비용을 낸 것만 보장"; codec v154에서 엔진 반영): 위 셋째 조건은 **비용이 있는 줄**에만 남는다 — 비용이 있는 줄은 보상 하나가 지금 무언가를 바꿀 수 있어야 내고, 비용이 없는 효과는 모두 불발해도 낸다(책략 카드 자체는 비용이 아니다). 그래서 Reach Agreement·Battlefield Research·Gruesome Sacrifice(비용 줄)는 위대로이고, Conflict 종료 창의 Harvest Cells는 아무것도 바꾸지 못하는 사본도 낸다(비용 없음, OQ-113 (2) 6). Tactical Option의 "Retreat any number of your troops."는 Conflict에 troop이 없어도 0개 후퇴로 낸다(OQ-113 구현의 내 적용).
+- “When you win a Conflict” Combat Intrigue는 공동 1위로 비긴 경우 플레이할 수 없다. Conflict 승리 보상으로 그런 Intrigue를 새로 뽑았다면 즉시 플레이할 수 있다. [FAQ p. 4] 이런 카드(원판·Rise of Ix에만 있다)는 승자의 창 — 1위 보상과 같은 창 — 에서만 낸다(2026-10-25 사용자 판정, [OQ-121](open-questions.md#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 6).
+  - 플레이 서버 convention(공식 규칙 아님, 2026-11-09 사용자 결정 "둘 다" — Combat Intrigue 자동 넘김과 같은 조건을 승자의 창과 Endgame에): 사람 좌석인 단독 승자가 Intrigue 카드를 한 장도 쥐지 않았고 보상 행을 다 받아 창을 닫는 행("승리 {책략} 끝내기", `combat.WINNING_INTRIGUE`)만 남았으면(표본 반환은 빼고 센다) 서버가 그 행을 누른다(`server/sessions.py` `_auto_close_winning_intrigue_locked`, 조건 `server/session_log.py` `winning_close_without_choice`). 그 행은 승리 책략이 덱이나 누군가의 손에 있으면 늘 나오므로 승자의 손패를 알리지 않고, 기준은 공개된 손패 수뿐이다. 보상으로 Intrigue 카드를 뽑았으면 1장 이상이 되어 그대로 묻는다(뽑은 승리 책략은 바로 낼 수 있다 [FAQ p. 4]). 그 행은 승자의 보상 단위를 끝내므로 봉인하지 않는다: 승자가 되돌릴 보상 행이 있으면 단위 끝은 승자의 "턴 종료"를 기다리고, 되돌리기는 그 행을 바로 앞 행과 함께 되돌린다(서버가 곧바로 다시 누를 자리에서 멈추지 않는다). 되돌릴 것이 그 행뿐이면 pass처럼 봉인한다. 로그 항목은 `without_choice`를 단다. 테스트: `tests/server/test_endgame_and_winner_auto_pass.py`.
+
+## 3. 4인 순위와 보상
+
+- strength가 가장 높은 플레이어가 Conflict를 이기고 1위 보상을 받는다. 두 번째로 높은 플레이어는 2위 보상, 세 번째로 높은 플레이어는 3위 보상을 받으며, 4위는 보상이 없다. [Main p. 14]
+- strength가 0인 플레이어는 어떤 순위 보상도 받지 못한다. [Main p. 14]
+- 서로 다른 순위의 수령자 사이에서 누구의 보상을 먼저 해결하는지는 공식 문서가 정하지 않는다. 판정은 [OQ-102](open-questions.md#oq-102--서로-다른-순위-사이의-conflict-보상-순서)(2026-10-07 사용자 판정 "순위대로 (앱처럼)", project convention): 순위 순서로(같은 순위는 OQ-002대로 First Player부터) 한 수령자씩, 그 수령자의 보상 전체 — 자동 부분과 선택, sandworm 두 배의 몫까지 — 를 끝낸 뒤 다음 수령자에게 준다. 2026-10-25부터(OQ-121) 그 수령자의 몫은 그 좌석의 창 전체 — 보상과 승리 효과(Planetary Array 등) — 다.
+- 두 번째 이후의 수령자에게 지급하기 전, 보상을 다 준 뒤 Conflict 끝 Intrigue 창을 열기 전, 다음 라운드의 Round Start 앞에서 엔진은 결과가 하나뿐인 chance로 멈춘다([OQ-103](open-questions.md#oq-103--턴-밖-선택-뒤-공개-앞의-멈춤), project convention). 앞 좌석이 공개 전에 선택을 되돌릴 수 있게 하려는 것이며, 누가 무엇을 받는지와 순서는 바뀌지 않는다.
+- 모든 순위 보상을 처리한 뒤, 승자는 Conflict 카드를 face-up 상태로 자신의 supply에 놓고 battle icon 일치를 확인한다. [Main p. 14]
+
+### Combat 동률
+
+- 두 명 이상이 1위로 동률이면 동률자 모두 2위 보상을 받는다. 이 경우 1위 보상은 지급되지 않고, 아무도 Conflict의 승자가 아니며, 아무도 Conflict 카드를 가져가지 않는다. [Main p. 14]
+- 4인 게임에서 정확히 두 명이 1위로 동률이면 나머지 두 명이 3위 보상을 두고 경쟁한다. 둘 중 strength가 더 높은 플레이어가 3위 보상을 받고, 둘도 동률이면 3위 동률 규칙에 따라 아무도 받지 못한다. 단, strength 0인 플레이어는 보상을 받을 수 없다. [Main p. 14]
+- 4인 게임에서 세 명 또는 네 명이 1위로 동률이면 그 동률자들이 각자 2위 보상을 받은 뒤 다른 보상은 지급하지 않는다. [Main p. 14]
+- 두 명 이상이 2위로 동률이면 동률자 모두 3위 보상을 받는다. 1위 플레이어의 보상과 승리 및 Conflict 카드 획득은 유지되며, 그 뒤의 보상은 지급하지 않는다. [Main p. 14]
+- 두 명 이상이 3위로 동률이면 동률자 모두 보상을 받지 못한다. [Main p. 14]
+
+## 4. Sandworm 보상 두 배
+
+- 보상을 받을 때 자신의 sandworm이 Conflict에 하나 이상 있으면 자신이 받는 보상을 두 배로 한다. sandworm 수가 둘 이상이어도 두 배보다 더 커지지 않는다. [Main p. 14]
+- location의 control 획득과 승리한 Conflict 카드의 battle icon은 두 배가 되지 않는다. 따라서 control marker는 한 번만 배치하고, battle icon도 한 장에 인쇄된 그대로 처리한다. [Main p. 14]
+- 보상에 “비용을 내고 효과를 얻기” 선택지가 있으면, 두 번째 효과를 얻기 위해 비용도 두 번째로 낼 수 있다. 한 번의 비용으로 효과만 자동으로 두 배가 되는 것은 아니다. [Main p. 14]
+- reward의 Influence 1을 두 배로 받는 경우 두 번의 Influence를 같은 Faction에
+  주거나 서로 다른 두 Faction에 하나씩 줄 수 있다. 이는 일반적인 `gain 2
+  Influence`가 한 Faction을 고르는 규칙과 달리, reward를 두 번 받는 처리다.
+  [Main p. 14] [Main p. 20]
+- 두 배가 되는 것은 **Conflict 카드의 보상**이다. 두 배 규칙은 "When taking rewards, if you have one or more sandworms in the Conflict, double the
+  rewards you take." `[Main p. 14]`이고, 같은 쪽이 그 보상을 "Rewards from the Conflict card are given to players based on their strength"
+  `[Main p. 14]`라고 정한다. 그래서 이기면 받는 카드·Tech 타일의 효과는 Conflict 카드의 보상이 아니어서 두 배가 되지 않는다: Rise of Ix의 Strategic
+  Push 승리 몫(Solari 2), Windtraps(water 1), Bloodlines의 Planetary Array(카드 1장). 승자의 창에서 한 줄씩이다(OQ-121). Pivotal Gambit은 다르다 — 1위
+  보상 자체에 Influence를 더하므로, 그 몫은 인쇄된 1위 보상과 같은 자격으로 두 배가 된다([OQ-025](open-questions.md#oq-025--pivotal-gambit프로모의-1위-보상에-influence-1-선택-추가) (c)).
+  (2026-11-02 문서화, 클라우드 엔진 리뷰 지적 2, 사용자 승인 "나머지는 다 그렇게 하고". 엔진은 처음부터 이렇게 처리했다: `rules/combat.py`,
+  `tests/unit/rules/test_uprising_ix.py::test_a_sandworm_doubles_the_reward_but_not_the_win_rows`,
+  `tests/unit/rules/test_tech.py::test_a_sandworm_does_not_double_planetary_arrays_card`.)
+
+## 5. Conflict 카드, control, battle icon
+
+- 각 라운드 시작에 Conflict Deck 맨 위 카드를 공개해 deck 옆에 face-up으로 놓는다. 이전 라운드 카드가 남아 있다면 그 위에 놓는다. [Main p. 8]
+- Arrakeen, Spice Refinery, Imperial Basin을 대상으로 하는 Conflict에서 승리해 control 보상을 받으면 해당 위치 아래 깃발에 자신의 Control marker를 놓으며, 기존 상대 marker가 있다면 교체한다. [Main p. 10] [Main p. 20]
+- 자신이 Arrakeen 또는 Spice Refinery를 control하는 동안 어떤 플레이어든 그 공간에 Agent를 보내면 controller가 1 Solari를 받는다. Imperial Basin의 같은 보너스는 spice 1이다. [Main p. 10]
+- 자신이 이미 control하는 위치의 Conflict 카드가 공개되면, 자신의 supply에서 troop 하나를 Conflict에 배치할 수 있다. 이 방어 배치는 선택 사항이다. [Main p. 10] [Main p. 20]
+  - Bloodlines에서도 방어 유닛은 troop뿐이다. supply의 Sardaukar Commander는 보낼 수 없고, supply에 Commander만 있으면 방어 창이 열리지 않는다(supply의 Commander는 일반 수단으로 recruit할 수 없다 `[Bloodlines p. 4]`; 2026-10-26 사용자 판정, [OQ-135](open-questions.md#oq-135--control-방어-배치와-supply의-sardaukar-commander) — project convention).
+- battle icon은 Crysknife, Desert Mouse, Ornithopter 세 종류다. Conflict 승자가 새 카드를 supply에 가져왔을 때, supply의 다른 face-up Conflict 또는 Objective 카드에 같은 icon이 있으면 그 두 장을 반드시 face-down으로 뒤집고 Victory Point 1을 얻는다. [Main p. 14]
+- Endgame 중 wild battle icon은 supply에 있는 세 종류 중 하나의 battle icon과 짝지을 수 있다. 선택했다면 두 장을 face-down으로 뒤집고 Victory Point 1을 얻는다. [Main p. 20] Bloodlines를 켜면 wild가 여러 장 있을 수 있고, wild끼리도 짝지을 수 있다 `[Bloodlines p. 5]`([bloodlines.md](bloodlines.md) 4절). wild Conflict 카드를 이겨서 가져올 때는 도착 즉시 매칭하지 않는다(wild의 매칭은 Endgame의 선택이다). [Main p. 20]
+- 공동 1위로 승자가 없으면 누구도 현재 Conflict 카드를 가져가지 않는다. 그 카드는 board에 face-up으로 남고, 다음 Round Start의 Conflict는 이전 카드 위에 놓인다. [Main pp. 8, 14]
+  - 남은 카드는 게임 끝까지 보드에 남는다. 다음 승자는 그 라운드의 맨 위 카드만 가져가고, 남은 카드의 battle icon은 쓰이지 않는다(2026-10-26 사용자 판정, [OQ-137](open-questions.md#oq-137--공동-1위로-남은-conflict-카드) — project convention).
+
+## 6. Combat 정리
+
+- 모든 보상 지급 후 각 troop을 Conflict에서 소유자의 supply로 돌려보낸다. garrison으로 돌려보내지 않는다. 모든 Combat marker는 0으로 되돌리고, 모든 sandworm은 bank로 돌려보낸다. [Main p. 14]
+- 엔진 순서(2026-10-18 사용자 결정; codec v153까지): 모든 보상 → 승자가 Conflict 카드를 가져가고 battle icon을 확인(위 3절 끝의 [Main p. 14] 문장; Planetary Array의 "When you win a Conflict: draw a card"도 이때, [OQ-108](open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)) → troop·Commander 반환 → 좌석별 Conflict 끝 Intrigue 창(아래 "공식 문서가 침묵하는 항목의 판정"의 Harvest Cells 줄) → sandworm은 bank로, Combat marker는 0으로.
+- 판정한 순서(2026-10-24~25 사용자, [OQ-121](open-questions.md#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) "판정 — Combat 단계 순서"; 원판·Rise of Ix와 같은 순서): 순위마다 **그 좌석의 창**(보상 아이콘 줄과 창 능력 줄을 한 창에서, 좌석이 순서를 고름 — OQ-102·OQ-112의 확장. 승자의 창에는 Planetary Array의 카드도 자동 줄로 든다 — OQ-108 재판정) → 승자가 Conflict 카드를 가져가고 battle icon 확인(마지막 순위 창 뒤; 앱은 1위 보상 때라 따르지 않음) → troop·Commander 반환 → 좌석별 Conflict 끝 Intrigue 창 → sandworm은 bank로, Combat marker는 0으로. 위 엔진 순서와 다른 것은 Planetary Array의 자리 하나이고 codec v154에서 구현했다(승자 창의 줄, 고정 순서의 맨 끝; OQ-121의 "Uprising 엔진에 생기는 일").
+
+### Retreat
+
+- Retreat는 troop을 Conflict에서 자기 garrison으로 옮긴다. 효과가 `any number`의
+  troop을 Retreat하게 하면 0개도 선택할 수 있다. [Main p. 20] [FAQ p. 3]
+
+## 7. Phase 4: Makers
+
+- 4인 게임에서는 Deep Desert, Hagga Basin, Imperial Basin을 확인한다. Agent가 없는 각 Maker 공간에 bank의 spice 1을 bonus spice 위치에 놓으며, 기존 bonus spice가 있으면 누적한다. [Main p. 15]
+- Maker 공간에 Agent를 보낼 때 그 공간에 누적된 bonus spice를 모두 얻는다. [Main p. 20]
+
+## 8. Phase 5: Recall과 Endgame 진입
+
+- 플레이어 중 누구라도 Score track에서 Victory Point 10 이상이거나 Conflict Deck이 비어 있으면 Endgame을 시작한다. 이 조건은 즉시 승자를 정하는 조건이 아니라 Endgame을 여는 조건이다. [Main p. 15] Epic Game Mode(`epic_game` 옵션)에서는 10 대신 12다 `[Rise of Ix p. 10]`([epic-game-mode.md](epic-game-mode.md)).
+- Endgame 조건이 충족되면 다음 라운드를 준비하는 Agent recall과 First Player marker 전달을 하지 않고 Endgame으로 진행한다. [Main p. 15]
+- Endgame이 시작되지 않으면 모든 플레이어는 board의 Agent를 자신의 Leader로 돌려보내고, First Player marker를 시계 방향의 다음 플레이어에게 넘긴 뒤 Phase 1부터 새 라운드를 시작한다. [Main p. 15]
+
+## 9. Endgame, Endgame Intrigue, 최종 동률
+
+- Endgame Intrigue 카드는 게임 종료 시점에만 플레이할 수 있다. Endgame에 들어가면 먼저 각자 가진 Endgame Intrigue를 원하는 만큼 플레이하고 해결한 뒤 최종 Victory Point를 비교한다. [Main p. 7] [Main p. 15]
+  - 플레이 서버 convention(공식 규칙 아님, 2026-11-09 사용자 결정 "둘 다"): 사람 좌석의 Endgame 차례에서 그 좌석이 Intrigue 카드를 한 장도 쥐지 않았고 앞면 Objective·Conflict 카드에 맞출 wild 짝도 없어 `pass_endgame_intrigue`만 받으면 서버가 그 pass로 답한다(`server/sessions.py` `_auto_pass_intrigue_locked`, 조건 `server/session_log.py` `endgame_pass_without_choice`). Combat Intrigue 자동 넘김(2절)과 같이 공개된 사실만 기준이고, 누른 pass처럼 기록·봉인되며, 그 좌석의 단위가 열려 있으면(wild 짝을 맞춘 뒤 등) 스스로 누른다. 테스트: `tests/server/test_endgame_and_winner_auto_pass.py`, `tests/server/test_turn_end.py`의 속성 sweep.
+- 최종 Victory Point가 가장 높은 플레이어가 승리한다. [Main p. 15]
+- 같은 Victory Point인 플레이어 사이의 기본 tiebreaker는 spice 수, Solari 수, water 수, garrison의 troop 수 순서다. 앞 항목으로 풀리지 않을 때만 다음 항목을 비교한다. [Main p. 15]
+- 위 tiebreaker로도 동률이면 가장 최근에 Reveal turn을 수행한 플레이어가 최종 승자다. [FAQ p. 2]
+
+## 공식 문서가 침묵하는 항목의 판정
+
+다음 네 항목은 두 출처에 명시되어 있지 않으며, [open-questions.md](open-questions.md)의 확정 판정 또는 해소 결과를 따른다.
+
+- 같은 순위에 묶인 여러 플레이어의 보상 해결 순서: 순서가 결과에 영향을 줄 수 있으면 First Player부터 turn 순서로 해결한다(디자이너 판정 채택, OQ-002 `DECIDED` 2026-09-09 재판정; Harvest Cells를 여럿이 발동하는 경우도 같다). [Main p. 14]
+- Combat 보상으로 받은 Intrigue 가운데 "Conflict 끝에 troop을 잃으면" trigger 카드(Immortality의 Harvest Cells)는 보상 해결 뒤·정리 전에 열리는 창에서 즉시 play할 수 있다(디자이너 판정 채택, [OQ-057](open-questions.md#oq-057--디자이너-커뮤니티-판정의-일괄-채택-2026-09-09)). 2026-10-06부터(사용자 판정 "앱처럼 전투 후에만", OQ-016) 이 창이 Harvest Cells를 내는 유일한 곳이다 — 전부터 hand에 있던 카드도 Combat Intrigue에서 미리 내지 못하고, 그 좌석의 손실이 3 이상이 될 때만 이 창에서 낸다("To play an Intrigue card, you must meet its conditions and pay its costs." `[FAQ p. 2]`). 창은 First Player부터 turn 순서다. 창이 열리는지는 공개된 사실로만 정한다(2026-10-09 사용자 결정 "1번은 A안으로 가자", OQ-103, project convention): Immortality에서 Conflict 유닛이 3개 이상이고 Intrigue 카드를 1장 이상 쥔 좌석마다, Harvest Cells 두 장이 모두 공개 구역(Intrigue 버림 더미, 앞면)에 있지는 않을 때 열고, 낼 카드가 없는 좌석에는 "쓰지 않음"만 준다. 한 장을 낸 뒤에는 Intrigue 카드를 쥐고 있는 동안 창이 열려 있다. 2026-10-18부터(사용자 결정, codec v149) 엔진 순서는 모든 보상 → Conflict 카드 수여(OQ-108) → Conflict의 troop·Commander가 supply로(정리의 반환, "모든 보상 지급 후 각 troop을 Conflict에서 소유자의 supply로 돌려보낸다" [Main p. 14]; 그 반환이 "lost"다 `[FAQ p. 1]`; Chani의 Tactics token도 여기서 전진) → 좌석별 창 → 나머지 정리(sandworm, Combat marker 0)다. 그래서 Harvest Cells는 내는 즉시 해결된다: specimen 2를 돌아온 troop으로 만들고 `[Immortality p. 8]` "You may also acquire a Tleilaxu card"만 묻는다 `[Harvest Cells card]`. 디자이너 문장 "This card is played after combat resolves."(OQ-057 (11))와 같은 방향이다. 낸 뒤의 누름은 "쓰지 않음"이 아니라 "끝내기"(`finish_conflict_end_intrigue`)다. 창이 열린 동안 전투력은 보상 때 값 그대로이고, 정리가 0으로 되돌린다. 한 장을 낸 뒤 창이 열려 있을지는 창이 다시 맨 위에 올 때 그때 쥔 Intrigue 카드로 정한다 — 낸 카드의 획득이 Tleilaxu track의 Intrigue 칸에 닿아 뽑은 카드도 그 창에서 낼 수 있다([OQ-109](open-questions.md#oq-109--세포-수확-획득-중에-뽑힌-책략-카드와-conflict-끝-창), 2026-10-18 사용자 결정). 전에는 낸 카드가 face-up으로 기다리다 정리에서 반환 뒤 발동했다(이때는 마지막 창 뒤, 뒤에 낸 카드부터 해결돼 OQ-002의 turn 순서와 거꾸로였다). [Main p. 14] 2026-10-24~25 OQ-121 판정 4·5가 이 창의 자리(보상 여부와 상관없이 모든 보상과 troop 반환 뒤 한 창)와 Harvest Cells의 셈(Conflict 끝 반환에서 supply로 간 troop·Commander; Combat 도중에 잃은 troop은 세지 않음)을 원판·Ix와 함께 그대로 확인했다. 앱(보상받은 좌석은 자기 순위 창에서, 셈은 이번 Conflict에 배치한 troop 수)은 따르지 않는다. 보조 증거: Dire Wolf 고객지원 답(2023-09-22, troop을 supply로 돌릴 때 낸다), 커뮤니티 정리본의 비공식 설명(Staged Incident로 잃은 troop으로는 낼 수 없다).
+- Combat Intrigue 중 유닛 수 변화와 우선권 순환: 유닛을 늘리는 카드가 없어 진입은 불가능하고, 마지막 유닛을 잃은 참가자는 즉시 순환에서 빠진다(OQ-003 `DECIDED`). [Main p. 14]
+- Endgame Intrigue 순서와 wild matching 시점: First Player부터 시계 방향 단일 순회 window 안에서 자유 순서로 처리한다(OQ-001 `DECIDED`). [Main p. 15] [Main p. 20]
+- Bloodlines의 "garrison의 troop 수" tiebreaker: garrison의 Sardaukar Commander를 troop과 함께 센다(OQ-047 `DECIDED`; [bloodlines.md](bloodlines.md) 3절). [Main p. 15] `[Bloodlines p. 4]`
+- 일치하는 face-up 카드가 여러 장일 때의 pair 선택: Combat 즉시 matching은 공식 콘텐츠에서 다중 후보가 성립하지 않고, Endgame wild는 소유자가 고른다(OQ-005 `RESOLVED`). [Main p. 14] [Main p. 20]

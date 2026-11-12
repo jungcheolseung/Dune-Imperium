@@ -1,0 +1,400 @@
+"""Reveal automatic gains of personal cards as ability records (composed effects, A4c).
+
+docs/composed-effects-plan.md 5 (A4c): what a personal card gains on its own
+when it is revealed -- the Reveal box's printed gains, their conditions and
+the counts that multiply them -- is written here as automatic ability
+records keyed by the card's definition id, one line per printed effect
+(each judged on its own). ``rules.reveal_turn`` reads these lines
+(``rules.reveal_lines``, stage B3e-2) and pays them: Persuasion and swords at
+once, the other gains as the owner's own steps (OQ-045), a condition met
+later in the turn paying then (``grant_late_reveal_effects``); the card text
+(``display/tokens.reveal_effect_text``) and the action catalog read the same
+lines. Until the Reveal totals cleanup (2026-10-21) the card manifests also
+kept a compiled copy of every line (``PersonalCardRevealEffect``); its checks
+now run on the records themselves (``check_reveal_gain_line``). A card's
+printed Reveal Persuasion and swords (``reveal_persuasion``,
+``reveal_strength``) are card values, not abilities; its Reveal choices are
+A4d's.
+"""
+
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final
+
+from dune_imperium.content.core.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityStructure,
+    AbilityTiming,
+    check_reveal_gain_line,
+)
+from dune_imperium.content.core.effects import (
+    AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
+    AllConditions,
+    CommandersInConflictAtLeast,
+    CommandReached,
+    Condition,
+    DeployFromSupply,
+    DrawIntrigueCards,
+    EffectSection,
+    FactionBond,
+    GainInfluence,
+    GainResources,
+    GarrisonedUnitsAtLeast,
+    GenerateSpecimens,
+    GeneticMarkersAtLeast,
+    GrantCombatDeployment,
+    HasAlliance,
+    HasHighCouncil,
+    HasSwordmaster,
+    InfluenceAtLeast,
+    RecruitTroops,
+    Research,
+    ReserveCostDiscount,
+    RevealCount,
+    RevealCountKind,
+    RevealPersuasion,
+    RevealSwords,
+    Reward,
+    SpiesPlacedAtLeast,
+    SpyingOnMakerSpace,
+    TrashThisCard,
+)
+from dune_imperium.content.core.icons import AgentIcon, Faction
+
+_COMMAND = CommandReached()
+_PER_COMPLETED_CONTRACT = RevealCount(RevealCountKind.COMPLETED_CONTRACT)
+_PER_OTHER_SWORD_CARD = RevealCount(RevealCountKind.OTHER_SWORD_CARD)
+_PER_DREADNOUGHT = RevealCount(RevealCountKind.DREADNOUGHT_IN_CONFLICT)
+
+
+def _revealed(faction: Faction) -> RevealCount:
+    return RevealCount(RevealCountKind.REVEALED_FACTION_CARD, faction)
+
+
+def _in_play(faction: Faction) -> RevealCount:
+    return RevealCount(RevealCountKind.FACTION_CARD_IN_PLAY, faction)
+
+
+def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
+    return EffectSection(rewards=rewards, condition=condition)
+
+
+def _reveal(*lines: EffectSection) -> Ability:
+    """A Reveal box's automatic gains, each printed line on its own."""
+
+    return Ability(
+        timing=AbilityTiming.REVEAL,
+        sections=lines,
+        mark=AbilityMark.AUTOMATIC,
+        structure=(
+            AbilityStructure.SEPARATE if len(lines) > 1 else AbilityStructure.SEQUENCE
+        ),
+    )
+
+
+REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
+    {
+        # Bene Gesserit Operative.
+        "bene_gesserit_operative": _reveal(
+            _line(RevealPersuasion(2), condition=SpiesPlacedAtLeast(2))
+        ),
+        # Chani, Clever Tactician.
+        "chani_clever_tactician": _reveal(
+            _line(RevealPersuasion(2), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Sayyadina (Rise of Ix): "Fremen Bond: [3 Persuasion]".
+        "sayyadina": _reveal(
+            _line(RevealPersuasion(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Imperial Shock Trooper (Rise of Ix): "If you have an Agent on an
+        # [Emperor] board space," [+3 swords] beside its printed 1 Persuasion
+        # and 2 swords [Steam app text and screen pieces]; an Agent sent
+        # earlier this round counts (``conditions.owner_condition_holds``).
+        "imperial_shock_trooper": _reveal(
+            _line(RevealSwords(3), condition=AgentOnSpaceWithIcon(AgentIcon.EMPEROR))
+        ),
+        # Full-Scale Assault (Rise of Ix): "[3 swords] for each of your
+        # dreadnoughts in the Conflict." [Steam app text], counted when the
+        # line resolves; the swords stay if a dreadnought leaves later
+        # (rise-of-ix.md 9.3, designer ruling: "sword는 공개한 카드가 준 값"
+        # [DI p. 11]).
+        "full_scale_assault": _reveal(_line(RevealSwords(3, per=_PER_DREADNOUGHT))),
+        # Embedded Agent (Rise of Ix): "[Intrigue card]" beside its 1
+        # Persuasion [Steam app screen pieces], Thufir Hawat's line.
+        "embedded_agent": _reveal(_line(DrawIntrigueCards(1))),
+        # Delivery Agreement.
+        "delivery_agreement": _reveal(_line(GainResources(spice=1))),
+        # Ecological Testing Station.
+        "ecological_testing_station": _reveal(
+            _line(GainResources(water=1), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Fedaykin Stilltent.
+        "fedaykin_stilltent": _reveal(_line(GainResources(water=1))),
+        # Interstellar Trade.
+        "interstellar_trade": _reveal(
+            _line(RevealPersuasion(1, per=_PER_COMPLETED_CONTRACT))
+        ),
+        # Crysknife (original game): "Fremen Bond: 1 Fremen Influence".
+        "crysknife_card": _reveal(
+            _line(
+                GainInfluence(factions=(Faction.FREMEN,)),
+                condition=FactionBond(Faction.FREMEN),
+            )
+        ),
+        # Fedaykin Death Commando (original game): "Fremen Bond: 3 swords".
+        "fedaykin_death_commando": _reveal(
+            _line(RevealSwords(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Shai-Hulud (Rise of Ix): "Fremen Bond: [5 swords]" [Steam app screen
+        # pieces]; the card prints no other Reveal value.
+        "shai_hulud": _reveal(
+            _line(RevealSwords(5), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Duncan Idaho (original game): "1 water" beside its printed swords.
+        "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
+        # Sietch Reverend Mother (original game): "Fremen Bond: 3 Persuasion, 1
+        # spice" -- nothing unconditional, the card's printed Persuasion is 0.
+        "sietch_reverend_mother": _reveal(
+            _line(
+                RevealPersuasion(3),
+                GainResources(spice=1),
+                condition=FactionBond(Faction.FREMEN),
+            )
+        ),
+        # Reverend Mother Mohiam (original game): "2 spice" beside its Persuasion.
+        "reverend_mother_mohiam": _reveal(_line(GainResources(spice=2))),
+        # Liet Kynes (original game): "2 Persuasion for each Fremen card you have
+        # in play (including this one)" -- Stilgar, The Devoted's count.
+        "liet_kynes_card": _reveal(
+            _line(RevealPersuasion(2, per=_in_play(Faction.FREMEN)))
+        ),
+        # Smuggler's Thopter (original game): "1 spice" beside its Persuasion.
+        "smugglers_thopter": _reveal(_line(GainResources(spice=1))),
+        # Worm Riders (original game): "Fremen Influence 2: 4 swords" and, on a
+        # line of its own, "Fremen Alliance: 2 swords"; nothing unconditional.
+        "worm_riders": _reveal(
+            _line(RevealSwords(4), condition=InfluenceAtLeast(Faction.FREMEN, 2)),
+            _line(RevealSwords(2), condition=HasAlliance(Faction.FREMEN)),
+        ),
+        # Spice Hunter (original game): "Fremen Bond: 1 spice".
+        "spice_hunter": _reveal(
+            _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Assassination Mission (original game): "1 Solari" beside its sword.
+        "assassination_mission": _reveal(_line(GainResources(solari=1))),
+        # Thufir Hawat (original game): "[Intrigue card]" beside its Persuasion.
+        "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
+        # CHOAM Directorship (original game): "3 Solari".
+        "choam_directorship": _reveal(_line(GainResources(solari=3))),
+        # Carryall (original game): "1 spice" beside its Persuasion.
+        "carryall": _reveal(_line(GainResources(spice=1))),
+        # Thumper (original game promo): "1 spice" beside its Persuasion.
+        "thumper": _reveal(_line(GainResources(spice=1))),
+        # Firm Grip (original game): "Emperor Alliance: 4 Persuasion", judged
+        # when the line resolves (OQ-028); nothing unconditional.
+        "firm_grip": _reveal(
+            _line(RevealPersuasion(4), condition=HasAlliance(Faction.EMPEROR))
+        ),
+        # Guild Bankers (original game): "The Spice Must Flow costs 3 Persuasion
+        # less to acquire this turn" -- each copy, both printings of the card.
+        "guild_bankers": _reveal(
+            _line(
+                ReserveCostDiscount(
+                    ("the_spice_must_flow", "imperium_the_spice_must_flow"), 3
+                )
+            )
+        ),
+        # Junction Headquarters.
+        "junction_headquarters": _reveal(
+            _line(GainResources(water=1), RecruitTroops(1))
+        ),
+        # Leadership.
+        "leadership": _reveal(_line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))),
+        # Imperial Bashar (Rise of Ix): Leadership's words, "+[sword] for each
+        # other revealed card that provides one or more [sword] this turn"
+        # [Steam app text]; only a card that really gave swords counts (Bene
+        # Gesserit Sister's choice of Persuasion does not) [Rise of Ix p. 10]
+        # (docs/rules/rise-of-ix.md 9.1). The card's printed 2 swords are its
+        # entry's.
+        "imperial_bashar": _reveal(
+            _line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))
+        ),
+        # Northern Watermaster.
+        "northern_watermaster": _reveal(
+            _line(GainResources(spice=2), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Overthrow.
+        "overthrow": _reveal(_line(RecruitTroops(1))),
+        # Paracompass.
+        "paracompass": _reveal(
+            _line(RevealPersuasion(2), condition=HasHighCouncil()),
+            _line(
+                RevealPersuasion(1),
+                condition=AllConditions((HasHighCouncil(), HasSwordmaster())),
+            ),
+        ),
+        # Price is No Object.
+        "price_is_no_object": _reveal(_line(GainResources(solari=2))),
+        # Priority Contracts.
+        "priority_contracts": _reveal(_line(GainResources(spice=2))),
+        # Rebel Supplier.
+        "rebel_supplier": _reveal(_line(GainResources(spice=1))),
+        # Reliable Informant.
+        "reliable_informant": _reveal(_line(GainResources(solari=1))),
+        # Sardaukar Coordination.
+        "sardaukar_coordination": _reveal(
+            _line(RevealSwords(1, per=_revealed(Faction.EMPEROR)))
+        ),
+        # Shishakli.
+        "shishakli": _reveal(
+            _line(
+                GainInfluence(factions=(Faction.FREMEN,)),
+                condition=FactionBond(Faction.FREMEN),
+            )
+        ),
+        # Smuggler's Haven.
+        "smuggler_s_haven": _reveal(
+            _line(GainResources(spice=2), condition=SpyingOnMakerSpace())
+        ),
+        # Southern Elders.
+        "southern_elders": _reveal(
+            _line(GainResources(water=1)),
+            _line(RevealPersuasion(2), condition=FactionBond(Faction.FREMEN)),
+        ),
+        # Steersman.
+        "steersman": _reveal(_line(GainResources(spice=2))),
+        # Stilgar, The Devoted.
+        "stilgar_the_devoted": _reveal(
+            _line(RevealPersuasion(2, per=_in_play(Faction.FREMEN)))
+        ),
+        # Treacherous Maneuver.
+        "treacherous_maneuver": _reveal(_line(DrawIntrigueCards(1))),
+        # Unswerving Loyalty.
+        "unswerving_loyalty": _reveal(_line(RecruitTroops(1))),
+        # Ruthless Leadership.
+        "ruthless_leadership": _reveal(
+            _line(GrantCombatDeployment(), condition=_COMMAND)
+        ),
+        # Bombast.
+        "bombast": _reveal(
+            _line(GainResources(solari=3), TrashThisCard(), condition=_COMMAND)
+        ),
+        # Fremen War Name.
+        "fremen_war_name": _reveal(
+            _line(RevealSwords(2), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Holy War.
+        "holy_war": _reveal(
+            _line(RevealPersuasion(1), RecruitTroops(1)),
+            _line(GrantCombatDeployment(), condition=FactionBond(Faction.FREMEN)),
+        ),
+        # I Believe.
+        "i_believe": _reveal(_line(RecruitTroops(2), condition=_COMMAND)),
+        # Imperial Throneship.
+        "imperial_throneship": _reveal(
+            _line(
+                RevealPersuasion(1),
+                GainResources(solari=3),
+                condition=GarrisonedUnitsAtLeast(4),
+            )
+        ),
+        # Possible Futures.
+        "possible_futures": _reveal(_line(GainResources(water=1))),
+        # Water Peddler (Rise of Ix): "[Unload] [1 water]", its Unload box too
+        # (``rules.unload``).
+        "water_peddler": _reveal(_line(GainResources(water=1))),
+        # CHOAM Delegate (Rise of Ix): "[Unload] [3 Solari]", likewise.
+        "choam_delegate": _reveal(_line(GainResources(solari=3))),
+        # Esmar Tuek (Rise of Ix): "[Unload] [2 spice] [2 Solari]", likewise.
+        "esmar_tuek_card": _reveal(_line(GainResources(solari=2, spice=2))),
+        # In The Shadows (Rise of Ix): "[Unload] [Bene Gesserit Influence]"
+        # [Steam app screen pieces], Throne Room Politics' line, likewise.
+        "in_the_shadows": _reveal(
+            _line(GainInfluence(factions=(Faction.BENE_GESSERIT,)))
+        ),
+        # Treachery (Rise of Ix): "[Unload] [troop] [troop] Deploy these
+        # troops to the Conflict." [Steam app screen pieces and text] -- two
+        # troops from the supply to the Conflict, as Double Cross's one
+        # (OQ-042 (2): "원판·Ix의 Double Cross·Treachery(supply에서 Conflict로
+        # 배치)도 같은 기록을 쓴다"); its Unload box too.
+        "treachery": _reveal(_line(DeployFromSupply(2))),
+        # Guild Accord (Rise of Ix): "[Unload] [1 water]; [Spacing Guild]
+        # Alliance: [3 spice]" [Steam app screen pieces], two lines, likewise.
+        "guild_accord": _reveal(
+            _line(GainResources(water=1)),
+            _line(
+                GainResources(spice=3),
+                condition=HasAlliance(Faction.SPACING_GUILD),
+            ),
+        ),
+        # Quash Rebellion.
+        "quash_rebellion": _reveal(
+            _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))
+        ),
+        # Sandwalk.
+        "sandwalk": _reveal(
+            _line(RevealPersuasion(1), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Sardaukar Standard.
+        "sardaukar_standard": _reveal(_line(RecruitTroops(1))),
+        # Southern Faith.
+        "southern_faith": _reveal(_line(GainResources(spice=2), condition=_COMMAND)),
+        # Bene Tleilax Lab.
+        "bene_tleilax_lab": _reveal(
+            _line(GainResources(spice=1), condition=GeneticMarkersAtLeast(1))
+        ),
+        # Bene Tleilax Researcher.
+        "bene_tleilax_researcher": _reveal(
+            _line(RevealPersuasion(1), condition=GeneticMarkersAtLeast(1)),
+            _line(RevealPersuasion(1), condition=GeneticMarkersAtLeast(2)),
+        ),
+        # Dissecting Kit.
+        "dissecting_kit": _reveal(
+            _line(AdvanceTleilaxu(1), condition=GeneticMarkersAtLeast(1))
+        ),
+        # High Priority Travel.
+        "high_priority_travel": _reveal(_line(GainResources(solari=1))),
+        # Lisan al Gaib.
+        "lisan_al_gaib": _reveal(
+            _line(RevealSwords(2), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Long Reach.
+        "long_reach": _reveal(_line(DrawIntrigueCards(1))),
+        # Occupation.
+        "occupation": _reveal(_line(GainResources(spice=1, water=1), RecruitTroops(1))),
+        # Organ Merchants.
+        "organ_merchants": _reveal(_line(GainResources(solari=1))),
+        # Spiritual Fervor.
+        "spiritual_fervor": _reveal(_line(GenerateSpecimens(1))),
+        # Stillsuit Manufacturer.
+        "stillsuit_manufacturer": _reveal(
+            _line(GainResources(spice=2), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Throne Room Politics.
+        "throne_room_politics": _reveal(
+            _line(GainInfluence(factions=(Faction.BENE_GESSERIT,)))
+        ),
+        # Tleilaxu Master.
+        "tleilaxu_master": _reveal(_line(Research(), Research())),
+        # Experimentation.
+        "experimentation": _reveal(_line(GenerateSpecimens(1))),
+        # Control the Spice.
+        "control_the_spice": _reveal(_line(GainResources(spice=1))),
+        # The Spice Must Flow.
+        "the_spice_must_flow": _reveal(_line(GainResources(spice=1))),
+        # The original game's The Spice Must Flow (Reserve): 1 spice
+        # (the app's attribute table, docs/base-game-and-ix-plan.md 15.3).
+        "imperium_the_spice_must_flow": _reveal(_line(GainResources(spice=1))),
+        # Twisted Mentat.
+        "twisted_mentat": _reveal(_line(GenerateSpecimens(1))),
+        # Usurp.
+        "usurp": _reveal(_line(GenerateSpecimens(1))),
+    }
+)
+
+
+for _ability in REVEAL_GAIN_ABILITIES.values():
+    for _section in _ability.sections:
+        check_reveal_gain_line(_section)

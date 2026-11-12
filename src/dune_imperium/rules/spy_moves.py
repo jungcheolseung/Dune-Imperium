@@ -1,0 +1,449 @@
+"""Forced Spy moves and space-bound Spy placements (Bloodlines).
+
+Holy War and False Orders read "each opponent spying on the board space
+where you sent an Agent this turn must move that Spy"; False Orders then
+lets its owner place a Spy on that space. The official FAQ sets the
+destination for False Orders: "Each opponent affected by this card must
+move their Spy to an empty observation post that isn't connected to the
+space where you sent an Agent this turn." [FAQ p. 2]; the user extended the
+same rule to Holy War's identical sentence (OQ-036 (b), 2026-09-26). When
+every such post is taken -- possible only at Research Station or Spice
+Refinery, with all twelve Spies on the board -- the Spy is lost to its
+owner's supply, by analogy with the Rival rule "If all other Faction
+observation posts are full, the Spy is lost." [Bloodlines p. 8] (OQ-065).
+"""
+
+from copy import replace
+
+from dune_imperium.content.core.icons import Faction
+from dune_imperium.content.registry.board import ALL_OBSERVATION_POSTS
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GameState
+from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
+from dune_imperium.rules.frames import (
+    FrameKind,
+    context_str,
+    owes_track_spy,
+    owned_top_frame,
+    replace_player,
+    track_spy_waits,
+)
+from dune_imperium.rules.spy_placement import (
+    empty_observation_post_ids,
+    observation_post_ids_in_play,
+    place_spy,
+    recall_spy,
+    spy_options,
+)
+
+# The turn's own frames, where the owner's waiting Emperor track Spy is
+# offered (``legal_track_spy_actions``).
+_TURN_FRAME_KINDS = frozenset(
+    {FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL}
+)
+
+
+def connected_post_ids(space_id: str) -> tuple[str, ...]:
+    """Return the Observation Posts adjacent to ``space_id`` in board order."""
+
+    return tuple(
+        post.post_id
+        for post in ALL_OBSERVATION_POSTS
+        if space_id in post.connected_space_ids
+    )
+
+
+def opponent_seats(state: GameState, actor: int) -> tuple[int, ...]:
+    """Return the other seats clockwise from ``actor``."""
+
+    count = state.config.players
+    return tuple((actor + offset) % count for offset in range(1, count))
+
+
+def turn_space_spy_frames(
+    state: GameState,
+    actor: int,
+    space_id: str,
+    *,
+    source: str,
+    printer: str,
+) -> RuleResult:
+    """Push one Spy-move decision per opposing Spy watching ``space_id``.
+
+    Frames are pushed so the next clockwise opponent decides first. Each
+    frame keeps ``space_id``: the Spy may not move to a post connected to
+    it [FAQ p. 2], and ``printer``, the card that moves it
+    (``action_shapes.printer_value``; stage B3d-3).
+    """
+
+    posts = set(connected_post_ids(space_id))
+    frames: list[DecisionFrame] = []
+    for seat in opponent_seats(state, actor):
+        for post_id in state.players[seat].spy_post_ids:
+            if post_id not in posts:
+                continue
+            frames.append(
+                DecisionFrame(
+                    kind=FrameKind.OPPONENT_SPY_MOVE,
+                    frame_id=f"{source}:spy_move:{seat}:{post_id}",
+                    decision=PlayerDecision(
+                        owner=seat, prompt="Move your Spy off the watched space"
+                    ),
+                    context=(
+                        ("player", seat),
+                        ("post_id", post_id),
+                        (PRINTER_KEY, printer),
+                        ("source", source),
+                        ("space_id", space_id),
+                    ),
+                )
+            )
+    next_state = replace(
+        state, decision_stack=(*state.decision_stack, *reversed(frames))
+    )
+    return RuleResult(state=next_state)
+
+
+def legal_spy_move_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer every empty post not connected to the Agent's space [FAQ p. 2].
+
+    The mover chooses (OQ-036). With no such post the Spy is lost to its
+    owner's supply (OQ-065).
+    """
+
+    frame = owned_top_frame(state, FrameKind.OPPONENT_SPY_MOVE, player)
+    if frame is None:
+        return ()
+    space_id = context_str(dict(frame.context), "space_id", owner="Spy move frame")
+    watched = set(connected_post_ids(space_id))
+    targets = tuple(
+        post_id
+        for post_id in empty_observation_post_ids(state)
+        if post_id not in watched
+    )
+    if not targets:
+        return (DomainAction(action_id="lose_moved_spy", actor=player),)
+    return tuple(
+        DomainAction(
+            action_id="move_spy",
+            actor=player,
+            arguments=(("post_id", post_id),),
+        )
+        for post_id in targets
+    )
+
+
+def apply_spy_move(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the Spy to the chosen post, or lose it when none is left."""
+
+    if action not in legal_spy_move_actions(state, action.actor):
+        raise ValueError("action is not a legal Spy move")
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    origin = context_str(context, "post_id", owner="Spy move frame")
+    owner = state.players[action.actor]
+    # The forced move (and the OQ-065 loss) is not a recall by the Spy's
+    # owner: the opponent's card makes them "move their Spy to an empty
+    # observation post" [FAQ p. 2] during the card player's turn, while
+    # "If you recalled a Spy this turn" counts the seat's own recalls in its
+    # own turn (OQ-044 (d)).
+    recalled = replace(
+        recall_spy(owner, origin), spies_recalled_turn=owner.spies_recalled_turn
+    )
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{frame.frame_id}:recalled",
+            kind="spy_recalled",
+            payload=(("player", action.actor), ("post_id", origin)),
+        )
+    ]
+    if action.action_id == "lose_moved_spy":
+        # No empty post off the space: the Spy returns to the supply (OQ-065).
+        events.append(
+            GameEvent(
+                event_id=f"{frame.frame_id}:lost",
+                kind="spy_lost",
+                payload=(("player", action.actor), ("post_id", origin)),
+            )
+        )
+        return RuleResult(
+            state=replace(
+                state.pop_decision(), players=replace_player(state.players, recalled)
+            ),
+            events=tuple(events),
+        )
+    target = str(dict(action.arguments)["post_id"])
+    next_owner = place_spy(recalled, target)
+    events.append(
+        GameEvent(
+            event_id=f"{frame.frame_id}:placed:{target}",
+            kind="spy_placed",
+            payload=(("player", action.actor), ("post_id", target)),
+        )
+    )
+    next_state = replace(
+        state.pop_decision(), players=replace_player(state.players, next_owner)
+    )
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def _open_track_spy_index(state: GameState) -> int | None:
+    """Index of the oldest owed Emperor track Spy that does not wait, if any.
+
+    An entry of the seat whose Agent or Reveal turn is open waits in that
+    turn for its owner's ``place_track_spy`` (``track_spy_waits``); every
+    other entry -- another seat's, or any outside a player turn -- opens at
+    once, even when it was queued behind a waiting one.
+    """
+
+    for index, (seat, _) in enumerate(state.pending_track_spies):
+        if not track_spy_waits(state, seat):
+            return index
+    return None
+
+
+def track_spy_is_queued(state: GameState) -> bool:
+    """Return whether an Emperor track Spy can open its placement now.
+
+    A pending chance frame always resolves first, like the other queues. So
+    do the choices of a Conflict's rewards: a fixed Emperor Influence reward
+    may reach 4 while that Conflict's own Spy rewards are still waiting, and
+    the track's Spy follows them. Each of them, the track's included, may
+    first recall a Spy when the supply is empty [Main pp. 11, 20]. The turn
+    owner's own entries never open here: they wait for ``place_track_spy``
+    (user ruling 2026-10-04, overriding OQ-057 (15)).
+
+    A completed Contract's reward window holds it too: the Influence that
+    reached 4 may also earn an alliance and so complete Earn Any Alliance,
+    whose reward the engine paid inside that step before stage B2. The Spy
+    came after it then, and comes after its icon rows now (OQ-112); a
+    choice row's own frame (a Contract Spy, a recall) does not hold it,
+    as that frame did not before.
+    """
+
+    if _open_track_spy_index(state) is None:
+        return False
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if frame is None:
+        return True
+    if isinstance(frame.decision, ChanceDecision):
+        return False
+    if frame.kind == FrameKind.CONTRACT_REWARD_ICONS:
+        return False
+    return not str(frame.kind).startswith("combat_reward")
+
+
+def begin_track_spy_placement(state: GameState) -> RuleResult:
+    """Open the oldest owed Emperor track Spy that does not wait.
+
+    "When you reach 4 Influence, you earn the bonus shown on that space of
+    the track" [Main p. 7]; the Emperor strip prints the Spy icon. The
+    placement follows the normal rule (an unoccupied post; with an empty
+    supply a Spy may be recalled first [Main pp. 11, 20]). Outside the
+    owed seat's own turn it opens on top of whatever was being resolved, as
+    the Steam app does in Combat; inside it the entry waits for the owner's
+    ``place_track_spy`` (user ruling 2026-10-04, overriding OQ-057 (15)).
+    """
+
+    index = _open_track_spy_index(state)
+    if index is None:
+        raise ValueError("there is no Influence track Spy to open now")
+    return RuleResult(state=_open_track_spy(state, index))
+
+
+def _open_track_spy(state: GameState, index: int) -> GameState:
+    player, source = state.pending_track_spies[index]
+    remaining = replace(
+        state,
+        pending_track_spies=(
+            *state.pending_track_spies[:index],
+            *state.pending_track_spies[index + 1 :],
+        ),
+    )
+    return spy_placement_frame(
+        remaining,
+        player,
+        observation_post_ids_in_play(remaining),
+        source=source,
+        # The Emperor strip prints the Spy icon [Main p. 7].
+        printer=printer_value(Source.INFLUENCE_TRACK, Faction.EMPEROR.value),
+    )
+
+
+def legal_track_spy_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Offer the owner's waiting Emperor track Spy on its turn's own frames.
+
+    User ruling 2026-10-04 (overrides the adopted designer ruling OQ-057
+    (15), "You need to finish resolving that Spy placement before you move
+    on to other 'player initiated actions.'"): "엄연히 agent턴 내에 순서를
+    정해서 할 수 있는 의무 행동으로 보는거지" -- as in the Steam app, the
+    placement waits in the turn, the owner may do other things first, and
+    must place it before the turn ends. It is offered on the turn frame
+    (before the Agent or Reveal: Plot timing is in the turn), the Agent-turn
+    effect frame and the Reveal frame, never on a frame stacked above them.
+    One press opens the oldest owed entry; the shared ``spy_placement``
+    frame then makes the placement mandatory with a Spy in supply and
+    offers the recall-first or its decline without one [Main pp. 11, 20].
+    """
+
+    frame = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        frame is None
+        or frame.kind not in _TURN_FRAME_KINDS
+        or not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+    ):
+        return ()
+    if not owes_track_spy(state, player) or not track_spy_waits(state, player):
+        return ()
+    return (DomainAction(action_id="place_track_spy", actor=player),)
+
+
+def apply_place_track_spy(state: GameState, action: DomainAction) -> RuleResult:
+    """Open the placement of the owner's oldest waiting Emperor track Spy."""
+
+    if action not in legal_track_spy_actions(state, action.actor):
+        raise ValueError("action is not a legal Emperor track Spy placement")
+    index = next(
+        index
+        for index, (seat, _) in enumerate(state.pending_track_spies)
+        if seat == action.actor
+    )
+    return RuleResult(state=_open_track_spy(state, index))
+
+
+def spy_placement_frame(
+    state: GameState,
+    player: int,
+    allowed_post_ids: tuple[str, ...],
+    *,
+    source: str,
+    printer: str,
+    deep_cover: bool = False,
+) -> GameState:
+    """Push the owner's placement of a Spy on one of ``allowed_post_ids``.
+
+    With ``deep_cover`` the placement ignores opponents' Spies (Spy with
+    Deep Cover [Bloodlines pp. 5, 12]); only the owner's own Spies block.
+    ``printer`` is the entity whose Spy icon opened it
+    (``action_shapes.printer_value``): a recall first names it (stage
+    B3d-2a, ``effect_steps.Printed.WINDOW``).
+    """
+
+    return state.push_decision(
+        DecisionFrame(
+            kind=FrameKind.SPY_PLACEMENT,
+            frame_id=f"{source}:spy_placement",
+            decision=PlayerDecision(
+                owner=player,
+                prompt=(
+                    "Place a Spy with Deep Cover"
+                    if deep_cover
+                    else "Place a Spy on the watched space"
+                ),
+            ),
+            context=(
+                ("allowed_post_ids", ",".join(allowed_post_ids)),
+                ("deep_cover", deep_cover),
+                ("player", player),
+                (PRINTER_KEY, printer),
+                ("source", source),
+            ),
+        )
+    )
+
+
+def legal_spy_placement_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Place on an allowed empty post, recalling first without a Spy in supply."""
+
+    frame = owned_top_frame(state, FrameKind.SPY_PLACEMENT, player)
+    if frame is None:
+        return ()
+    context = dict(frame.context)
+    allowed = frozenset(
+        context_str(context, "allowed_post_ids", owner="Spy placement frame").split(",")
+    )
+    options = spy_options(
+        state, player, allowed, shared_post=context.get("deep_cover") is True
+    )
+    return (
+        *(
+            (DomainAction(action_id="decline_spy_placement", actor=player),)
+            if options.pass_up
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="recall_spy_for_placement",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.recall
+        ),
+        *(
+            DomainAction(
+                action_id="place_spy_on_space",
+                actor=player,
+                arguments=(("post_id", post_id),),
+            )
+            for post_id in options.place
+        ),
+    )
+
+
+def apply_spy_placement(state: GameState, action: DomainAction) -> RuleResult:
+    """Resolve the placement frame's chosen action."""
+
+    if action not in legal_spy_placement_actions(state, action.actor):
+        raise ValueError("action is not a legal Spy placement choice")
+    frame = state.decision_stack[-1]
+    owner = state.players[action.actor]
+    if action.action_id == "decline_spy_placement":
+        return RuleResult(
+            state=state.pop_decision(),
+            events=(
+                GameEvent(
+                    event_id=f"{frame.frame_id}:unavailable",
+                    kind="spy_placement_unavailable",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+    post_id = str(dict(action.arguments)["post_id"])
+    if action.action_id == "recall_spy_for_placement":
+        recalled = recall_spy(owner, post_id)
+        return RuleResult(
+            state=replace(state, players=replace_player(state.players, recalled)),
+            events=(
+                GameEvent(
+                    event_id=f"{frame.frame_id}:recalled:{post_id}",
+                    kind="spy_recalled",
+                    payload=(("player", action.actor), ("post_id", post_id)),
+                ),
+            ),
+        )
+    placed = place_spy(owner, post_id)
+    return RuleResult(
+        state=replace(
+            state.pop_decision(), players=replace_player(state.players, placed)
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{frame.frame_id}:placed:{post_id}",
+                kind="spy_placed",
+                payload=(("player", action.actor), ("post_id", post_id)),
+            ),
+        ),
+    )
